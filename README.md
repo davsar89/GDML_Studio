@@ -4,6 +4,10 @@
 
 A lightweight desktop tool for viewing [GDML](https://gdml.web.cern.ch/GDML/) (Geometry Description Markup Language) detector geometry files. GDML is the standard geometry format used by [Geant4](https://geant4.web.cern.ch/) and other particle-physics simulation frameworks. GDML Studio lets you quickly inspect these geometries without launching a full Geant4 session — it parses the GDML XML, evaluates expressions and units, tessellates solids into triangle meshes, and renders the 3D scene in the browser.
 
+<p align="center">
+  <img src="screem_example.png" alt="GDML Studio screenshot" width="700">
+</p>
+
 ## Architecture
 
 | Layer | Tech | Path |

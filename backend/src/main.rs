@@ -46,7 +46,7 @@ async fn main() {
         api_router.layer(cors)
     };
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], config::DEFAULT_PORT));
+    let addr = SocketAddr::from(([127, 0, 0, 1], config::port()));
     tracing::info!("GDML Studio backend starting on http://{}", addr);
 
     // Try to open browser
