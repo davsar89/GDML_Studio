@@ -1,0 +1,2487 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<gdml xmlns:gdml="http://cern.ch/2001/Schemas/GDML"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="./gdml_schema/gdml.xsd">
+<define>
+<!-- ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt -->
+<!-- GRESS MASS MODEL FILE:  NaiDetModelWithMLI_v1_09.ggdml                          -->
+<!--                                                                                 -->
+<!-- Description: GLAST Burst Monitor NaI detector flight configuration mass model   -->
+<!--              (detector module only with MLI layer)                              -->
+<!--                                                                                 -->
+<!-- Revision History:                                                               --> 
+<!--                                                                                 --> 
+<!-- v2.00 (Mar 2011): Updated for use with new GRESS2 code package                  --> 
+<!-- v1.09 (Aug 2007): Update for use with new GDML framework.                       --> 
+<!-- v1.08 (May 2007): Update for use with physim.                                   --> 
+<!-- v1.07 (Feb 2007): First version based on v1.07 detector model with MLI added.   --> 
+<!--                                                                                 --> 
+<!-- Sequence:  define, materials, solids, structure, setup                          -->
+<!-- ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt -->
+<quantity name="rOutDeckelFee"              type="length" value="115.6*0.5"  unit="mm"/>
+<quantity name="tDeckelFee"                 type="length" value="7.9"        unit="mm"/>
+<quantity name="rOutDeckelFeeInner"         type="length" value="96.0*0.5"   unit="mm"/>
+<quantity name="tDeckelFeeInner"            type="length" value="6.4"        unit="mm"/>
+<quantity name="rOutFeeMitPcb"              type="length" value="114.0*0.5"  unit="mm"/>
+<quantity name="tFeeMitPcb"                 type="length" value="25.6"       unit="mm"/>
+<quantity name="rOutFeeMitPcbInner"         type="length" value="103.3*0.5"  unit="mm"/>
+<quantity name="rOutPmtTubusRear"           type="length" value="114.0*0.5"  unit="mm"/>
+<quantity name="rInPmtTubusRear"            type="length" value="112.0*0.5"  unit="mm"/>
+<quantity name="tPmtTubusRear"              type="length" value="99.517"     unit="mm"/>
+<quantity name="rOutPmtTubusRearRingRear"   type="length" value="112.0*0.5"  unit="mm"/>
+<quantity name="rInPmtTubusRearRingRear"    type="length" value="98.0*0.5"   unit="mm"/>
+<quantity name="tPmtTubusRearRingRear"      type="length" value="6.0"        unit="mm"/>
+<quantity name="rOutPmtTubusRearRingFront"  type="length" value="112.0*0.5"  unit="mm"/>
+<quantity name="rInPmtTubusRearRingFront"   type="length" value="76.0*0.5"   unit="mm"/>
+<quantity name="tPmtTubusRearRingFront"     type="length" value="3.0"        unit="mm"/>
+<quantity name="rInMinPmtTubusMid"          type="length" value="112.0*0.5"  unit="mm"/>
+<quantity name="rOutMinPmtTubusMid"         type="length" value="114.0*0.5"  unit="mm"/>
+<quantity name="rInMaxPmtTubusMid"          type="length" value="125.8*0.5"  unit="mm"/>
+<quantity name="rOutMaxPmtTubusMid"         type="length" value="127.8*0.5"  unit="mm"/>
+<quantity name="tPmtTubusMid"               type="length" value="24.483"     unit="mm"/>
+<quantity name="rOutPmtTubusMidRing"        type="length" value="148.0*0.5"  unit="mm"/>
+<quantity name="rInPmtTubusMidRing"         type="length" value="125.8*0.5"  unit="mm"/>
+<quantity name="tPmtTubusMidRing"           type="length" value="5.0"        unit="mm"/>
+<quantity name="rOutPmtTubusFront"          type="length" value="148.0*0.5"  unit="mm"/>
+<quantity name="rInPmtTubusFront"           type="length" value="146.0*0.5"  unit="mm"/>
+<quantity name="tPmtTubusFront"             type="length" value="67.0"       unit="mm"/>
+<quantity name="rOutPmtInnentubusRingFront" type="length" value="88.0*0.5"   unit="mm"/>
+<quantity name="rInPmtInnentubusRingFront"  type="length" value="69.2*0.5"   unit="mm"/>
+<quantity name="tPmtInnentubusRingFront"    type="length" value="4.0"        unit="mm"/>
+<quantity name="rOutPmtInnentubus"          type="length" value="71.2*0.5"   unit="mm"/>
+<quantity name="rInPmtInnentubus"           type="length" value="69.2*0.5"   unit="mm"/>
+<quantity name="tPmtInnentubus"             type="length" value="63.0"       unit="mm"/>
+<quantity name="rOutPmtInnentubusFeeRear"   type="length" value="69.2*0.5"   unit="mm"/>
+<quantity name="tPmtInnentubusFeeRear"      type="length" value="19.0"       unit="mm"/>
+<quantity name="rOutPmtInnentubusRingMid"   type="length" value="69.2*0.5"   unit="mm"/>
+<quantity name="rInPmtInnentubusRingMid"    type="length" value="48.0*0.5"   unit="mm"/>
+<quantity name="tPmtInnentubusRingMid"      type="length" value="2.0"        unit="mm"/>
+<quantity name="rOutPmtThermostatRing"      type="length" value="127.0*0.5"  unit="mm"/>
+<quantity name="rInPmtThermostatRing"       type="length" value="111.0*0.5"  unit="mm"/>
+<quantity name="tPmtThermostatRing"         type="length" value="4.0"        unit="mm"/>
+<quantity name="rOutPmtThermostatMount"     type="length" value="19.0*0.5"   unit="mm"/>
+<quantity name="tPmtThermostatMount"        type="length" value="10.0"       unit="mm"/>
+<quantity name="rOutPmtThermostat"          type="length" value="15.0*0.5"   unit="mm"/>
+<quantity name="tPmtThermostat"              type="length" value="10.0"       unit="mm"/>
+<quantity name="rOutPmtMumetallFassungFront" type="length" value="163.2*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallFassungFront"  type="length" value="135.0*0.5"  unit="mm"/>
+<quantity name="tPmtMumetallFassungFront"    type="length" value="1.0"        unit="mm"/>
+<quantity name="rOutPmtMumetallFassungRear"  type="length" value="163.2*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallFassungRear"   type="length" value="161.2*0.5"  unit="mm"/>
+<quantity name="tPmtMumetallFassungRear"     type="length" value="36.5"       unit="mm"/>
+<quantity name="rOutPmtMumetallRing161"        type="length" value="160.6*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallRing161"         type="length" value="135.0*0.5"  unit="mm"/>
+<quantity name="tPmtMumetallRing161"           type="length" value="0.125"      unit="mm"/>
+<quantity name="rOutPmtMumetallHulse161"       type="length" value="160.6*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallHulse161"        type="length" value="160.35*0.5" unit="mm"/>
+<quantity name="tPmtMumetallHulse161"          type="length" value="34.9"       unit="mm"/>
+<quantity name="rOutPmtMumetallHulse146"       type="length" value="145.6*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallHulse146"        type="length" value="145.35*0.5" unit="mm"/>
+<quantity name="tPmtMumetallHulse146"          type="length" value="66.7"       unit="mm"/>
+<quantity name="rOutPmtMumetallRing146"        type="length" value="145.6*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallRing146"         type="length" value="128.0*0.5"  unit="mm"/>
+<quantity name="tPmtMumetallRing146"           type="length" value="0.125"      unit="mm"/>
+<quantity name="rOutMinPmtMumetallTrichter127"    type="length" value="112.0*0.5"  unit="mm"/>
+<quantity name="rInMinPmtMumetallTrichter127"     type="length" value="111.75*0.5"  unit="mm"/>
+<quantity name="rOutMaxPmtMumetallTrichter127"    type="length" value="125.8*0.5"  unit="mm"/>
+<quantity name="rInMaxPmtMumetallTrichter127"     type="length" value="125.55*0.5"  unit="mm"/>
+<quantity name="tPmtMumetallTrichter127"          type="length" value="24.483"      unit="mm"/>
+<quantity name="rInPmtMumetallTrichter127Ring"    type="length" value="125.55*0.5"  unit="mm"/>
+<quantity name="rOutPmtMumetallTrichter127Ring"   type="length" value="125.8*0.5"  unit="mm"/>
+<quantity name="tPmtMumetallTrichter127Ring"      type="length" value="5.0"      unit="mm"/>
+<quantity name="rOutPmtMumetallHulse112"       type="length" value="111.6*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallHulse112"        type="length" value="111.35*0.5"  unit="mm"/>
+<quantity name="tPmtMumetallHulse112"          type="length" value="30.0"      unit="mm"/>
+<quantity name="rOutPmtMumetallHulse112lg"     type="length" value="111.6*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallHulse112lg"      type="length" value="111.35*0.5"  unit="mm"/>
+<quantity name="tPmtMumetallHulse112lg"        type="length" value="59.0"      unit="mm"/>
+<quantity name="rOutPmtIfRing"                 type="length" value="160.0*0.5"  unit="mm"/>
+<quantity name="rInPmtIfRing"                  type="length" value="148.3*0.5"  unit="mm"/>
+<quantity name="tPmtIfRing"                    type="length" value="24.5"      unit="mm"/>
+<quantity name="rOutPmtIfRing2"                type="length" value="160.35*0.5"  unit="mm"/>
+<quantity name="rInPmtIfRing2"                 type="length" value="145.35*0.5"  unit="mm"/>
+<quantity name="rOutPmtGewindering"            type="length" value="151.9*0.5"  unit="mm"/>
+<quantity name="rInPmtGewindering"             type="length" value="148.1*0.5"  unit="mm"/>
+<quantity name="tPmtGewindering"               type="length" value="14.0"      unit="mm"/>
+<quantity name="rOutPmtBaseFeeRing"            type="length" value="48.0*0.5"  unit="mm"/>
+<quantity name="rInPmtBaseFeeRing"             type="length" value="46.0*0.5"  unit="mm"/>
+<quantity name="tPmtBaseFeeRing"               type="length" value="12.9"      unit="mm"/>
+<quantity name="rOutPmtBase"                   type="length" value="55.0*0.5"  unit="mm"/>
+<quantity name="rInPmtBase"                    type="length" value="52.3*0.5"  unit="mm"/>
+<quantity name="tPmtBase"                      type="length" value="72.0"      unit="mm"/>
+<quantity name="tPmtBaseInside"                type="length" value="66.5"      unit="mm"/>
+<quantity name="rOutMaxPmtMid"                 type="length" value="133.0*0.5"  unit="mm"/>
+<quantity name="rInMaxPmtMid"                  type="length" value="130.3*0.5"  unit="mm"/>
+<quantity name="rOutMinPmtMid"                 type="length" value="55.0*0.5"  unit="mm"/>
+<quantity name="rInMinPmtMid"                  type="length" value="52.3*0.5"  unit="mm"/>
+<quantity name="tPmtMid"                       type="length" value="50.0"      unit="mm"/>
+<quantity name="rOutPmtFront"                  type="length" value="133.0*0.5"  unit="mm"/>
+<quantity name="rInPmtFront"                   type="length" value="130.3*0.5"  unit="mm"/>
+<quantity name="tPmtFront"                     type="length" value="39.0"      unit="mm"/>
+<quantity name="tPmtFrontInside"               type="length" value="33.5"      unit="mm"/>
+<quantity name="xdPmtIfBracket"                type="length" value="7.0"      unit="mm"/>
+<quantity name="ydPmtIfBracket"                type="length" value="2.5"      unit="mm"/>
+<quantity name="zdPmtIfBracket"                type="length" value="60.0"      unit="mm"/>
+<quantity name="rInPmtSteckerkonsole"          type="length" value="114.0*0.5"  unit="mm"/>
+<quantity name="rOutPmtSteckerkonsole"         type="length" value="118.0*0.5"  unit="mm"/>
+<quantity name="tPmtSteckerkonsole"            type="length" value="14.0"      unit="mm"/>
+<quantity name="rInPmtP02"                     type="length" value="114.0*0.5"  unit="mm"/>
+<quantity name="rOutPmtP02"                    type="length" value="126.0*0.5"  unit="mm"/>
+<quantity name="tPmtP02"                       type="length" value="47.5"      unit="mm"/>
+<quantity name="rInPmtSteckerplatte"           type="length" value="114.0*0.5"  unit="mm"/>
+<quantity name="rOutPmtSteckerplatte"          type="length" value="118.0*0.5"  unit="mm"/>
+<quantity name="tPmtSteckerplatte"             type="length" value="66.0"      unit="mm"/>
+<quantity name="rNaiCrystalAssem"              type="length" value="156.0*0.5"  unit="mm"/>
+<quantity name="tNaiCrystalAssem"              type="length" value="28.0"      unit="mm"/>
+<quantity name="rInNaiSiliconeRing"            type="length" value="143.0*0.5"  unit="mm"/>
+<quantity name="rOutNaiSiliconeRing"           type="length" value="148.0*0.5"  unit="mm"/>
+<quantity name="tNaiSiliconeRing"              type="length" value="13.0"       unit="mm"/>
+<quantity name="rNaiSiliconeDisk"              type="length" value="140.0*0.5"  unit="mm"/>
+<quantity name="tNaiSiliconeDisk"              type="length" value="3.92"       unit="mm"/>
+<quantity name="rNaiOpticalWindow"             type="length" value="138.0*0.5"  unit="mm"/>
+<quantity name="tNaiOpticalWindow"             type="length" value="6.0"        unit="mm"/>
+<quantity name="rNaiOpticalWindowEpoxy"        type="length" value="140.0*0.5"  unit="mm"/>
+<quantity name="tNaiOpticalWindowEpoxy"        type="length" value="6.0"        unit="mm"/>
+<quantity name="rNaiSiliconePad"               type="length" value="131.0*0.5"  unit="mm"/>
+<quantity name="tNaiSiliconePad"               type="length" value="0.7"      unit="mm"/>
+<quantity name="rNaiOpticalInterface"          type="length" value="127.0*0.5"  unit="mm"/>
+<quantity name="tNaiOpticalInterface"          type="length" value="2.0"        unit="mm"/>
+<quantity name="rNaiCrystal"                   type="length" value="127.0*0.5"  unit="mm"/>
+<quantity name="tNaiCrystal"                   type="length" value="12.7"        unit="mm"/>
+<quantity name="rNaiReflector"                 type="length" value="131.0*0.5"  unit="mm"/>
+<quantity name="tNaiReflector"                 type="length" value="15.18"        unit="mm"/>
+<quantity name="rNaiBeWindow"                  type="length" value="131.0*0.5"  unit="mm"/>
+<quantity name="tNaiBeWindow"                  type="length" value="0.2"        unit="mm"/>
+<quantity name="rInPmtSiliconeRing2"           type="length" value="133.25*0.5"  unit="mm"/>
+<quantity name="rOutPmtSiliconeRing2"          type="length" value="145.35*0.5"  unit="mm"/>
+<quantity name="tPmtSiliconeRing2"             type="length" value="7.0"       unit="mm"/>
+<quantity name="rInPmtSiliconeRubber"          type="length" value="133.25*0.5"  unit="mm"/>
+<quantity name="rOutPmtSiliconeRubber"         type="length" value="145.35*0.5"  unit="mm"/>
+<quantity name="tPmtSiliconeRubber"            type="length" value="2.625"      unit="mm"/>
+<quantity name="rNaiNothing"                   type="length" value="131.0*0.5"   unit="mm"/>
+<quantity name="tNaiNothing"                   type="length" value="2.0"        unit="mm"/>
+<quantity name="rMliLayer"                     type="length" value="67.5"       unit="mm"/>
+<quantity name="tMliLayer"                     type="length" value="1.0"        unit="mm"/>
+<quantity name="rMliLayer_Kapton"              type="length" value="67.5"       unit="mm"/>
+<quantity name="tMliLayer_Kapton"              type="length" value="0.102"      unit="mm"/>
+<quantity name="rMliLayer_Mylar"               type="length" value="67.5"       unit="mm"/>
+<quantity name="tMliLayer_Mylar"               type="length" value="0.0635"     unit="mm"/>
+<quantity name="rMliLayer_Polyester"           type="length" value="67.5"       unit="mm"/>
+<quantity name="tMliLayer_Polyester"           type="length" value="0.78289"    unit="mm"/>
+<quantity name="rMliLayer_Al"                  type="length" value="67.5"       unit="mm"/>
+<quantity name="tMliLayer_Al"                  type="length" value="0.00063"    unit="mm"/>
+<quantity name="rMliLayer_Ag"                  type="length" value="67.5"       unit="mm"/>
+<quantity name="tMliLayer_Ag"                  type="length" value="0.00015"    unit="mm"/>
+<quantity name="rMliLayer_Inconel"             type="length" value="67.5"       unit="mm"/>
+<quantity name="tMliLayer_Inconel"             type="length" value="0.0000275"  unit="mm"/>
+<quantity name="rMliLayer_Teflon"              type="length" value="67.5"       unit="mm"/>
+<quantity name="tMliLayer_Teflon"              type="length" value="0.0508"     unit="mm"/>
+<quantity name="rPmtConnection"                type="length" value="46.0*0.5"  unit="mm"/>
+<quantity name="tPmtConnection"                type="length" value="12.9"      unit="mm"/>
+<quantity name="rInPmtLightTight1"             type="length" value="7.5*0.5"  unit="mm"/>
+<quantity name="rOutPmtLightTight1"            type="length" value="46.0*0.5"  unit="mm"/>
+<quantity name="tPmtLightTight1"               type="length" value="2.0"      unit="mm"/>
+<quantity name="rInPmtLightTight2"             type="length" value="5.5*0.5"  unit="mm"/>
+<quantity name="rOutPmtLightTight2"            type="length" value="7.5*0.5"  unit="mm"/>
+<quantity name="tPmtLightTight2"               type="length" value="12.9"      unit="mm"/>
+<quantity name="rPmtBaseKnob"                  type="length" value="5.5*0.5"  unit="mm"/>
+<quantity name="tPmtBaseKnob"                  type="length" value="10.0"      unit="mm"/>
+<quantity name="rOutPmtMumetallHulse52"        type="length" value="55.25*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallHulse52"         type="length" value="55.0*0.5" unit="mm"/>
+<quantity name="tPmtMumetallHulse52"           type="length" value="72.0"       unit="mm"/>
+<quantity name="rOutMinPmtMumetallTrichter132"    type="length" value="55.25*0.5"  unit="mm"/>
+<quantity name="rInMinPmtMumetallTrichter132"     type="length" value="55.0*0.5"  unit="mm"/>
+<quantity name="rOutMaxPmtMumetallTrichter132"    type="length" value="133.25*0.5"  unit="mm"/>
+<quantity name="rInMaxPmtMumetallTrichter132"     type="length" value="133.0*0.5"  unit="mm"/>
+<quantity name="tPmtMumetallTrichter132"          type="length" value="50.0"      unit="mm"/>
+<quantity name="rOutPmtMumetallHulse133"        type="length" value="133.25*0.5"  unit="mm"/>
+<quantity name="rInPmtMumetallHulse133"         type="length" value="133.0*0.5" unit="mm"/>
+<quantity name="tPmtMumetallHulse133"           type="length" value="39.0"       unit="mm"/>
+<quantity name="rNaiMumetallTopf"			type="length" value="26.1*0.5"  unit="mm"/>
+<quantity name="tNaiMumetallTopf"			type="length" value="14.4"  unit="mm"/>
+<quantity name="rNaiHulse"	        		type="length" value="25.1*0.5"  unit="mm"/>
+<quantity name="tNaiHulse" 			type="length" value="13.9"  unit="mm"/>
+<!-- ttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt -->
+<quantity name="rBgoCrystalCfk"                 type="length" value="131.1*0.5" unit="mm"/>
+<quantity name="tBgoCrystalCfk"                 type="length" value="131.1"       unit="mm"/>
+<quantity name="rInMumetallBgo"                  type="length" value="127.6*0.5" unit="mm"/>
+<quantity name="rOutMumetallBgo"                 type="length" value="127.85*0.5" unit="mm"/>
+<quantity name="tMumetallBgo"                    type="length" value="120.0"       unit="mm"/>
+<quantity name="rInMumetallBgoEpoxy"             type="length" value="127.56*0.5" unit="mm"/>
+<quantity name="rOutMumetallBgoEpoxy"            type="length" value="127.6*0.5" unit="mm"/>
+<quantity name="tMumetallBgoEpoxy"               type="length" value="120.0"       unit="mm"/>
+<quantity name="rBgoAlFoil2"                     type="length" value="127.56*0.5" unit="mm"/>
+<quantity name="tBgoAlFoil2"                     type="length" value="127.46"       unit="mm"/>
+<quantity name="rBgoFiberglassEpoxy"             type="length" value="127.5*0.5" unit="mm"/>
+<quantity name="tBgoFiberglassEpoxy"             type="length" value="127.4"       unit="mm"/>
+<quantity name="rBgoAlFoil"                      type="length" value="127.46*0.5" unit="mm"/>
+<quantity name="tBgoAlFoil"                      type="length" value="127.36"       unit="mm"/>
+<quantity name="rBgoMillipore"                   type="length" value="127.4*0.5" unit="mm"/>
+<quantity name="tBgoMillipore"                   type="length" value="127.3"       unit="mm"/>
+<quantity name="rBgoCrystal"                    type="length" value="127.2*0.5" unit="mm"/>
+<quantity name="tBgoCrystal"                    type="length" value="127.1"       unit="mm"/>
+<quantity name="rBgoOpticalCement"               type="length" value="106.0*0.5" unit="mm"/>
+<quantity name="tBgoOpticalCement"               type="length" value="0.00002"   unit="mm"/>
+<quantity name="rBgoSiliconeDisk"                type="length" value="141.0*0.5" unit="mm"/>
+<quantity name="tBgoSiliconeDisk"                type="length" value="3.0"       unit="mm"/>
+<quantity name="tBgoSiliconeRing"                type="length" value="4.5"       unit="mm"/>
+<quantity name="rInBgoBracketRing1"                  type="length" value="106.0*0.5" unit="mm"/>
+<quantity name="rOutBgoBracketRing1"                 type="length" value="131.1*0.5" unit="mm"/>
+<quantity name="tBgoBracketRing1"                    type="length" value="2.5"       unit="mm"/>
+<quantity name="rInBgoBracketCone"                   type="length" value="131.1*0.5" unit="mm"/>
+<quantity name="rOutMaxBgoBracketCone"               type="length" value="152.0*0.5" unit="mm"/>
+<quantity name="rOutMinBgoBracketCone"               type="length" value="131.593*0.5" unit="mm"/>
+<quantity name="tBgoBracketCone"                     type="length" value="24.5"      unit="mm"/>
+<quantity name="rInBgoSiliconeRing2"                 type="length" value="133.25*0.5" unit="mm"/>
+<quantity name="rOutBgoSiliconeRing2"                type="length" value="145.35*0.5" unit="mm"/>
+<quantity name="rInBgoBracketRing2"                  type="length" value="141.0*0.5" unit="mm"/>
+<quantity name="rOutBgoBracketRing2"                 type="length" value="152.0*0.5" unit="mm"/>
+<quantity name="tBgoBracketRing2"                    type="length" value="3.0"       unit="mm"/>
+<quantity name="rInBgoBracketRing3"                  type="length" value="145.35*0.5" unit="mm"/>
+<quantity name="rOutBgoBracketRing3"                 type="length" value="152.0*0.5" unit="mm"/>
+<quantity name="rInBgoBracketRing4"                  type="length" value="148.0*0.5" unit="mm"/>
+<quantity name="rOutBgoBracketRing4"                 type="length" value="152.0*0.5" unit="mm"/>
+<quantity name="rInBgoBracketCfkRing1"               type="length" value="131.1*0.5" unit="mm"/>
+<quantity name="rOutBgoBracketCfkRing1"              type="length" value="132.5*0.5" unit="mm"/>
+<quantity name="rInBgoBracketCfkRing2"               type="length" value="152.0*0.5" unit="mm"/>
+<quantity name="rOutBgoBracketCfkRing2"              type="length" value="153.4*0.5" unit="mm"/>
+<quantity name="tBgoBracketCfkRing2"                 type="length" value="20.65" unit="mm"/>
+<quantity name="rInMinBgoBracketCfkCone"             type="length" value="131.593*0.5" unit="mm"/>
+<quantity name="rInMaxBgoBracketCfkCone"             type="length" value="152.0*0.5" unit="mm"/>
+<quantity name="rOutMaxBgoBracketCfkCone"            type="length" value="153.4*0.5" unit="mm"/>
+<quantity name="rOutMinBgoBracketCfkCone"            type="length" value="132.993*0.5" unit="mm"/>
+<quantity name="tBgoBracketCfkCone"                  type="length" value="24.5"      unit="mm"/>
+<quantity name="rBgoKappe"                           type="length" value="14.0*0.5" unit="mm"/>
+<quantity name="tBgoKappe"                           type="length" value="16.0" unit="mm"/>
+<quantity name="rBgoFlansch"                         type="length" value="11.6*0.5" unit="mm"/>
+<quantity name="tBgoFlansch"                         type="length" value="11.7" unit="mm"/>
+<quantity name="rBgoOpticalGlass"                    type="length" value="106.0*0.5" unit="mm"/>
+<quantity name="tBgoOpticalGlass"                    type="length" value="4.5"       unit="mm"/>
+<quantity name="tBgoOpticalGlass1"                   type="length" value="0.09998"   unit="mm"/>
+<quantity name="tBgoOpticalGlass2"                   type="length" value="0.03"   unit="mm"/>
+<quantity name="tBgoOpticalGlass3"                   type="length" value="0.02"   unit="mm"/>
+<quantity name="tBgoOpticalGlass4"                   type="length" value="0.03"   unit="mm"/>
+<quantity name="tBgoOpticalGlass5"                   type="length" value="1.82"   unit="mm"/>
+<quantity name="tBgoOpticalGlass6"                   type="length" value="2.5"   unit="mm"/>
+<quantity name="rInBgoBracketMumetalRing"            type="length" value="153.4*0.5" unit="mm"/>
+<quantity name="rOutBgoBracketMumetalRing"           type="length" value="153.65*0.5" unit="mm"/>
+<quantity name="tBgoBracketMumetalRing"              type="length" value="20.0" unit="mm"/>
+<quantity name="rInMinBgoBracketMumetalCone"         type="length" value="142.6352*0.5" unit="mm"/>
+<quantity name="rInMaxBgoBracketMumetalCone"         type="length" value="153.4*0.5" unit="mm"/>
+<quantity name="rOutMaxBgoBracketMumetalCone"        type="length" value="153.65*0.5" unit="mm"/>
+<quantity name="rOutMinBgoBracketMumetalCone"        type="length" value="142.8852*0.5" unit="mm"/>
+<quantity name="tBgoBracketMumetalCone"              type="length" value="12.924"      unit="mm"/>
+<quantity name="disttosource"                        type="length" value="250."      unit="mm"/>
+<quantity name="srcrad"                              type="length" value="170."      unit="mm"/>
+<variable name="DistanceToPhySource" value="1.0*disttosource"/>
+<variable name="PhySourceRadius" value="1.0*srcrad"/>
+<expression name="ttmp">tDeckelFee + tFeeMitPcb + tPmtTubusRear +
+	    tPmtTubusMid + tPmtTubusMidRing + tPmtTubusFront</expression>
+<expression name="ttmp2"> tPmtMumetallFassungFront +  tPmtMumetallFassungRear </expression>
+<expression name="tNaiDetectorMother">229.0 + tDeckelFee + tFeeMitPcb</expression>
+<expression name="rNaiDetectorMother">1.0*rOutPmtMumetallFassungRear + 2.0*rNaiMumetallTopf </expression>
+<expression name="tBgoDetectorMother">2.0*tDeckelFee + 2.0*tFeeMitPcb + 2.0*tPmtTubusRearRingRear + 2.0*tPmtInnentubusFeeRear +
+     2.0*tPmtConnection + 2.0*tPmtBase + 2.0*tPmtMid + 2.0*tPmtFront +
+     2.0*tBgoSiliconeDisk + 2.0*tBgoOpticalGlass + tBgoCrystal + 2.0*tBgoOpticalCement</expression>
+<expression name="tBgoSiliconeRing2">9.625 - tPmtSiliconeRubber</expression>
+<expression name="rBgoDetectorMother">1.0*rOutBgoBracketCfkRing1 + 1.5*tBgoKappe </expression>
+<expression name="xWorld">tBgoDetectorMother*4.0</expression>
+<expression name="yWorld">tBgoDetectorMother*4.0</expression>
+<expression name="zWorld">tBgoDetectorMother*4.0</expression>
+<expression name="zDeckelFeeInner">0.5*tDeckelFee - 0.5*tDeckelFeeInner</expression>
+<expression name="zDeckelFee">-0.5*tNaiDetectorMother + 0.5*tDeckelFee</expression>
+<expression name="zFeeMitPcb">-0.5*tNaiDetectorMother + tDeckelFee + 0.5*tFeeMitPcb</expression>
+<expression name="zNaiPmtTubusRear">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + 0.5*tPmtTubusRear</expression>
+<expression name="zNaiPmtTubusRearRingRear">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + 0.5*tPmtTubusRearRingRear</expression>
+<expression name="zNaiPmtTubusRearRingFront">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + 66.0 + 0.5*tPmtTubusRearRingFront</expression>
+<expression name="zNaiPmtTubusMid">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + tPmtTubusRear + 0.5*tPmtTubusMid</expression>
+<expression name="zNaiPmtTubusMidRing">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + tPmtTubusRear + tPmtTubusMid + 0.5*tPmtTubusMidRing</expression>
+<expression name="zNaiPmtTubusFront">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + tPmtTubusRear + tPmtTubusMid + tPmtTubusMidRing + 0.5*tPmtTubusFront</expression>
+<expression name="zNaiPmtInnentubusRingFront">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + 66.0 + tPmtTubusRearRingFront + 0.5*tPmtInnentubusRingFront</expression>
+<expression name="zNaiPmtInnentubus">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + tPmtTubusRearRingRear + 0.5*tPmtInnentubus</expression>
+<expression name="zNaiPmtInnentubusFeeRear">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + tPmtTubusRearRingRear + 0.5*tPmtInnentubusFeeRear</expression>
+<expression name="zNaiPmtInnentubusRingMid">-0.5*tNaiDetectorMother + tDeckelFee +
+     tFeeMitPcb + tPmtTubusRearRingRear + tPmtInnentubusFeeRear + 0.5*tPmtInnentubusRingMid</expression>
+<expression name="zNaiPmtThermostatRing">-0.5*tNaiDetectorMother + tDeckelFee +
+     tFeeMitPcb + tPmtTubusRear + tPmtTubusMid + tPmtTubusMidRing + 0.5*tPmtThermostatRing</expression>
+<expression name="zNaiPmtThermostatMount">-0.5*tNaiDetectorMother + tDeckelFee +
+     tFeeMitPcb + tPmtTubusRear + tPmtTubusMid + tPmtTubusMidRing - rOutPmtThermostatMount</expression>
+<expression name="yPmtThermostatMount_0">0.5*111.0 - 0.5*tPmtThermostatMount</expression>
+<expression name="yPmtThermostatMount_1">yPmtThermostatMount_0*0.5</expression>
+<expression name="xPmtThermostatMount_1">yPmtThermostatMount_0*0.8660</expression>
+<expression name="zNaiPmtMumetallFassungFront">0.5*tNaiDetectorMother - 0.5*tPmtMumetallFassungFront</expression>
+<expression name="zNaiPmtMumetallFassungRear">0.5*tNaiDetectorMother - tPmtMumetallFassungFront - 0.5*tPmtMumetallFassungRear</expression>
+<expression name="zMliLayer">0.5*tNaiDetectorMother - 0.5*tMliLayer</expression>
+<expression name="zMliLayer_Kapton">-0.5*tMliLayer + 0.5*tMliLayer_Kapton</expression>
+<expression name="zMliLayer_Mylar">-0.5*tMliLayer + tMliLayer_Kapton + 0.5*tMliLayer_Mylar</expression>
+<expression name="zMliLayer_Polyester">-0.5*tMliLayer + tMliLayer_Kapton + tMliLayer_Mylar + 0.5*tMliLayer_Polyester</expression>
+<expression name="zMliLayer_Al">-0.5*tMliLayer + tMliLayer_Kapton + tMliLayer_Mylar + tMliLayer_Polyester + 0.5*tMliLayer_Al</expression>
+<expression name="zMliLayer_Ag">-0.5*tMliLayer + tMliLayer_Kapton + tMliLayer_Mylar + tMliLayer_Polyester + tMliLayer_Al + 0.5*tMliLayer_Ag</expression>
+<expression name="zMliLayer_Inconel">-0.5*tMliLayer + tMliLayer_Kapton + tMliLayer_Mylar + tMliLayer_Polyester + tMliLayer_Al + tMliLayer_Ag
+         + 0.5*tMliLayer_Inconel</expression>
+<expression name="zMliLayer_Teflon">-0.5*tMliLayer + tMliLayer_Kapton + tMliLayer_Mylar + tMliLayer_Polyester + tMliLayer_Al + tMliLayer_Ag
+         + tMliLayer_Inconel + 0.5*tMliLayer_Teflon</expression>
+<expression name="zNaiPmtMumetallRing161">0.5*tNaiDetectorMother - tPmtMumetallFassungFront - 0.5*tPmtMumetallRing161</expression>
+<expression name="zNaiPmtMumetallHulse161">0.5*tNaiDetectorMother - tPmtMumetallFassungFront - tPmtMumetallRing161 - 0.5*tPmtMumetallHulse161</expression>
+<expression name="zNaiPmtMumetallHulse146">zNaiPmtTubusFront</expression>
+<expression name="zNaiPmtMumetallRing146">-0.5*tNaiDetectorMother + tDeckelFee +
+	    tFeeMitPcb + tPmtTubusRear + tPmtTubusMid + tPmtTubusMidRing + 0.5*tPmtMumetallRing146</expression>
+<expression name="zNaiPmtMumetallTrichter127">zNaiPmtTubusMid</expression>
+<expression name="zNaiPmtMumetallTrichter127Ring">zNaiPmtTubusMid + 0.5*tPmtMumetallTrichter127 + 0.5*tPmtMumetallTrichter127Ring</expression>
+<expression name="zNaiPmtMumetallHulse112">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + 69.0 + 0.5*tPmtMumetallHulse112</expression>
+<expression name="zNaiPmtMumetallHulse112lg">-0.5*tNaiDetectorMother + tDeckelFee + tFeeMitPcb + tPmtTubusRearRingRear + 30.0</expression>
+<expression name="zNaiPmtIfRing">-0.5*tNaiDetectorMother + tDeckelFee +tFeeMitPcb + 164.0 + 8.0 + 0.5*tPmtIfRing</expression>
+<expression name="zNaiPmtGewindering">-0.5*tNaiDetectorMother + tDeckelFee +tFeeMitPcb + 164.0 + 8.0 - 0.5*tPmtGewindering</expression>
+<expression name="zNaiPmtBaseFeeRing">-0.5*tNaiDetectorMother + tDeckelFee +
+     tFeeMitPcb + tPmtTubusRearRingRear + tPmtInnentubusFeeRear + 0.5*tPmtBaseFeeRing</expression>
+<expression name="zNaiPmtConnection">-0.5*tNaiDetectorMother + tDeckelFee +
+     tFeeMitPcb + tPmtTubusRearRingRear + tPmtInnentubusFeeRear + 0.5*tPmtConnection</expression>
+<expression name="zNaiPmtBaseInside">0.5*tPmtBase - 0.5*tPmtBaseInside</expression>
+<expression name="zNaiPmtFrontInside">-0.5*tPmtFront + 0.5*tPmtFrontInside</expression>
+<expression name="zNaiPmtBase">-0.5*tNaiDetectorMother + tDeckelFee +
+     tFeeMitPcb + tPmtTubusRearRingRear + tPmtInnentubusFeeRear +
+     tPmtBaseFeeRing + 0.5*tPmtBase</expression>
+<expression name="zNaiPmtMid">-0.5*tNaiDetectorMother + tDeckelFee +
+     tFeeMitPcb + tPmtTubusRearRingRear + tPmtInnentubusFeeRear +
+     tPmtBaseFeeRing + tPmtBase + 0.5*tPmtMid</expression>
+<expression name="zNaiPmtFront">-0.5*tNaiDetectorMother + tDeckelFee +
+     tFeeMitPcb + tPmtTubusRearRingRear + tPmtInnentubusFeeRear +
+     tPmtBaseFeeRing + tPmtBase + tPmtMid + 0.5*tPmtFront</expression>
+<expression name="zNaiPmtIfBracket">-0.5*tNaiDetectorMother + tDeckelFee +
+     tFeeMitPcb + tPmtTubusRearRingRear + tPmtInnentubusFeeRear +
+     tPmtBaseFeeRing + tPmtBase + tPmtMid + tPmtFront -
+     0.5*zdPmtIfBracket - 9.625</expression>
+<expression name="rPmtIfBracket">rOutMaxPmtMumetallTrichter132 + 0.5*ydPmtIfBracket</expression>
+<expression name="xPmtIfBracket">rPmtIfBracket*0.866025403</expression>
+<expression name="yPmtIfBracket">rPmtIfBracket*0.5</expression>
+<expression name="zNaiPmtSteckerkonsole">zNaiPmtTubusRear - 0.5*tPmtTubusRear + 0.5*tPmtSteckerkonsole</expression>
+<expression name="zNaiPmtP02">zNaiPmtTubusRear - 0.5*tPmtTubusRear + 0.5*tPmtP02</expression>
+<expression name="zNaiPmtSteckerplatte">zNaiPmtTubusRear - 0.5*tPmtTubusRear + 0.5*tPmtSteckerplatte</expression>
+<expression name="zNaiCrystalAssem">zNaiPmtFront + 0.5*tPmtFront + 0.5*tNaiCrystalAssem</expression>
+<expression name="zNaiSiliconeRing">-0.5*tNaiCrystalAssem + 0.5*tNaiSiliconeRing</expression>
+<expression name="zNaiSiliconeDisk">-0.5*tNaiCrystalAssem + 0.5*tNaiSiliconeDisk</expression>
+<expression name="zNaiOpticalWindowEpoxy">-0.5*tNaiCrystalAssem + tNaiSiliconeDisk + 0.5*tNaiOpticalWindowEpoxy</expression>
+<expression name="zNaiSiliconePad">-0.5*tNaiCrystalAssem +
+	    tNaiSiliconeDisk + tNaiOpticalWindowEpoxy + tNaiReflector + 0.5*tNaiSiliconePad</expression>
+<expression name="zNaiOpticalInterface">-0.5*tNaiReflector + 0.5*tNaiOpticalInterface</expression>
+<expression name="zNaiCrystal">-0.5*tNaiReflector + tNaiOpticalInterface + 0.5*tNaiCrystal</expression>
+<expression name="zNaiReflector">-0.5*tNaiCrystalAssem +
+	    tNaiSiliconeDisk + tNaiOpticalWindowEpoxy + 0.5*tNaiReflector</expression>
+<expression name="zNaiBeWindow">-0.5*tNaiCrystalAssem +
+	    tNaiSiliconeDisk + tNaiOpticalWindowEpoxy + tNaiReflector + tNaiSiliconePad + 0.5*tNaiBeWindow</expression>
+<expression name="zNaiNothing">-0.5*tNaiCrystalAssem +
+	    tNaiSiliconeDisk + tNaiOpticalWindowEpoxy + tNaiReflector +
+	    tNaiSiliconePad + tNaiBeWindow + 0.5*tNaiNothing</expression>
+<expression name="zNaiPmtSiliconeRing2">zNaiPmtFront + 0.5*tPmtFront - 0.5*tPmtSiliconeRing2</expression>
+<expression name="zNaiPmtSiliconeRubber">zNaiPmtFront + 0.5*tPmtFront - tPmtSiliconeRing2 - 0.5*tPmtSiliconeRubber</expression>
+<expression name="zNaiPmtLightTight1">0.5*tPmtConnection - 0.5*tPmtLightTight1</expression>
+<expression name="zNaiPmtLightTight2">-0.5*tPmtConnection + 0.5*tPmtLightTight2</expression>
+<expression name="zNaiPmtBaseKnob">0.5*tPmtConnection - 0.5*tPmtBaseKnob</expression>
+<expression name="tPmtIfRing2">zNaiCrystalAssem - zNaiPmtIfRing - 0.5*tNaiCrystalAssem - 0.5*tPmtIfRing</expression>
+<expression name="zNaiPmtIfRing2">zNaiPmtIfRing + 0.5*tPmtIfRing + 0.5*tPmtIfRing2</expression>
+<expression name="zNaiPmtMumetallHulse52">zNaiPmtBase</expression>
+<expression name="zNaiPmtMumetallTrichter132">zNaiPmtMid</expression>
+<expression name="zNaiPmtMumetallHulse133">zNaiPmtFront</expression>
+<expression name="zNaiMumetallTopf">zNaiPmtMumetallFassungRear - 0.5*tPmtMumetallFassungRear + 21.0</expression>
+<expression name="yNaiMumetallTopf">rOutPmtMumetallFassungRear + 0.5*tNaiMumetallTopf</expression>
+<expression name="zNaiHulse">-0.5*tNaiMumetallTopf + 0.5*tNaiHulse</expression>
+<expression name="zBgoSiliconeDisk">0.5*tBgoCrystalCfk + tBgoBracketRing1 + 0.5*tBgoSiliconeDisk</expression>
+<expression name="zBgoBracketRing1">0.5*tBgoCrystalCfk + 0.5*tBgoBracketRing1</expression>
+<expression name="zBgoBracketCone">0.5*tBgoCrystalCfk + tBgoBracketRing1 - 0.5*tBgoBracketCone</expression>
+<expression name="zBgoPmtFront">0.5*tBgoCrystalCfk + tBgoBracketRing1 + tBgoSiliconeDisk + 0.5*tPmtFront</expression>
+<expression name="zBgoPmtMid">0.5*tBgoCrystalCfk + tBgoBracketRing1 + tBgoSiliconeDisk + tPmtFront + 0.5*tPmtMid</expression>
+<expression name="zBgoPmtBase">0.5*tBgoCrystalCfk + tBgoBracketRing1 + tBgoSiliconeDisk + tPmtFront + tPmtMid + 0.5*tPmtBase</expression>
+<expression name="zBgoPmtMumetallHulse52">zBgoPmtBase</expression>
+<expression name="zBgoPmtMumetallTrichter132">zBgoPmtMid</expression>
+<expression name="zBgoPmtMumetallHulse133">zBgoPmtFront</expression>
+<expression name="zBgoPmtIfBracket">zBgoPmtFront - 0.5*tPmtFront + 0.5*zdPmtIfBracket + 9.625</expression>
+<expression name="zBgoPmtConnection">0.5*tBgoCrystalCfk + tBgoBracketRing1 + tBgoSiliconeDisk + tPmtFront + tPmtMid 
+	    + tPmtBase + 0.5*tPmtConnection</expression>
+<expression name="zBgoPmtBaseFeeRing">0.5*tBgoCrystalCfk + tBgoBracketRing1 + tBgoSiliconeDisk + tPmtFront + tPmtMid 
+	    + tPmtBase + 0.5*tPmtBaseFeeRing</expression>
+<expression name="zBgoPmtInnentubusFeeRear">0.5*tBgoCrystalCfk + tBgoBracketRing1 + tBgoSiliconeDisk + tPmtFront + tPmtMid 
+	    + tPmtBase + tPmtBaseFeeRing + 0.5*tPmtInnentubusFeeRear</expression>
+<expression name="zBgoPmtTubusRear">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - 0.5*tPmtTubusRear</expression>
+<expression name="zBgoPmtTubusRearRingRear">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - 0.5*tPmtTubusRearRingRear</expression>
+<expression name="zBgoPmtTubusRearRingFront">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - 66.0 - 0.5*tPmtTubusRearRingFront</expression>
+<expression name="zBgoPmtTubusMid">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - tPmtTubusRear - 0.5*tPmtTubusMid</expression>
+<expression name="zBgoPmtTubusMidRing">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - tPmtTubusRear - tPmtTubusMid - 0.5*tPmtTubusMidRing</expression>
+<expression name="zBgoPmtTubusFront">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - tPmtTubusRear - tPmtTubusMid - tPmtTubusMidRing - 0.5*tPmtTubusFront</expression>
+<expression name="zBgoPmtMumetallHulse146">zBgoPmtTubusFront</expression>
+<expression name="zBgoPmtMumetallRing146">0.5*tBgoDetectorMother - tDeckelFee -
+	    tFeeMitPcb - tPmtTubusRear - tPmtTubusMid - tPmtTubusMidRing - 0.5*tPmtMumetallRing146</expression>
+<expression name="zBgoPmtMumetallTrichter127">zBgoPmtTubusMid</expression>
+<expression name="zBgoPmtMumetallTrichter127Ring">zBgoPmtTubusMid - 0.5*tPmtMumetallTrichter127 - 0.5*tPmtMumetallTrichter127Ring</expression>
+<expression name="zBgoPmtMumetallHulse112">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - 69.0 - 0.5*tPmtMumetallHulse112</expression>
+<expression name="zBgoPmtMumetallHulse112lg">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - tPmtTubusRearRingRear - 30.0</expression>
+<expression name="zBgoPmtInnentubusRingFront">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - 66.0 - tPmtTubusRearRingFront - 0.5*tPmtInnentubusRingFront</expression>
+<expression name="zBgoPmtInnentubus">0.5*tBgoDetectorMother - tDeckelFee - tFeeMitPcb - tPmtTubusRearRingRear - 0.5*tPmtInnentubus</expression>
+<expression name="zBgoPmtInnentubusRingMid">0.5*tBgoDetectorMother - tDeckelFee -
+     tFeeMitPcb - tPmtTubusRearRingRear - tPmtInnentubusFeeRear - 0.5*tPmtInnentubusRingMid</expression>
+<expression name="zBgoPmtThermostatRing">0.5*tBgoDetectorMother - tDeckelFee -
+     tFeeMitPcb - tPmtTubusRear - tPmtTubusMid - tPmtTubusMidRing - 0.5*tPmtThermostatRing</expression>
+<expression name="zBgoPmtThermostatMount">0.5*tBgoDetectorMother - tDeckelFee -
+     tFeeMitPcb - tPmtTubusRear - tPmtTubusMid - tPmtTubusMidRing + rOutPmtThermostatMount</expression>
+<expression name="zBgoPmtGewindering">0.5*tBgoDetectorMother - tDeckelFee -tFeeMitPcb - 164.0 - 8.0 + 0.5*tPmtGewindering</expression>
+<expression name="zBgoDeckelFee">0.5*tBgoDetectorMother - 0.5*tDeckelFee</expression>
+<expression name="zBgoFeeMitPcb">0.5*tBgoDetectorMother - tDeckelFee - 0.5*tFeeMitPcb</expression>
+<expression name="zBgoPmtSteckerkonsole">zBgoPmtTubusRear + 0.5*tPmtTubusRear - 0.5*tPmtSteckerkonsole</expression>
+<expression name="zBgoPmtP02">zBgoPmtTubusRear + 0.5*tPmtTubusRear - 0.5*tPmtP02</expression>
+<expression name="zBgoPmtSteckerplatte">zBgoPmtTubusRear + 0.5*tPmtTubusRear - 0.5*tPmtSteckerplatte</expression>
+<expression name="zBgoPmtSiliconeRubber">zBgoPmtIfBracket - 0.5*zdPmtIfBracket - 0.5*tPmtSiliconeRubber</expression>
+<expression name="zBgoSiliconeRing2">zBgoPmtIfBracket - 0.5*zdPmtIfBracket - tPmtSiliconeRubber - 0.5*tBgoSiliconeRing2</expression>
+<expression name="zBgoBracketRing2">0.5*tBgoCrystalCfk  + tBgoBracketRing1 + 0.5*tBgoBracketRing2</expression>
+<expression name="tBgoBracketRing3">zBgoPmtTubusFront - zBgoBracketRing2 - 0.5*tPmtTubusFront - 0.5*tBgoBracketRing2</expression>
+<expression name="zBgoBracketRing3">0.5*tBgoCrystalCfk + tBgoBracketRing1 + tBgoBracketRing2 + 0.5*tBgoBracketRing3</expression>
+<expression name="tBgoBracketRing4">zBgoPmtGewindering - zBgoBracketRing3 - 0.5*tPmtGewindering - 0.5*tBgoBracketRing3</expression>
+<expression name="zBgoBracketRing4">0.5*tBgoCrystalCfk + tBgoBracketRing1 + tBgoBracketRing2 +
+	    tBgoBracketRing3 + 0.5*tBgoBracketRing4</expression>
+<expression name="tBgoBracketCfkRing1">2.0*zBgoBracketCone - tBgoBracketCone</expression>
+<expression name="zBgoBracketCfkRing2">zBgoBracketCone + 0.5*tBgoBracketCone + 0.5*tBgoBracketCfkRing2</expression>
+<expression name="zBgoBracketCfkCone">zBgoBracketCone</expression>
+<expression name="xBgoKappe">-0.7072*(rOutBgoBracketCfkRing1 + 0.5*tBgoKappe)</expression>
+<expression name="yBgoKappe">-0.7072*(rOutBgoBracketCfkRing1 + 0.5*tBgoKappe)</expression>
+<expression name="zBgoFlansch">0.5*tBgoKappe - 0.5*tBgoFlansch</expression>
+<expression name="zBgoOpticalCement">0.5*tBgoCrystal + 0.5*tBgoOpticalCement</expression>
+<expression name="zBgoOpticalGlass1">0.5*tBgoMillipore - 0.5*tBgoOpticalGlass1</expression>
+<expression name="zBgoOpticalGlass2">0.5*tBgoAlFoil - 0.5*tBgoOpticalGlass2</expression>
+<expression name="zBgoOpticalGlass3">0.5*tBgoFiberglassEpoxy - 0.5*tBgoOpticalGlass3</expression>
+<expression name="zBgoOpticalGlass4">0.5*tBgoAlFoil2 - 0.5*tBgoOpticalGlass4</expression>
+<expression name="zBgoOpticalGlass5">0.5*tBgoCrystalCfk - 0.5*tBgoOpticalGlass5</expression>
+<expression name="zBgoOpticalGlass6">0.5*tBgoCrystalCfk + 0.5*tBgoOpticalGlass6</expression>
+<expression name="zBgoBracketMumetalRing">zBgoBracketCone + 0.5*tBgoBracketCone + 0.5*tBgoBracketMumetalRing</expression>
+<expression name="zBgoBracketMumetalCone">zBgoBracketCone + 0.5*tBgoBracketCone - 0.5*tBgoBracketMumetalCone</expression>
+<!-- Positions & Rotations -->
+<position name="center"/>
+<position name="pDeckelFeeInner" x="0.0" y="0.0" z="zDeckelFeeInner"/>
+<position name="pDeckelFee" x="0.0" y="0.0" z="zDeckelFee"/>
+<position name="pFeeMitPcb" x="0.0" y="0.0" z="zFeeMitPcb"/>
+<position name="pNaiPmtTubusRear" x="0.0" y="0.0" z="zNaiPmtTubusRear"/>
+<position name="pNaiPmtTubusRearRingRear" x="0.0" y="0.0" z="zNaiPmtTubusRearRingRear"/>
+<position name="pNaiPmtTubusRearRingFront" x="0.0" y="0.0" z="zNaiPmtTubusRearRingFront"/>
+<position name="pNaiPmtTubusMid" x="0.0" y="0.0" z="zNaiPmtTubusMid"/>
+<position name="pNaiPmtTubusMidRing" x="0.0" y="0.0" z="zNaiPmtTubusMidRing"/>
+<position name="pNaiPmtTubusFront" x="0.0" y="0.0" z="zNaiPmtTubusFront"/>
+<position name="pNaiPmtInnentubusRingFront" x="0.0" y="0.0" z="zNaiPmtInnentubusRingFront"/>
+<position name="pNaiPmtInnentubus" x="0.0" y="0.0" z="zNaiPmtInnentubus"/>
+<position name="pNaiPmtInnentubusFeeRear" x="0.0" y="0.0" z="zNaiPmtInnentubusFeeRear"/>
+<position name="pNaiPmtInnentubusRingMid" x="0.0" y="0.0" z="zNaiPmtInnentubusRingMid"/>
+<position name="pNaiPmtThermostatRing" x="0.0" y="0.0" z="zNaiPmtThermostatRing"/>
+<position name="pNaiPmtThermostatMount_0" x="0.0" y="yPmtThermostatMount_0" z="zNaiPmtThermostatMount"/>
+<position name="pNaiPmtThermostatMount_1" x="xPmtThermostatMount_1" y="yPmtThermostatMount_1" z="zNaiPmtThermostatMount"/>
+<position name="pNaiPmtThermostatMount_2" x="xPmtThermostatMount_1" y="-1.0*yPmtThermostatMount_1" z="zNaiPmtThermostatMount"/>
+<position name="pNaiPmtThermostatMount_3" x="0.0" y="-1.0*yPmtThermostatMount_0" z="zNaiPmtThermostatMount"/>
+<position name="pNaiPmtThermostatMount_4" x="-1.0*xPmtThermostatMount_1" y="-1.0*yPmtThermostatMount_1" z="zNaiPmtThermostatMount"/>
+<position name="pNaiPmtThermostatMount_5" x="-1.0*xPmtThermostatMount_1" y="yPmtThermostatMount_1" z="zNaiPmtThermostatMount"/>
+<position name="pNaiPmtMumetallFassungFront" x="0.0" y="0.0" z="zNaiPmtMumetallFassungFront"/>
+<position name="pNaiPmtMumetallFassungRear"  x="0.0" y="0.0" z="zNaiPmtMumetallFassungRear"/>
+<position name="pNaiPmtMumetallRing161"  x="0.0" y="0.0" z="zNaiPmtMumetallRing161"/>
+<position name="pNaiPmtMumetallHulse161"  x="0.0" y="0.0" z="zNaiPmtMumetallHulse161"/>
+<position name="pNaiPmtMumetallHulse146"  x="0.0" y="0.0" z="zNaiPmtMumetallHulse146"/>
+<position name="pNaiPmtMumetallRing146"  x="0.0" y="0.0" z="zNaiPmtMumetallRing146"/>
+<position name="pNaiPmtMumetallTrichter127"  x="0.0" y="0.0" z="zNaiPmtMumetallTrichter127"/>
+<position name="pNaiPmtMumetallTrichter127Ring"  x="0.0" y="0.0" z="zNaiPmtMumetallTrichter127Ring"/>
+<position name="pNaiPmtMumetallHulse112"  x="0.0" y="0.0" z="zNaiPmtMumetallHulse112"/>
+<position name="pNaiPmtMumetallHulse112lg"  x="0.0" y="0.0" z="zNaiPmtMumetallHulse112lg"/>
+<position name="pNaiPmtIfRing"  x="0.0" y="0.0" z="zNaiPmtIfRing"/>
+<position name="pNaiPmtIfRing2"  x="0.0" y="0.0" z="zNaiPmtIfRing2"/>
+<position name="pNaiPmtGewindering"  x="0.0" y="0.0" z="zNaiPmtGewindering"/>
+<position name="pNaiPmtBaseFeeRing"  x="0.0" y="0.0" z="zNaiPmtBaseFeeRing"/>
+<position name="pNaiPmtConnection"  x="0.0" y="0.0" z="zNaiPmtConnection"/>
+<position name="pNaiPmtBase"  x="0.0" y="0.0" z="zNaiPmtBase"/>
+<position name="pNaiPmtMid"  x="0.0" y="0.0" z="zNaiPmtMid"/>
+<position name="pNaiPmtFront"  x="0.0" y="0.0" z="zNaiPmtFront"/>
+<position name="pNaiPmtBaseInside"  x="0.0" y="0.0" z="zNaiPmtBaseInside"/>
+<position name="pNaiPmtFrontInside"  x="0.0" y="0.0" z="zNaiPmtFrontInside"/>
+<position name="pNaiPmtIfBracket_0" x="0.0" y="rPmtIfBracket" z="zNaiPmtIfBracket"/>
+<position name="pNaiPmtIfBracket_1" x="xPmtIfBracket" y="yPmtIfBracket" z="zNaiPmtIfBracket"/>
+<position name="pNaiPmtIfBracket_2" x="xPmtIfBracket" y="-1.0*yPmtIfBracket" z="zNaiPmtIfBracket"/>
+<position name="pNaiPmtIfBracket_3" x="0.0" y="-1.0*rPmtIfBracket" z="zNaiPmtIfBracket"/>
+<position name="pNaiPmtIfBracket_4" x="-1.0*xPmtIfBracket" y="-1.0*yPmtIfBracket" z="zNaiPmtIfBracket"/>
+<position name="pNaiPmtIfBracket_5" x="-1.0*xPmtIfBracket" y="1.0*yPmtIfBracket" z="zNaiPmtIfBracket"/>
+<position name="pNaiPmtSteckerkonsole"  x="0.0" y="0.0" z="zNaiPmtSteckerkonsole"/>
+<position name="pNaiPmtP02"  x="0.0" y="0.0" z="zNaiPmtP02"/>
+<position name="pNaiPmtSteckerplatte"  x="0.0" y="0.0" z="zNaiPmtSteckerplatte"/>
+<position name="pNaiCrystalAssem"  x="0.0" y="0.0" z="zNaiCrystalAssem"/>
+<position name="pNaiSiliconeRing"  x="0.0" y="0.0" z="zNaiSiliconeRing"/>
+<position name="pNaiSiliconeDisk"  x="0.0" y="0.0" z="zNaiSiliconeDisk"/>
+<position name="pNaiOpticalWindowEpoxy"  x="0.0" y="0.0" z="zNaiOpticalWindowEpoxy"/>
+<position name="pNaiSiliconePad"  x="0.0" y="0.0" z="zNaiSiliconePad"/>
+<position name="pNaiOpticalInterface"  x="0.0" y="0.0" z="zNaiOpticalInterface"/>
+<position name="pNaiCrystal"  x="0.0" y="0.0" z="zNaiCrystal"/>
+<position name="pNaiReflector"  x="0.0" y="0.0" z="zNaiReflector"/>
+<position name="pNaiBeWindow"  x="0.0" y="0.0" z="zNaiBeWindow"/>
+<position name="pNaiNothing"   x="0.0" y="0.0" z="zNaiNothing"/>
+<position name="pMliLayer"   x="0.0" y="0.0" z="zMliLayer"/>
+<position name="pMliLayer_Kapton"   x="0.0" y="0.0" z="zMliLayer_Kapton"/>
+<position name="pMliLayer_Mylar"   x="0.0" y="0.0" z="zMliLayer_Mylar"/>
+<position name="pMliLayer_Polyester"   x="0.0" y="0.0" z="zMliLayer_Polyester"/>
+<position name="pMliLayer_Al"   x="0.0" y="0.0" z="zMliLayer_Al"/>
+<position name="pMliLayer_Ag"   x="0.0" y="0.0" z="zMliLayer_Ag"/>
+<position name="pMliLayer_Inconel"   x="0.0" y="0.0" z="zMliLayer_Inconel"/>
+<position name="pMliLayer_Teflon"   x="0.0" y="0.0" z="zMliLayer_Teflon"/>
+<position name="pNaiPmtSiliconeRing2"  x="0.0" y="0.0" z="zNaiPmtSiliconeRing2"/>
+<position name="pNaiPmtSiliconeRubber"  x="0.0" y="0.0" z="zNaiPmtSiliconeRubber"/>
+<position name="pNaiPmtLightTight1"  x="0.0" y="0.0" z="zNaiPmtLightTight1"/>
+<position name="pNaiPmtLightTight2"  x="0.0" y="0.0" z="zNaiPmtLightTight2"/>
+<position name="pNaiPmtBaseKnob"  x="0.0" y="0.0" z="zNaiPmtBaseKnob"/>
+<position name="pNaiPmtMumetallHulse52"  x="0.0" y="0.0" z="zNaiPmtMumetallHulse52"/>
+<position name="pNaiPmtMumetallTrichter132"  x="0.0" y="0.0" z="zNaiPmtMumetallTrichter132"/>
+<position name="pNaiPmtMumetallHulse133"  x="0.0" y="0.0" z="zNaiPmtMumetallHulse133"/>
+<position name="pNaiMumetallTopf"  x="0.08716*yNaiMumetallTopf" y="0.99619*yNaiMumetallTopf" z="zNaiMumetallTopf"/>
+<position name="pNaiHulse"  x="0.0" y="0.0" z="zNaiHulse"/>
+<position name="pBgoSiliconeDiskA"  x="0.0" y="0.0" z="zBgoSiliconeDisk"/>
+<position name="pBgoSiliconeDiskB"  x="0.0" y="0.0" z="-1.0*zBgoSiliconeDisk"/>
+<position name="pBgoBracketRing1A"  x="0.0" y="0.0" z="zBgoBracketRing1"/>
+<position name="pBgoBracketRing1B"  x="0.0" y="0.0" z="-1.0*zBgoBracketRing1"/>
+<position name="pBgoBracketConeA"  x="0.0" y="0.0" z="zBgoBracketCone"/>
+<position name="pBgoBracketConeB"  x="0.0" y="0.0" z="-1.0*zBgoBracketCone"/>
+<position name="pBgoPmtFrontA"  x="0.0" y="0.0" z="zBgoPmtFront"/>
+<position name="pBgoPmtFrontB"  x="0.0" y="0.0" z="-1.0*zBgoPmtFront"/>
+<position name="pBgoPmtMidA"  x="0.0" y="0.0" z="zBgoPmtMid"/>
+<position name="pBgoPmtMidB"  x="0.0" y="0.0" z="-1.0*zBgoPmtMid"/>
+<position name="pBgoPmtBaseA"  x="0.0" y="0.0" z="zBgoPmtBase"/>
+<position name="pBgoPmtBaseB"  x="0.0" y="0.0" z="-1.0*zBgoPmtBase"/>
+<position name="pBgoPmtMumetallHulse52A"  x="0.0" y="0.0" z="zBgoPmtMumetallHulse52"/>
+<position name="pBgoPmtMumetallHulse52B"  x="0.0" y="0.0" z="-1.0*zBgoPmtMumetallHulse52"/>
+<position name="pBgoPmtMumetallTrichter132A"  x="0.0" y="0.0" z="zBgoPmtMumetallTrichter132"/>
+<position name="pBgoPmtMumetallTrichter132B"  x="0.0" y="0.0" z="-1.0*zBgoPmtMumetallTrichter132"/>
+<position name="pBgoPmtMumetallHulse133A"  x="0.0" y="0.0" z="zBgoPmtMumetallHulse133"/>
+<position name="pBgoPmtMumetallHulse133B"  x="0.0" y="0.0" z="-1.0*zBgoPmtMumetallHulse133"/>
+<position name="pBgoPmtIfBracketA_0" x="0.0" y="rPmtIfBracket" z="zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketA_1" x="xPmtIfBracket" y="yPmtIfBracket" z="zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketA_2" x="xPmtIfBracket" y="-1.0*yPmtIfBracket" z="zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketA_3" x="0.0" y="-1.0*rPmtIfBracket" z="zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketA_4" x="-1.0*xPmtIfBracket" y="-1.0*yPmtIfBracket" z="zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketA_5" x="-1.0*xPmtIfBracket" y="1.0*yPmtIfBracket" z="zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketB_0" x="0.0" y="rPmtIfBracket" z="-1.0*zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketB_1" x="xPmtIfBracket" y="yPmtIfBracket" z="-1.0*zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketB_2" x="xPmtIfBracket" y="-1.0*yPmtIfBracket" z="-1.0*zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketB_3" x="0.0" y="-1.0*rPmtIfBracket" z="-1.0*zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketB_4" x="-1.0*xPmtIfBracket" y="-1.0*yPmtIfBracket" z="-1.0*zBgoPmtIfBracket"/>
+<position name="pBgoPmtIfBracketB_5" x="-1.0*xPmtIfBracket" y="1.0*yPmtIfBracket" z="-1.0*zBgoPmtIfBracket"/>
+<position name="pBgoPmtConnectionA"  x="0.0" y="0.0" z="zBgoPmtConnection"/>
+<position name="pBgoPmtConnectionB"  x="0.0" y="0.0" z="-1.0*zBgoPmtConnection"/>
+<position name="pBgoPmtBaseFeeRingA"  x="0.0" y="0.0" z="zBgoPmtBaseFeeRing"/>
+<position name="pBgoPmtBaseFeeRingB"  x="0.0" y="0.0" z="-1.0*zBgoPmtBaseFeeRing"/>
+<position name="pBgoPmtInnentubusFeeRearA"  x="0.0" y="0.0" z="zBgoPmtInnentubusFeeRear"/>
+<position name="pBgoPmtInnentubusFeeRearB"  x="0.0" y="0.0" z="-1.0*zBgoPmtInnentubusFeeRear"/>
+<position name="pBgoPmtTubusRearA"  x="0.0" y="0.0" z="zBgoPmtTubusRear"/>
+<position name="pBgoPmtTubusRearB"  x="0.0" y="0.0" z="-1.0*zBgoPmtTubusRear"/>
+<position name="pBgoPmtTubusRearRingRearA" x="0.0" y="0.0" z="zBgoPmtTubusRearRingRear"/>
+<position name="pBgoPmtTubusRearRingRearB" x="0.0" y="0.0" z="-1.0*zBgoPmtTubusRearRingRear"/>
+<position name="pBgoPmtTubusRearRingFrontA" x="0.0" y="0.0" z="zBgoPmtTubusRearRingFront"/>
+<position name="pBgoPmtTubusRearRingFrontB" x="0.0" y="0.0" z="-1.0*zBgoPmtTubusRearRingFront"/>
+<position name="pBgoPmtTubusMidA" x="0.0" y="0.0" z="zBgoPmtTubusMid"/>
+<position name="pBgoPmtTubusMidB" x="0.0" y="0.0" z="-1.0*zBgoPmtTubusMid"/>
+<position name="pBgoPmtTubusMidRingA" x="0.0" y="0.0" z="zBgoPmtTubusMidRing"/>
+<position name="pBgoPmtTubusMidRingB" x="0.0" y="0.0" z="-1.0*zBgoPmtTubusMidRing"/>
+<position name="pBgoPmtTubusFrontA" x="0.0" y="0.0" z="zBgoPmtTubusFront"/>
+<position name="pBgoPmtTubusFrontB" x="0.0" y="0.0" z="-1.0*zBgoPmtTubusFront"/>
+<position name="pBgoPmtMumetallHulse146A"  x="0.0" y="0.0" z="zBgoPmtMumetallHulse146"/>
+<position name="pBgoPmtMumetallHulse146B"  x="0.0" y="0.0" z="-1.0*zBgoPmtMumetallHulse146"/>
+<position name="pBgoPmtMumetallRing146A"  x="0.0" y="0.0" z="zBgoPmtMumetallRing146"/>
+<position name="pBgoPmtMumetallRing146B"  x="0.0" y="0.0" z="-1.0*zBgoPmtMumetallRing146"/>
+<position name="pBgoPmtMumetallTrichter127A"  x="0.0" y="0.0" z="zBgoPmtMumetallTrichter127"/>
+<position name="pBgoPmtMumetallTrichter127B"  x="0.0" y="0.0" z="-1.0*zBgoPmtMumetallTrichter127"/>
+<position name="pBgoPmtMumetallTrichter127RingA"  x="0.0" y="0.0" z="zBgoPmtMumetallTrichter127Ring"/>
+<position name="pBgoPmtMumetallTrichter127RingB"  x="0.0" y="0.0" z="-1.0*zBgoPmtMumetallTrichter127Ring"/>
+<position name="pBgoPmtMumetallHulse112A"  x="0.0" y="0.0" z="zBgoPmtMumetallHulse112"/>
+<position name="pBgoPmtMumetallHulse112B"  x="0.0" y="0.0" z="-1.0*zBgoPmtMumetallHulse112"/>
+<position name="pBgoPmtMumetallHulse112lgA"  x="0.0" y="0.0" z="zBgoPmtMumetallHulse112lg"/>
+<position name="pBgoPmtMumetallHulse112lgB"  x="0.0" y="0.0" z="-1.0*zBgoPmtMumetallHulse112lg"/>
+<position name="pBgoPmtInnentubusRingFrontA" x="0.0" y="0.0" z="zBgoPmtInnentubusRingFront"/>
+<position name="pBgoPmtInnentubusRingFrontB" x="0.0" y="0.0" z="-1.0*zBgoPmtInnentubusRingFront"/>
+<position name="pBgoPmtInnentubusA" x="0.0" y="0.0" z="zBgoPmtInnentubus"/>
+<position name="pBgoPmtInnentubusB" x="0.0" y="0.0" z="-1.0*zBgoPmtInnentubus"/>
+<position name="pBgoPmtInnentubusRingMidA" x="0.0" y="0.0" z="zBgoPmtInnentubusRingMid"/>
+<position name="pBgoPmtInnentubusRingMidB" x="0.0" y="0.0" z="-1.0*zBgoPmtInnentubusRingMid"/>
+<position name="pBgoPmtThermostatRingA" x="0.0" y="0.0" z="zBgoPmtThermostatRing"/>
+<position name="pBgoPmtThermostatMountA_0" x="0.0" y="yPmtThermostatMount_0" z="zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountA_1" x="xPmtThermostatMount_1" y="yPmtThermostatMount_1" z="zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountA_2" x="xPmtThermostatMount_1" y="-1.0*yPmtThermostatMount_1" z="zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountA_3" x="0.0" y="-1.0*yPmtThermostatMount_0" z="zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountA_4" x="-1.0*xPmtThermostatMount_1" y="-1.0*yPmtThermostatMount_1" z="zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountA_5" x="-1.0*xPmtThermostatMount_1" y="yPmtThermostatMount_1" z="zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatRingB" x="0.0" y="0.0" z="-1.0*zBgoPmtThermostatRing"/>
+<position name="pBgoPmtThermostatMountB_0" x="0.0" y="yPmtThermostatMount_0" z="-1.0*zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountB_1" x="xPmtThermostatMount_1" y="yPmtThermostatMount_1" z="-1.0*zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountB_2" x="xPmtThermostatMount_1" y="-1.0*yPmtThermostatMount_1" z="-1.0*zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountB_3" x="0.0" y="-1.0*yPmtThermostatMount_0" z="-1.0*zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountB_4" x="-1.0*xPmtThermostatMount_1" y="-1.0*yPmtThermostatMount_1" z="-1.0*zBgoPmtThermostatMount"/>
+<position name="pBgoPmtThermostatMountB_5" x="-1.0*xPmtThermostatMount_1" y="yPmtThermostatMount_1" z="-1.0*zBgoPmtThermostatMount"/>
+<position name="pBgoPmtGewinderingA" x="0.0" y="0.0" z="zBgoPmtGewindering"/>
+<position name="pBgoPmtGewinderingB" x="0.0" y="0.0" z="-1.0*zBgoPmtGewindering"/>
+<position name="pBgoDeckelFeeA" x="0.0" y="0.0" z="zBgoDeckelFee"/>
+<position name="pBgoDeckelFeeB" x="0.0" y="0.0" z="-1.0*zBgoDeckelFee"/>
+<position name="pBgoFeeMitPcbA" x="0.0" y="0.0" z="zBgoFeeMitPcb"/>
+<position name="pBgoFeeMitPcbB" x="0.0" y="0.0" z="-1.0*zBgoFeeMitPcb"/>
+<position name="pBgoPmtSteckerkonsoleA"  x="0.0" y="0.0" z="zBgoPmtSteckerkonsole"/>
+<position name="pBgoPmtSteckerkonsoleB"  x="0.0" y="0.0" z="-1.0*zBgoPmtSteckerkonsole"/>
+<position name="pBgoPmtP02A"  x="0.0" y="0.0" z="zBgoPmtP02"/>
+<position name="pBgoPmtP02B"  x="0.0" y="0.0" z="-1.0*zBgoPmtP02"/>
+<position name="pBgoPmtSteckerplatteA"  x="0.0" y="0.0" z="zBgoPmtSteckerplatte"/>
+<position name="pBgoPmtSteckerplatteB"  x="0.0" y="0.0" z="-1.0*zBgoPmtSteckerplatte"/>
+<position name="pBgoPmtSiliconeRubberA"  x="0.0" y="0.0" z="zBgoPmtSiliconeRubber"/>
+<position name="pBgoPmtSiliconeRubberB"  x="0.0" y="0.0" z="-1.0*zBgoPmtSiliconeRubber"/>
+<position name="pBgoSiliconeRing2A"  x="0.0" y="0.0" z="zBgoSiliconeRing2"/>
+<position name="pBgoSiliconeRing2B"  x="0.0" y="0.0" z="-1.0*zBgoSiliconeRing2"/>
+<position name="pBgoBracketRing2A"  x="0.0" y="0.0" z="zBgoBracketRing2"/>
+<position name="pBgoBracketRing2B"  x="0.0" y="0.0" z="-1.0*zBgoBracketRing2"/>
+<position name="pBgoBracketRing3A"  x="0.0" y="0.0" z="zBgoBracketRing3"/>
+<position name="pBgoBracketRing3B"  x="0.0" y="0.0" z="-1.0*zBgoBracketRing3"/>
+<position name="pBgoBracketRing4A"  x="0.0" y="0.0" z="zBgoBracketRing4"/>
+<position name="pBgoBracketRing4B"  x="0.0" y="0.0" z="-1.0*zBgoBracketRing4"/>
+<position name="pBgoBracketCfkRing2A"  x="0.0" y="0.0" z="zBgoBracketCfkRing2"/>
+<position name="pBgoBracketCfkRing2B"  x="0.0" y="0.0" z="-1.0*zBgoBracketCfkRing2"/>
+<position name="pBgoBracketCfkConeA"  x="0.0" y="0.0" z="zBgoBracketCfkCone"/>
+<position name="pBgoBracketCfkConeB"  x="0.0" y="0.0" z="-1.0*zBgoBracketCfkCone"/>
+<position name="pBgoFlansch"  x="0.0" y="0.0" z="zBgoFlansch"/>
+<position name="pBgoKappe"    x="xBgoKappe" y="yBgoKappe" z="0.0"/>
+<position name="pBgoOpticalCementA"  x="0.0" y="0.0" z="zBgoOpticalCement"/>
+<position name="pBgoOpticalCementB"  x="0.0" y="0.0" z="-1.0*zBgoOpticalCement"/>
+<position name="pBgoOpticalGlass1A"  x="0.0" y="0.0" z="zBgoOpticalGlass1"/>
+<position name="pBgoOpticalGlass1B"  x="0.0" y="0.0" z="-1.0*zBgoOpticalGlass1"/>
+<position name="pBgoOpticalGlass2A"  x="0.0" y="0.0" z="zBgoOpticalGlass2"/>
+<position name="pBgoOpticalGlass2B"  x="0.0" y="0.0" z="-1.0*zBgoOpticalGlass2"/>
+<position name="pBgoOpticalGlass3A"  x="0.0" y="0.0" z="zBgoOpticalGlass3"/>
+<position name="pBgoOpticalGlass3B"  x="0.0" y="0.0" z="-1.0*zBgoOpticalGlass3"/>
+<position name="pBgoOpticalGlass4A"  x="0.0" y="0.0" z="zBgoOpticalGlass4"/>
+<position name="pBgoOpticalGlass4B"  x="0.0" y="0.0" z="-1.0*zBgoOpticalGlass4"/>
+<position name="pBgoOpticalGlass5A"  x="0.0" y="0.0" z="zBgoOpticalGlass5"/>
+<position name="pBgoOpticalGlass5B"  x="0.0" y="0.0" z="-1.0*zBgoOpticalGlass5"/>
+<position name="pBgoOpticalGlass6A"  x="0.0" y="0.0" z="zBgoOpticalGlass6"/>
+<position name="pBgoOpticalGlass6B"  x="0.0" y="0.0" z="-1.0*zBgoOpticalGlass6"/>
+<position name="pBgoBracketMumetalRingA"  x="0.0" y="0.0" z="zBgoBracketMumetalRing"/>
+<position name="pBgoBracketMumetalRingB"  x="0.0" y="0.0" z="-1.0*zBgoBracketMumetalRing"/>
+<position name="pBgoBracketMumetalConeA"  x="0.0" y="0.0" z="zBgoBracketMumetalCone"/>
+<position name="pBgoBracketMumetalConeB"  x="0.0" y="0.0" z="-1.0*zBgoBracketMumetalCone"/>
+<rotation name="identity"/>
+<rotation name="rotNaiPmtThermostatMount_0" x="105.0" unit="degree"/>
+<rotation name="rotNaiPmtThermostatMount_1" x="-61.79" y="56.77" z="0.0" unit="degree"/>
+<rotation name="rotNaiPmtThermostatMount_2" x="61.79" y="56.77" z="0.0" unit="degree"/>
+<rotation name="rotNaiPmtThermostatMount_3" x="75.0" unit="degree"/>
+<rotation name="rotNaiPmtThermostatMount_4" x="61.79" y="-56.77"  z="0.0"  unit="degree"/>
+<rotation name="rotNaiPmtThermostatMount_5" x="-61.79" y="-56.77" z="0.0"  unit="degree"/>
+<rotation name="rotNaiMumetallTopf" x="-90."  y="5.0"  z="0.0"  unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountA_0" x="75.0" unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountA_1" x="61.79" y="-56.77" z="0.0" unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountA_2" x="-61.79" y="-56.77" z="0.0" unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountA_3" x="105.0" unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountA_4" x="-61.79" y="56.77"  z="0.0"  unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountA_5" x="61.79" y="56.77" z="0.0"  unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountB_0" x="105.0" unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountB_1" x="-61.79" y="56.77" z="0.0" unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountB_2" x="61.79" y="56.77" z="0.0" unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountB_3" x="75.0" unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountB_4" x="61.79" y="-56.77"  z="0.0"  unit="degree"/>
+<rotation name="rotBgoPmtThermostatMountB_5" x="-61.79" y="-56.77" z="0.0"  unit="degree"/>
+<rotation name="rotPmtIfBracket_1" x="0." y="0." z="60.0" unit="degree"/>
+<rotation name="rotPmtIfBracket_2" x="0." y="0." z="120.0" unit="degree"/>
+<rotation name="rotPmtIfBracket_4" x="0." y="0." z="60.0" unit="degree"/>
+<rotation name="rotPmtIfBracket_5" x="0." y="0." z="120.0" unit="degree"/>
+<rotation name="rotBgoKappe" x="90." y="-45." z="0.0" unit="degree"/>
+<rotation name="rotPiYaxis" x="0." y="180." z="0.0" unit="degree"/>
+<rotation name="rotHalfPiXaxis" x="-90." y="0." z="0.0" unit="degree"/>
+</define>
+<materials>
+ <define>
+  <quantity type="density" name="universe_mean_density" value="1.e-25" unit="g/cm3"/>
+ </define>
+ <element name="Hydrogen"   formula="H" Z="1.">  <atom value="1.01"/>      </element>
+ <element name="Lithium"   formula="Li" Z="3.">  <atom value="6.941"/>      </element>
+ <element name="Boron"     formula="B"  Z="5.">  <atom value="10.811"/>    </element>
+ <element name="Nitrogen"  formula="N"  Z="7.">  <atom value="14.00674"/>   </element>
+ <element name="Flourine"  formula="F"  Z="9.">  <atom value="19.00"/>    </element>
+ <element name="Sodium"    formula="Na" Z="11."> <atom value="22.989770"/>  </element> 
+ <element name="Chlorine"  formula="Cl" Z="17."> <atom value="35.4527"/>    </element>
+ <element name="Potassium" formula="K"  Z="19."> <atom value="39.0983"/>    </element>
+ <element name="Silicon" formula="Si"  Z="14."> <atom value="28.09"/>    </element>
+ <element name="Carbon" formula="C"  Z="6."> <atom value="12.01"/>    </element>
+ <element name="Calcium"   formula="Ca" Z="20."> <atom value="40.078"/>    </element>
+ <element name="Germanium" formula="Ge" Z="32."> <atom value="72.61"/>      </element>
+ <element name="Molybdenum" formula="Mo" Z="42."> <atom value="95.94"/>    </element>
+ <element name="Iodine"    formula="I"  Z="53."> <atom value="126.90447"/>  </element>
+ <element name="Barium"    formula="Ba"  Z="56."> <atom value="137.327"/>  </element>
+ <element name="Bismuth"   formula="Bi" Z="83."> <atom value="208.98038"/>  </element>
+  <element name="Nickel"   formula="Ni" Z="28."> <atom value="58.6934"/>  </element>
+ <element name="Iron"   formula="Fe" Z="26."> <atom value="55.845"/>  </element>
+  <element name="Copper"   formula="Cu" Z="29."> <atom value="63.546"/>  </element>
+  <element name="Aluminum"   formula="Al" Z="13."> <atom value="26.9815386"/>  </element>
+  <element name="Magnesium"   formula="Mg" Z="12."> <atom value="24.3050"/>  </element>
+  <element name="Chromium"   formula="Cr" Z="24."> <atom value="51.9961"/>  </element>
+  <element name="Titanium"   formula="Ti" Z="22."> <atom value="47.867"/>  </element>
+  <element name="Niobium"   formula="Nb" Z="41."> <atom value="92.90637"/>  </element>
+  
+ <material name="Vacuum" Z="1.">
+  <T value="2.73"/> <P value="3.0e-18" unit="pascal"/> <Dref ref="universe_mean_density"/>
+  <atom value="1.01"/>
+ </material>
+ <material name="Hydrogen"  formula="H" Z="1.0">
+  <D value="1.0"/> <atom value="1.00794"/>
+ </material>
+ <material name="Beryllium"  formula="Be" Z="4.0">
+  <D value="1.848"/> <atom value="9.012182"/>
+ </material>
+ <material name="Carbon"  formula="C" Z="6.0">
+  <D value="2.27"/> <atom value="12.0107"/>
+ </material>
+ <material name="Oxygen"  formula="O" Z="8.0">
+  <D value="1.0"/> <atom value="15.9994"/>
+ </material>
+ <material name="Magnesium2"  formula="Mg" Z="12.0">
+  <D value="1.738"/> <atom value="24.305"/>
+ </material>
+ <material name="Aluminum" formula="Al" Z="13.0">
+  <D value="2.7" unit="g/cm3"/><atom value="26.98"/>
+ </material>
+ <material name="Silicon"  formula="Si" Z="14.0">
+  <D value="2.33"/> <atom value="28.0855"/>
+ </material>
+ <material name="Titanium2"  formula="Ti" Z="22.0">
+  <D value="4.507"/> <atom value="47.9"/>
+ </material>
+ <material name="Vanadium"  formula="V" Z="23.0">
+  <D value="6.1"/> <atom value="50.94"/>
+ </material>
+ <material name="Chromium2" formula="Cr" Z="24.0">
+  <D value="7.14" unit="g/cm3"/><atom value="51.9961"/>
+ </material>
+ <material name="Manganese" formula="Mn" Z="25.0">
+  <D value="7.47" unit="g/cm3"/><atom value="54.94"/>
+ </material>
+ <material name="Iron2" formula="Fe" Z="26.0">
+  <D value="7.874" unit="g/cm3"/><atom value="55.8457"/>
+ </material>
+ <material name="Nickel2" formula="Ni" Z="28.0">
+  <D value="8.908" unit="g/cm3"/><atom value="58.6934"/>
+ </material>
+ <material name="Copper2" formula="Cu" Z="29.0">
+  <D value="8.92" unit="g/cm3"/><atom value="63.546"/>
+ </material>
+ <material name="Zinc" formula="Zn" Z="30.0">
+  <D value="7.14" unit="g/cm3"/><atom value="65.39"/>
+ </material>
+ <material name="Niobium2" formula="Nb" Z="41">
+  <D value="8.57" unit="g/cm3"/><atom value="91.22"/>
+ </material>
+ <material name="Silver" formula="Ag" Z="47.0">
+  <D value="10.5" unit="g/cm3"/><atom value="107.87"/>
+ </material>
+ <material name="Tin" formula="Sn" Z="50.0">
+  <D value="7.31" unit="g/cm3"/><atom value="118.71"/>
+ </material>
+ <material name="Lead" formula="Pb" Z="82.0">
+  <D value="11.34" unit="g/cm3"/><atom value="207.2"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens1p31">
+  <D value="1.31" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens2p248">
+  <D value="2.248" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens2p285">
+  <D value="2.285" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens2p348">
+  <D value="2.348" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens2p824">
+  <D value="2.824" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens2p944">
+  <D value="2.944" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens2p985">
+  <D value="2.985" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens3p043">
+  <D value="3.043" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens3p247">
+  <D value="3.247" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens3p26">
+  <D value="3.26" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens3p379">
+  <D value="3.379" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="Aluminum_3p4364_Dens3p533">
+  <D value="3.533" unit="g/cm3"/>
+   <fraction n="0.002"   ref="Silicon"/><fraction n="0.0025"  ref="Iron"/>
+   <fraction n="0.016"   ref="Copper"/>	<fraction n="0.0015"  ref="Manganese"/>
+   <fraction n="0.025"   ref="Magnesium"/><fraction n="0.023"   ref="Chromium"/>
+   <fraction n="0.056"   ref="Zinc"/><fraction n="0.001"   ref="Titanium"/>
+   <fraction n="0.873"   ref="Aluminum"/>
+ </material>
+ <material name="GenericElec_Dens0p556">
+  <D value="0.556" unit="g/cm3"/>
+  <fraction n="0.10000" ref="Oxygen"/><fraction n="0.50000" ref="Aluminum"/>
+  <fraction n="0.10000" ref="Silicon"/><fraction n="0.05000" ref="Iron"/>
+  <fraction n="0.15000" ref="Copper"/><fraction n="0.05000" ref="Tin"/>
+  <fraction n="0.05000" ref="Lead"/>
+ </material>
+ <material name="GenericElec_Dens0p478">
+  <D value="0.478" unit="g/cm3"/>
+  <fraction n="0.10000" ref="Oxygen"/><fraction n="0.50000" ref="Aluminum"/>
+  <fraction n="0.10000" ref="Silicon"/><fraction n="0.05000" ref="Iron"/>
+  <fraction n="0.15000" ref="Copper"/><fraction n="0.05000" ref="Tin"/>
+  <fraction n="0.05000" ref="Lead"/>
+ </material>
+ <material name="GenericElec_Dens1p0">
+  <D value="1.0" unit="g/cm3"/>
+  <fraction n="0.10000" ref="Oxygen"/><fraction n="0.50000" ref="Aluminum"/>
+  <fraction n="0.10000" ref="Silicon"/><fraction n="0.05000" ref="Iron"/>
+  <fraction n="0.15000" ref="Copper"/><fraction n="0.05000" ref="Tin"/>
+  <fraction n="0.05000" ref="Lead"/>
+ </material>
+ <material name="GenericElec_Dens3p276">
+  <D value="3.276" unit="g/cm3"/>
+  <fraction n="0.10000" ref="Oxygen"/><fraction n="0.50000" ref="Aluminum"/>
+  <fraction n="0.10000" ref="Silicon"/><fraction n="0.05000" ref="Iron"/>
+  <fraction n="0.15000" ref="Copper"/><fraction n="0.05000" ref="Tin"/>
+  <fraction n="0.05000" ref="Lead"/>
+ </material>
+ <material name="GenericElec_Dens6p268">
+  <D value="6.268" unit="g/cm3"/>
+  <fraction n="0.10000" ref="Oxygen"/><fraction n="0.50000" ref="Aluminum"/>
+  <fraction n="0.10000" ref="Silicon"/><fraction n="0.05000" ref="Iron"/>
+  <fraction n="0.15000" ref="Copper"/><fraction n="0.05000" ref="Tin"/>
+  <fraction n="0.05000" ref="Lead"/>
+ </material>
+ <material name="GenericElec_Dens6p558">
+  <D value="6.558" unit="g/cm3"/>
+  <fraction n="0.10000" ref="Oxygen"/><fraction n="0.50000" ref="Aluminum"/>
+  <fraction n="0.10000" ref="Silicon"/><fraction n="0.05000" ref="Iron"/>
+  <fraction n="0.15000" ref="Copper"/><fraction n="0.05000" ref="Tin"/>
+  <fraction n="0.05000" ref="Lead"/>
+ </material>
+ <material name="GenericElec_Dens7p160">
+  <D value="7.160" unit="g/cm3"/>
+  <fraction n="0.10000" ref="Oxygen"/><fraction n="0.50000" ref="Aluminum"/>
+  <fraction n="0.10000" ref="Silicon"/><fraction n="0.05000" ref="Iron"/>
+  <fraction n="0.15000" ref="Copper"/><fraction n="0.05000" ref="Tin"/>
+  <fraction n="0.05000" ref="Lead"/>
+ </material>
+ <material name="GenericElec_Dens7p629">
+  <D value="7.629" unit="g/cm3"/>
+  <fraction n="0.10000" ref="Oxygen"/><fraction n="0.50000" ref="Aluminum"/>
+  <fraction n="0.10000" ref="Silicon"/><fraction n="0.05000" ref="Iron"/>
+  <fraction n="0.15000" ref="Copper"/><fraction n="0.05000" ref="Tin"/>
+  <fraction n="0.05000" ref="Lead"/>
+ </material>
+ <material name="Mumetal_Dens7p26">
+  <D value="7.26" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens7p871">
+  <D value="7.871" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens8p146">
+  <D value="8.146" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens8p149">
+  <D value="8.149" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens8p482">
+  <D value="8.482" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens8p739">
+  <D value="8.739" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens8p780">
+  <D value="8.780" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens8p784">
+  <D value="8.784" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens8p803">
+  <D value="8.803" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens8p81">
+  <D value="8.81" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+<material name="Mumetal_Dens8p82">
+  <D value="8.82" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens9p037">
+  <D value="9.037" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+<material name="Mumetal_Dens9p49">
+  <D value="9.49" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens10p77">
+  <D value="10.77" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="Mumetal_Dens10p914">
+  <D value="10.914" unit="g/cm3"/>
+  <composite n="77" ref="Nickel"/><composite n="14" ref="Iron"/>
+  <composite n="5" ref="Copper"/><composite n="4" ref="Molybdenum"/>
+ </material>
+ <material name="SiO2">
+   <D value="2.2" unit="g/cm3"/>
+   <composite n="1" ref="Silicon"/><composite n="2" ref="Oxygen"/>
+ </material>
+ <material name="Al2O3">
+   <D value="3.97" unit="g/cm3"/>
+   <composite n="2" ref="Aluminum"/><composite n="3" ref="Oxygen"/>
+ </material>
+ <material name="B2O3">
+   <D value="2.46" unit="g/cm3"/>
+   <composite n="2" ref="Boron"/><composite n="3" ref="Oxygen"/>
+ </material>
+ <material name="K2O">
+   <D value="2.32" unit="g/cm3"/>
+   <composite n="2" ref="Potassium"/><composite n="1" ref="Oxygen"/>
+ </material>
+ <material name="Na2O">
+   <D value="2.27" unit="g/cm3"/>
+   <composite n="2" ref="Sodium"/><composite n="1" ref="Oxygen"/>
+ </material>
+ <material name="Li2O">
+   <D value="2.013" unit="g/cm3"/>
+   <composite n="2" ref="Lithium"/><composite n="1" ref="Oxygen"/>
+ </material>
+ <material name="BaO">
+   <D value="5.72" unit="g/cm3"/>
+   <composite n="1" ref="Barium"/><composite n="1" ref="Oxygen"/>
+ </material>
+ <material name="BorosilicateGlass_Dens2p793">
+   <D value="2.793" unit="g/cm3"/>
+   <fraction n="0.735" ref="SiO2"/><fraction n="0.181" ref="B2O3"/>
+   <fraction n="0.034" ref="K2O"/><fraction  n="0.004" ref="Li2O"/>
+   <fraction n="0.034" ref="Al2O3"/><fraction  n="0.01" ref="Na2O"/>
+   <fraction  n="0.002" ref="BaO"/>	      
+ </material>
+ <material name="CaO">
+   <D value="1.0" unit="g/cm3"/>
+   <composite n="1" ref="Calcium"/><composite n="1" ref="Oxygen"/>
+ </material>
+ <material name="MgO">
+   <D value="1.0" unit="g/cm3"/>
+   <composite n="1" ref="Magnesium"/><composite n="1" ref="Oxygen"/>
+ </material>
+ <material name="FiberglassCloth">
+   <D value="2.793" unit="g/cm3"/>
+   <fraction n="0.54" ref="SiO2"/><fraction n="0.07" ref="B2O3"/>
+   <fraction n="0.005" ref="K2O"/><fraction  n="0.20" ref="CaO"/>
+   <fraction n="0.14" ref="Al2O3"/><fraction  n="0.005" ref="Na2O"/>
+   <fraction n="0.04" ref="MgO"/>
+ </material>
+ <material name="GenericPmtElec_Dens0p770">
+  <D value="0.770" unit="g/cm3"/>
+  <fraction n="0.019" ref="Silicon"/><fraction n="0.469" ref="Iron"/>
+  <fraction n="0.112" ref="Chromium"/><fraction n="0.098" ref="Nickel"/>
+  <fraction n="0.014" ref="Manganese"/><fraction n="0.288" ref="Al2O3"/>
+ </material> 
+ <material name="NaI">
+   <D value="3.67" unit="g/cm3"/>
+   <composite n="1" ref="Sodium"/><composite n="1" ref="Iodine"/>
+ </material>
+ <material name="TetratekTeflon">
+   <D value="0.558" unit="g/cm3"/>
+   <composite n="2" ref="Carbon"/><composite n="4" ref="Flourine"/>
+ </material>
+ <material name="Kapton">
+   <D value="1.43" unit="g/cm3"/>
+   <composite n="22" ref="Carbon"/><composite n="10" ref="Hydrogen"/>
+   <composite n="2" ref="Nitrogen"/><composite n="5" ref="Oxygen"/>
+ </material>
+ <material name="Mylar">
+   <D value="1.4" unit="g/cm3"/>
+   <composite n="10" ref="Carbon"/><composite n="8" ref="Hydrogen"/>
+   <composite n="4" ref="Oxygen"/>
+ </material>
+ <material name="Mli_Inconel">
+   <D value="8.25" unit="g/cm3"/>
+   <composite n="74" ref="Nickel"/><composite n="15" ref="Chromium"/>
+   <composite n="7" ref="Iron"/><composite n="1" ref="Titanium"/>
+   <composite n="1" ref="Aluminum"/><composite n="1" ref="Niobium"/>
+ </material>
+ <material name="Mli_Polyester">
+   <D value="0.0997" unit="g/cm3"/>
+   <composite n="10" ref="Carbon"/><composite n="8" ref="Hydrogen"/>
+   <composite n="4" ref="Oxygen"/>
+ </material>
+ <material name="FEP_Teflon">
+   <D value="2.15" unit="g/cm3"/>
+   <composite n="2" ref="Carbon"/><composite n="4" ref="Flourine"/>
+ </material>
+ <material name="Silicone">
+   <D value="1.3" unit="g/cm3"/>
+   <composite n="1"   ref="Silicon"/><composite n="1"   ref="Oxygen"/>
+   <composite n="6"   ref="Hydrogen"/><composite n="2"   ref="Carbon"/>
+ </material>
+ <material name="SiliconeHardener">
+   <D value="1.3" unit="g/cm3"/>
+   <composite n="1"   ref="Silicon"/><composite n="1"   ref="Oxygen"/>
+   <composite n="4"   ref="Hydrogen"/><composite n="1"   ref="Carbon"/>
+ </material>
+ <material name="SiliconeRubber_Dens1p3">
+   <D value="1.3" unit="g/cm3"/>
+   <fraction n="0.75" ref="Silicone"/><fraction n="0.25" ref="SiliconeHardener"/>
+ </material>
+ <material name="SiliconeRubber_Dens1p045">
+   <D value="1.045" unit="g/cm3"/>
+  <fraction n="0.75" ref="Silicone"/><fraction n="0.25" ref="SiliconeHardener"/>
+ </material>
+ <material name="Silicone_Dens0p9114">
+  <D value="0.9114" unit="g/cm3"/>
+  <fraction n="0.75" ref="Silicone"/><fraction n="0.25" ref="SiliconeHardener"/>
+ </material>
+ <material name="Silicone_Dens1p045">
+  <D value="1.045" unit="g/cm3"/>
+  <fraction n="0.75" ref="Silicone"/><fraction n="0.25" ref="SiliconeHardener"/>	
+ </material>
+ <material name="SiliconePad_Dens1p1">
+  <D value="1.1" unit="g/cm3"/>
+  <fraction n="0.75" ref="Silicone"/><fraction n="0.25" ref="SiliconeHardener"/>	
+ </material>
+ <material name="Polyurethane_Dens1p496">
+  <D value="1.496" unit="g/cm3"/>
+   <composite n="10"  ref="Hydrogen"/>
+   <composite n="6"   ref="Carbon"/>
+   <composite n="4"   ref="Oxygen"/>
+ </material>
+ <material name="Polyurethane_Dens2p75">
+  <D value="2.75" unit="g/cm3"/>
+   <composite n="10"   ref="Hydrogen"/>
+   <composite n="6"   ref="Carbon"/>
+   <composite n="4"   ref="Oxygen"/>
+ </material>
+ <material name="Polyurethane_Dens3p341">
+  <D value="3.341" unit="g/cm3"/>
+    <composite n="10"   ref="Hydrogen"/>
+    <composite n="6"   ref="Carbon"/>
+    <composite n="4"   ref="Oxygen"/>
+ </material>
+ <material name="NBK7Glass">
+   <D value="2.516" unit="g/cm3"/>
+   <fraction n="0.70" ref="SiO2"/><fraction n="0.115" ref="B2O3"/>
+   <fraction n="0.075" ref="K2O"/>
+   <fraction n="0.015" ref="BaO"/><fraction  n="0.095" ref="Na2O"/>
+ </material>
+ <material name="DowCorning93-500">
+  <D value="1.08" unit="g/cm3"/>
+  <fraction n="0.75" ref="Silicone"/><fraction n="0.25" ref="SiliconeHardener"/>	
+ </material>
+ <material name="Peek1000">
+  <D value="2.708" unit="g/cm3"/>
+   <composite n="3" ref="Hydrogen"/><composite n="3" ref="Carbon"/>  
+   <composite n="2" ref="Oxygen"/><composite n="1" ref="Silicon"/>
+ </material>
+ <material name="Millipore">
+  <D value="1.78" unit="g/cm3"/>
+   <composite n="2" ref="Hydrogen"/><composite n="2" ref="Carbon"/>
+   <composite n="2" ref="Flourine"/>
+ </material>
+ <material name="EpoxyResin">
+  <D value="1.8" unit="g/cm3"/>
+   <composite n="20" ref="Hydrogen"/><composite n="14" ref="Carbon"/>
+   <composite n="4" ref="Oxygen"/>	      
+ </material>
+ <material name="EpoxyHardener">
+  <D value="1.8" unit="g/cm3"/>
+   <composite n="13" ref="Hydrogen"/><composite n="4" ref="Carbon"/>
+   <composite n="3" ref="Nitrogen"/>	      
+ </material>
+ <material name="Epoxy">
+  <D value="1.8" unit="g/cm3"/>
+   <fraction n="0.75" ref="EpoxyResin"/><fraction n="0.25" ref="EpoxyHardener"/>
+ </material>
+ <material name="OpticalCement">
+  <D value="1.16" unit="g/cm3"/>
+   <fraction n="0.75" ref="EpoxyResin"/><fraction n="0.25" ref="EpoxyHardener"/>
+ </material>
+ <material name="MumetallEpoxy">
+  <D value="1.8" unit="g/cm3"/>
+   <fraction n="0.75" ref="EpoxyResin"/><fraction n="0.25" ref="EpoxyHardener"/>
+ </material>
+ <material name="FiberglassEpoxy">
+  <D value="1.8" unit="g/cm3"/>
+   <fraction n="0.5" ref="FiberglassCloth"/><fraction n="0.5" ref="Epoxy"/>
+ </material>
+ <material name="BgoCFK">
+  <D value="1.76" unit="g/cm3"/>
+   <fraction n="0.50" ref="Epoxy"/><fraction n="0.50" ref="Carbon"/>
+ </material>
+ <material name="CFKbracket">
+  <D value="2.41" unit="g/cm3"/>
+   <fraction n="0.50" ref="Hydrogen"/><fraction n="0.50" ref="Carbon"/>   
+ </material>
+ <material name="BGO">
+   <D value="7.13" unit="g/cm3"/> 
+   <composite n="4" ref="Bismuth"/><composite n="3" ref="Germanium"/><composite n="12" ref="Oxygen"/>
+ </material>
+ <material name="TiAl6V4_Dens5p966">
+   <D value="5.966" unit="g/cm3"/>
+   <fraction n="0.90155" ref="Titanium"/><fraction n="0.059" ref="Aluminum"/>
+   <fraction n="0.038" ref="Vanadium"/><fraction n="0.00145" ref="Oxygen"/>
+ </material>
+ <material name="TiAl6V4_Dens9p81">
+   <D value="9.81" unit="g/cm3"/>
+   <fraction n="0.90155" ref="Titanium"/><fraction n="0.059" ref="Aluminum"/>
+   <fraction n="0.038" ref="Vanadium"/><fraction n="0.00145" ref="Oxygen"/>
+ </material>
+</materials>
+ <solids>
+  <box name="sWorld" x="xWorld"  y="yWorld" z="zWorld"/>
+  <tube name="sNaiDetectorMother" z="tNaiDetectorMother"      rmax="rNaiDetectorMother" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoDetectorMother" z="tBgoDetectorMother"      rmax="rBgoDetectorMother" deltaphi="360." aunit="degree"/>
+  <tube name="sDeckelFee"      z="tDeckelFee"      rmax="rOutDeckelFee"       deltaphi="360." aunit="degree"/>
+  <tube name="sDeckelFeeInner" z="tDeckelFeeInner" rmax="rOutDeckelFeeInner"  deltaphi="360." aunit="degree"/>
+  <tube name="sFeeMitPcb"      z="tFeeMitPcb"      rmax="rOutFeeMitPcb"       deltaphi="360." aunit="degree"/>
+  <tube name="sFeeMitPcbInner" z="tFeeMitPcb"      rmax="rOutFeeMitPcbInner"  deltaphi="360." aunit="degree"/>
+  <tube name="sPmtTubusRear"   z="tPmtTubusRear"   rmin="rInPmtTubusRear" rmax="rOutPmtTubusRear"  deltaphi="360." aunit="degree"/>
+  <tube name="sPmtTubusRearRingRear"   z="tPmtTubusRearRingRear" rmin="rInPmtTubusRearRingRear" rmax="rOutPmtTubusRearRingRear"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtTubusRearRingFront"   z="tPmtTubusRearRingFront" rmin="rInPmtTubusRearRingFront" rmax="rOutPmtTubusRearRingFront"  
+	deltaphi="360." aunit="degree"/>
+  <cone name="sPmtTubusMid" z="tPmtTubusMid" rmin1="rInMinPmtTubusMid" rmin2="rInMaxPmtTubusMid" rmax1="rOutMinPmtTubusMid"
+	rmax2="rOutMaxPmtTubusMid" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtTubusMidRing"   z="tPmtTubusMidRing" rmin="rInPmtTubusMidRing" rmax="rOutPmtTubusMidRing"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtTubusFront"   z="tPmtTubusFront" rmin="rInPmtTubusFront" rmax="rOutPmtTubusFront"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtInnentubusRingFront"   z="tPmtInnentubusRingFront" rmin="rInPmtInnentubusRingFront" rmax="rOutPmtInnentubusRingFront"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtInnentubusFeeRear" z="tPmtInnentubusFeeRear" rmax="rOutPmtInnentubusFeeRear"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtInnentubus"   z="tPmtInnentubus" rmin="rInPmtInnentubus" rmax="rOutPmtInnentubus"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtInnentubusRingMid"   z="tPmtInnentubusRingMid" rmin="rInPmtInnentubusRingMid" rmax="rOutPmtInnentubusRingMid"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtThermostatRing"   z="tPmtThermostatRing" rmin="rInPmtThermostatRing" rmax="rOutPmtThermostatRing"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtThermostatMount"   z="tPmtThermostatMount" rmax="rOutPmtThermostatMount"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtThermostat"   z="tPmtThermostat" rmax="rOutPmtThermostat"  
+	deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallFassungFront"   z="tPmtMumetallFassungFront" rmin="rInPmtMumetallFassungFront"  
+	rmax="rOutPmtMumetallFassungFront" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallFassungRear"   z="tPmtMumetallFassungRear" rmin="rInPmtMumetallFassungRear"  
+	rmax="rOutPmtMumetallFassungRear" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallRing161"   z="tPmtMumetallRing161" rmin="rInPmtMumetallRing161"  
+	rmax="rOutPmtMumetallRing161" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallHulse161"   z="tPmtMumetallHulse161" rmin="rInPmtMumetallHulse161"  
+	rmax="rOutPmtMumetallHulse161" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallHulse146"   z="tPmtMumetallHulse146" rmin="rInPmtMumetallHulse146"  
+	rmax="rOutPmtMumetallHulse146" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallRing146"   z="tPmtMumetallRing146" rmin="rInPmtMumetallRing146"  
+	rmax="rOutPmtMumetallRing146" deltaphi="360." aunit="degree"/>
+  <cone name="sPmtMumetallTrichter127" z="tPmtMumetallTrichter127"
+	rmin1="rInMinPmtMumetallTrichter127" rmin2="rInMaxPmtMumetallTrichter127" rmax1="rOutMinPmtMumetallTrichter127"
+	rmax2="rOutMaxPmtMumetallTrichter127" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallTrichter127Ring"   z="tPmtMumetallTrichter127Ring" rmin="rInPmtMumetallTrichter127Ring"  
+	rmax="rOutPmtMumetallTrichter127Ring" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallHulse112"   z="tPmtMumetallHulse112" rmin="rInPmtMumetallHulse112"  
+	rmax="rOutPmtMumetallHulse112" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallHulse112lg"   z="tPmtMumetallHulse112lg" rmin="rInPmtMumetallHulse112lg"  
+	rmax="rOutPmtMumetallHulse112lg" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtIfRing"   z="tPmtIfRing" rmin="rInPmtIfRing" rmax="rOutPmtIfRing" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtGewindering"   z="tPmtGewindering" rmin="rInPmtGewindering" rmax="rOutPmtGewindering" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtBaseFeeRing"   z="tPmtBaseFeeRing" rmin="rInPmtBaseFeeRing" rmax="rOutPmtBaseFeeRing" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtConnection"   z="tPmtConnection" rmax="rPmtConnection" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtBase"   z="tPmtBase" rmax="rOutPmtBase" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtBaseInside"   z="tPmtBaseInside"  rmax="rInPmtBase" deltaphi="360." aunit="degree"/>
+  <cone name="sPmtMid" z="tPmtMid" rmax1="rOutMinPmtMid" rmax2="rOutMaxPmtMid" deltaphi="360." aunit="degree"/>
+  <cone name="sPmtMidInside" z="tPmtMid" rmax1="rInMinPmtMid" rmax2="rInMaxPmtMid" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtFront"   z="tPmtFront"  rmax="rOutPmtFront" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtFrontInside"  z="tPmtFrontInside"  rmax="rInPmtFront" deltaphi="360." aunit="degree"/>
+  <box name="sPmtIfBracket" x="xdPmtIfBracket"  y="ydPmtIfBracket" z="zdPmtIfBracket"/>
+  <tube name="sPmtSteckerkonsole"  z="tPmtSteckerkonsole" rmin="rInPmtSteckerkonsole" rmax="rOutPmtSteckerkonsole" 
+	startphi="324.6" deltaphi="32.87" aunit="degree"/>
+  <tube name="sPmtP02"  z="tPmtP02" rmin="rInPmtP02" rmax="rOutPmtP02" 
+	startphi="169.69" deltaphi="20.66" aunit="degree"/>
+  <tube name="sPmtSteckerplatte"  z="tPmtSteckerplatte" rmin="rInPmtSteckerplatte" rmax="rOutPmtSteckerplatte" 
+	startphi="208.6" deltaphi="32.87" aunit="degree"/>
+  <tube name="sPmtSteckerkonsoleA"  z="tPmtSteckerkonsole" rmin="rInPmtSteckerkonsole" rmax="rOutPmtSteckerkonsole" 
+	startphi="182.56" deltaphi="32.87" aunit="degree"/>
+  <tube name="sPmtP02A"  z="tPmtP02" rmin="rInPmtP02" rmax="rOutPmtP02" 
+	startphi="349.67" deltaphi="20.66" aunit="degree"/>
+  <tube name="sPmtSteckerplatteA"  z="tPmtSteckerplatte" rmin="rInPmtSteckerplatte" rmax="rOutPmtSteckerplatte" 
+	startphi="298.56" deltaphi="32.87" aunit="degree"/>
+  <tube name="sNaiCrystalAssem"  z="tNaiCrystalAssem" rmax="rNaiCrystalAssem" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiSiliconeRing"  z="tNaiSiliconeRing" rmin="rInNaiSiliconeRing" rmax="rOutNaiSiliconeRing" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiSiliconeDisk"  z="tNaiSiliconeDisk" rmax="rNaiSiliconeDisk" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiOpticalWindow" z="tNaiOpticalWindow" rmax="rNaiOpticalWindow" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiOpticalWindowEpoxy" z="tNaiOpticalWindowEpoxy" rmax="rNaiOpticalWindowEpoxy" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiSiliconePad"   z="tNaiSiliconePad" rmax="rNaiSiliconePad" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiOpticalInterface" z="tNaiOpticalInterface" rmax="rNaiOpticalInterface" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiCrystal" z="tNaiCrystal" rmax="rNaiCrystal" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiReflector" z="tNaiReflector" rmax="rNaiReflector" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiBeWindow" z="tNaiBeWindow" rmax="rNaiBeWindow" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiNothing"  z="tNaiNothing" rmax="rNaiNothing" deltaphi="360." aunit="degree"/>
+  <tube name="sMliLayer"    z="tMliLayer" rmax="rMliLayer" deltaphi="360." aunit="degree"/>
+  <tube name="sMliLayer_Kapton"    z="tMliLayer_Kapton" rmax="rMliLayer_Kapton" deltaphi="360." aunit="degree"/>
+  <tube name="sMliLayer_Mylar"    z="tMliLayer_Mylar" rmax="rMliLayer_Mylar" deltaphi="360." aunit="degree"/>
+  <tube name="sMliLayer_Polyester"    z="tMliLayer_Polyester" rmax="rMliLayer_Polyester" deltaphi="360." aunit="degree"/>
+  <tube name="sMliLayer_Al"    z="tMliLayer_Al" rmax="rMliLayer_Al" deltaphi="360." aunit="degree"/>
+  <tube name="sMliLayer_Ag"    z="tMliLayer_Ag" rmax="rMliLayer_Ag" deltaphi="360." aunit="degree"/>
+  <tube name="sMliLayer_Inconel"    z="tMliLayer_Inconel" rmax="rMliLayer_Inconel" deltaphi="360." aunit="degree"/>
+  <tube name="sMliLayer_Teflon"    z="tMliLayer_Teflon" rmax="rMliLayer_Teflon" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtSiliconeRing2"  z="tPmtSiliconeRing2" rmin="rInPmtSiliconeRing2" rmax="rOutPmtSiliconeRing2" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtSiliconeRubber"  z="tPmtSiliconeRubber" rmin="rInPmtSiliconeRubber" rmax="rOutPmtSiliconeRubber" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtLightTight1"  z="tPmtLightTight1" rmin="rInPmtLightTight1" rmax="rOutPmtLightTight1" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtLightTight2"  z="tPmtLightTight2" rmin="rInPmtLightTight2" rmax="rOutPmtLightTight2" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtBaseKnob"  z="tPmtBaseKnob" rmax="rPmtBaseKnob" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtIfRing2"   z="tPmtIfRing2" rmin="rInPmtIfRing2" rmax="rOutPmtIfRing2" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallHulse52"   z="tPmtMumetallHulse52" rmin="rInPmtMumetallHulse52"  
+	rmax="rOutPmtMumetallHulse52" deltaphi="360." aunit="degree"/>
+  <cone name="sPmtMumetallTrichter132" z="tPmtMumetallTrichter132" rmin1="rInMinPmtMumetallTrichter132" rmax1="rOutMinPmtMumetallTrichter132" 
+        rmin2="rInMaxPmtMumetallTrichter132" rmax2="rOutMaxPmtMumetallTrichter132" deltaphi="360." aunit="degree"/>
+  <tube name="sPmtMumetallHulse133"   z="tPmtMumetallHulse133" rmin="rInPmtMumetallHulse133"  
+	rmax="rOutPmtMumetallHulse133" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiMumetallTopf"   z="tNaiMumetallTopf"  rmax="rNaiMumetallTopf" deltaphi="360." aunit="degree"/>
+  <tube name="sNaiHulse"   z="tNaiHulse"  rmax="rNaiHulse" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoCrystalCfk"   z="tBgoCrystalCfk" rmax="rBgoCrystalCfk" deltaphi="360." aunit="degree"/>
+  <tube name="sMumetallBgo"  z="tMumetallBgo" rmin="rInMumetallBgo" rmax="rOutMumetallBgo" deltaphi="360."  aunit="degree"/>
+  <tube name="sMumetallBgoEpoxy"  z="tMumetallBgoEpoxy" rmin="rInMumetallBgoEpoxy" rmax="rOutMumetallBgoEpoxy" deltaphi="360."	aunit="degree"/>
+  <tube name="sBgoAlFoil2"   z="tBgoAlFoil2" rmax="rBgoAlFoil2" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoFiberglassEpoxy"   z="tBgoFiberglassEpoxy" rmax="rBgoFiberglassEpoxy"  deltaphi="360." aunit="degree"/>
+  <tube name="sBgoAlFoil"   z="tBgoAlFoil" rmax="rBgoAlFoil" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoMillipore"   z="tBgoMillipore" rmax="rBgoMillipore" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoCrystal"   z="tBgoCrystal" rmax="rBgoCrystal" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoOpticalGlass"   z="tBgoOpticalGlass" rmax="rBgoOpticalGlass" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoSiliconeDisk"   z="tBgoSiliconeDisk" rmax="rBgoSiliconeDisk" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoBracketRing1"  z="tBgoBracketRing1" rmin="rInBgoBracketRing1" rmax="rOutBgoBracketRing1" deltaphi="360."	aunit="degree"/>
+  <cone name="sBgoBracketCone" z="tBgoBracketCone" rmin1="rInBgoBracketCone" rmax1="rOutMinBgoBracketCone" 
+        rmin2="rInBgoBracketCone" rmax2="rOutMaxBgoBracketCone" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoSiliconeRing2"   z="tBgoSiliconeRing2" rmin="rInBgoSiliconeRing2" rmax="rOutBgoSiliconeRing2" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoBracketRing2"   z="tBgoBracketRing2" rmin="rInBgoBracketRing2" rmax="rOutBgoBracketRing2" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoBracketRing3"   z="tBgoBracketRing3" rmin="rInBgoBracketRing3" rmax="rOutBgoBracketRing3" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoBracketRing4"   z="tBgoBracketRing4" rmin="rInBgoBracketRing4" rmax="rOutBgoBracketRing4" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoBracketCfkRing1"   z="tBgoBracketCfkRing1" rmin="rInBgoBracketCfkRing1" rmax="rOutBgoBracketCfkRing1" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoBracketCfkRing2"   z="tBgoBracketCfkRing2" rmin="rInBgoBracketCfkRing2" rmax="rOutBgoBracketCfkRing2" deltaphi="360." aunit="degree"/>
+  <cone name="sBgoBracketCfkCone" z="tBgoBracketCfkCone" rmin1="rInMinBgoBracketCfkCone" rmax1="rOutMinBgoBracketCfkCone" 
+        rmin2="rInMaxBgoBracketCfkCone" rmax2="rOutMaxBgoBracketCfkCone" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoKappe"   z="tBgoKappe" rmax="rBgoKappe" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoFlansch"   z="tBgoFlansch" rmax="rBgoFlansch" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoOpticalCement"   z="tBgoOpticalCement" rmax="rBgoOpticalCement" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoOpticalGlass1"   z="tBgoOpticalGlass1" rmax="rBgoOpticalGlass" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoOpticalGlass2"   z="tBgoOpticalGlass2" rmax="rBgoOpticalGlass" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoOpticalGlass3"   z="tBgoOpticalGlass3" rmax="rBgoOpticalGlass" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoOpticalGlass4"   z="tBgoOpticalGlass4" rmax="rBgoOpticalGlass" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoOpticalGlass5"   z="tBgoOpticalGlass5" rmax="rBgoOpticalGlass" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoOpticalGlass6"   z="tBgoOpticalGlass6" rmax="rBgoOpticalGlass" deltaphi="360." aunit="degree"/>
+  <tube name="sBgoBracketMumetalRing"   z="tBgoBracketMumetalRing" rmin="rInBgoBracketMumetalRing" rmax="rOutBgoBracketMumetalRing" deltaphi="360." aunit="degree"/>
+  <cone name="sBgoBracketMumetalCone" z="tBgoBracketMumetalCone" rmin1="rInMinBgoBracketMumetalCone" rmax1="rOutMinBgoBracketMumetalCone" 
+        rmin2="rInMaxBgoBracketMumetalCone" rmax2="rOutMaxBgoBracketMumetalCone" deltaphi="360." aunit="degree"/>
+</solids>
+ <structure>
+<volume name="DeckelFeeInner">
+  <materialref ref="Vacuum"/> <solidref ref="sDeckelFeeInner"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="001000"/>
+</volume>
+<volume name="DeckelFee">
+  <materialref ref="Aluminum_3p4364_Dens2p248"/> <solidref ref="sDeckelFee"/>
+   <physvol> <volumeref ref="DeckelFeeInner"/> <positionref ref="pDeckelFeeInner"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070707"/>
+</volume>
+<volume name="FeeMitPcbInner">
+   <materialref ref="GenericElec_Dens0p556"/> <solidref ref="sFeeMitPcbInner"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="001000"/>
+</volume>
+<volume name="FeeMitPcb">
+  <materialref ref="Aluminum_3p4364_Dens2p824"/> <solidref ref="sFeeMitPcb"/>
+   <physvol> <volumeref ref="FeeMitPcbInner"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070707"/>
+</volume>
+<volume name="PmtTubusRear">
+  <materialref ref="Aluminum_3p4364_Dens3p247"/> <solidref ref="sPmtTubusRear"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtTubusRearRingRear">
+  <materialref ref="Aluminum_3p4364_Dens3p247"/> <solidref ref="sPmtTubusRearRingRear"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtTubusRearRingFront">
+  <materialref ref="Aluminum_3p4364_Dens3p247"/> <solidref ref="sPmtTubusRearRingFront"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtTubusMid">
+  <materialref ref="Aluminum_3p4364_Dens3p247"/> <solidref ref="sPmtTubusMid"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtTubusMidRing">
+  <materialref ref="Aluminum_3p4364_Dens3p247"/> <solidref ref="sPmtTubusMidRing"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtTubusFront">
+  <materialref ref="Aluminum_3p4364_Dens3p247"/> <solidref ref="sPmtTubusFront"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtInnentubus">
+  <materialref ref="Aluminum_3p4364_Dens2p985"/> <solidref ref="sPmtInnentubus"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtInnentubusFeeRear">
+  <materialref ref="GenericElec_Dens0p478"/> <solidref ref="sPmtInnentubusFeeRear"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="001000"/>
+</volume>
+<volume name="PmtInnentubusRingFront">
+  <materialref ref="Aluminum_3p4364_Dens2p985"/> <solidref ref="sPmtInnentubusRingFront"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtInnentubusRingMid">
+  <materialref ref="Aluminum_3p4364_Dens2p985"/> <solidref ref="sPmtInnentubusRingMid"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtThermostatRing">
+  <materialref ref="Aluminum_3p4364_Dens3p043"/> <solidref ref="sPmtThermostatRing"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtThermostat">
+  <materialref ref="GenericElec_Dens3p276"/> <solidref ref="sPmtThermostat"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="001000"/>
+</volume>
+<volume name="PmtThermostatVac">
+  <materialref ref="Vacuum"/> <solidref ref="sPmtThermostat"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000000"/>
+</volume>
+<volume name="PmtThermostatMount">
+  <materialref ref="Aluminum_3p4364_Dens3p043"/> <solidref ref="sPmtThermostatMount"/>
+   <physvol> <volumeref ref="PmtThermostat"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtThermostatMountVac">
+  <materialref ref="Aluminum_3p4364_Dens3p043"/> <solidref ref="sPmtThermostatMount"/>
+   <physvol> <volumeref ref="PmtThermostatVac"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtMumetallFassungFront">
+  <materialref ref="Aluminum_3p4364_Dens2p944"/> <solidref ref="sPmtMumetallFassungFront"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="001000"/>
+</volume>
+<volume name="PmtMumetallFassungRear">
+  <materialref ref="Aluminum_3p4364_Dens2p944"/> <solidref ref="sPmtMumetallFassungRear"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="001000"/>
+</volume>
+<volume name="PmtMumetallRing161">
+  <materialref ref="Mumetal_Dens8p803"/> <solidref ref="sPmtMumetallRing161"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtMumetallHulse161">
+  <materialref ref="Mumetal_Dens8p739"/> <solidref ref="sPmtMumetallHulse161"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtMumetallHulse146">
+  <materialref ref="Mumetal_Dens8p784"/> <solidref ref="sPmtMumetallHulse146"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtMumetallRing146">
+  <materialref ref="Mumetal_Dens8p482"/> <solidref ref="sPmtMumetallRing146"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtMumetallTrichter127">
+  <materialref ref="Mumetal_Dens9p037"/> <solidref ref="sPmtMumetallTrichter127"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtMumetallTrichter127Ring">
+  <materialref ref="Mumetal_Dens9p037"/> <solidref ref="sPmtMumetallTrichter127Ring"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtMumetallHulse112">
+  <materialref ref="Mumetal_Dens8p780"/> <solidref ref="sPmtMumetallHulse112"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtMumetallHulse112lg">
+  <materialref ref="Mumetal_Dens7p871"/> <solidref ref="sPmtMumetallHulse112lg"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtIfRing">
+  <materialref ref="Aluminum_3p4364_Dens3p533"/> <solidref ref="sPmtIfRing"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtIfRing2">
+  <materialref ref="Aluminum_3p4364_Dens3p533"/> <solidref ref="sPmtIfRing2"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtGewindering">
+  <materialref ref="Aluminum_3p4364_Dens3p379"/> <solidref ref="sPmtGewindering"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtBaseFeeRing">
+  <materialref ref="Polyurethane_Dens2p75"/> <solidref ref="sPmtBaseFeeRing"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtLightTight1">
+  <materialref ref="Polyurethane_Dens1p496"/> <solidref ref="sPmtLightTight1"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="071007"/>
+</volume>
+<volume name="PmtLightTight2">
+  <materialref ref="Polyurethane_Dens3p341"/> <solidref ref="sPmtLightTight2"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="071007"/>
+</volume>
+<volume name="PmtBaseKnob">
+  <materialref ref="BorosilicateGlass_Dens2p793"/> <solidref ref="sPmtBaseKnob"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="021010"/>
+</volume>
+<volume name="PmtConnection">
+  <materialref ref="GenericElec_Dens1p0"/> <solidref ref="sPmtConnection"/>
+   <physvol> <volumeref ref="PmtLightTight1"/> <positionref ref="pNaiPmtLightTight1"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtLightTight2"/> <positionref ref="pNaiPmtLightTight2"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtBaseKnob"/> <positionref ref="pNaiPmtBaseKnob"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="050200"/>
+</volume>
+<volume name="PmtBaseInside">
+  <materialref ref="GenericPmtElec_Dens0p770"/> <solidref ref="sPmtBaseInside"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="001000"/>
+</volume>
+<volume name="PmtBase">
+  <materialref ref="BorosilicateGlass_Dens2p793"/> <solidref ref="sPmtBase"/>
+   <physvol> <volumeref ref="PmtBaseInside"/> <positionref ref="pNaiPmtBaseInside"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="021010"/>
+</volume>
+<volume name="PmtMidInside">
+  <materialref ref="Vacuum"/> <solidref ref="sPmtMidInside"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000000"/>
+</volume>
+<volume name="PmtMid">
+  <materialref ref="BorosilicateGlass_Dens2p793"/> <solidref ref="sPmtMid"/>
+   <physvol> <volumeref ref="PmtMidInside"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="021010"/>
+</volume>
+<volume name="PmtFrontInside">
+  <materialref ref="Vacuum"/> <solidref ref="sPmtFrontInside"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000000"/>
+</volume>
+<volume name="PmtFront">
+  <materialref ref="BorosilicateGlass_Dens2p793"/> <solidref ref="sPmtFront"/>
+   <physvol> <volumeref ref="PmtFrontInside"/> <positionref ref="pNaiPmtFrontInside"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="021010"/>
+</volume>
+<volume name="PmtIfBracket">
+  <materialref ref="Peek1000"/> <solidref ref="sPmtIfBracket"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="PmtSteckerkonsole">
+  <materialref ref="GenericElec_Dens6p268"/> <solidref ref="sPmtSteckerkonsole"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070707"/>
+</volume>
+<volume name="PmtP02">
+  <materialref ref="GenericElec_Dens7p160"/> <solidref ref="sPmtP02"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070707"/>
+</volume>
+<volume name="PmtSteckerplatte">
+  <materialref ref="GenericElec_Dens7p629"/> <solidref ref="sPmtSteckerplatte"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070707"/>
+</volume>
+<volume name="NaiSiliconeRing">
+  <materialref ref="Silicone_Dens0p9114"/> <solidref ref="sNaiSiliconeRing"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="090909"/>
+</volume>
+<volume name="NaiSiliconeDisk">
+  <materialref ref="Silicone_Dens0p9114"/> <solidref ref="sNaiSiliconeDisk"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="090909"/>
+</volume>
+<volume name="NaiOpticalWindow">
+  <materialref ref="NBK7Glass"/> <solidref ref="sNaiOpticalWindow"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100505"/>
+</volume>
+<volume name="NaiOpticalWindowEpoxy">
+  <materialref ref="Epoxy"/> <solidref ref="sNaiOpticalWindowEpoxy"/>
+   <physvol> <volumeref ref="NaiOpticalWindow"/> <positionref ref="center"/> <rotationref ref="identity"/></physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080508"/>
+</volume>
+<volume name="NaiOpticalInterface">
+  <materialref ref="DowCorning93-500"/> <solidref ref="sNaiOpticalInterface"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070202"/>
+</volume>
+<volume name="NaiCrystal">
+  <materialref ref="NaI"/> <solidref ref="sNaiCrystal"/>
+   <auxiliary auxtype="sdflag"  auxvalue="1"/>
+   <auxiliary auxtype="trigflag"  auxvalue="1"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010707"/>
+</volume>
+<volume name="NaiReflector">
+  <materialref ref="TetratekTeflon"/> <solidref ref="sNaiReflector"/>
+   <physvol> <volumeref ref="NaiOpticalInterface"/> <positionref ref="pNaiOpticalInterface"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="NaiCrystal"/> <positionref ref="pNaiCrystal"/> <rotationref ref="identity"/></physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="040404"/>
+</volume>
+<volume name="NaiBeWindow">
+  <materialref ref="Beryllium"/> <solidref ref="sNaiBeWindow"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100307"/>
+</volume>
+<volume name="NaiNothing">
+  <materialref ref="Vacuum"/> <solidref ref="sNaiNothing"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000000"/>
+</volume>
+<volume name="MliLayer_Kapton">
+  <materialref ref="Kapton"/> <solidref ref="sMliLayer_Kapton"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070101"/>
+</volume>
+<volume name="MliLayer_Mylar">
+  <materialref ref="Mylar"/> <solidref ref="sMliLayer_Mylar"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="060506"/>
+</volume>
+<volume name="MliLayer_Polyester">
+  <materialref ref="Mli_Polyester"/> <solidref ref="sMliLayer_Polyester"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="060506"/>
+</volume>
+<volume name="MliLayer_Al">
+  <materialref ref="Aluminum"/> <solidref ref="sMliLayer_Al"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="060506"/>
+</volume>
+<volume name="MliLayer_Ag">
+  <materialref ref="Silver"/> <solidref ref="sMliLayer_Ag"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="060506"/>
+</volume>
+<volume name="MliLayer_Inconel">
+  <materialref ref="Mli_Inconel"/> <solidref ref="sMliLayer_Inconel"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="060506"/>
+</volume>
+<volume name="MliLayer_Teflon">
+  <materialref ref="FEP_Teflon"/> <solidref ref="sMliLayer_Teflon"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="060506"/>
+</volume>
+<volume name="MliLayer">
+  <materialref ref="Vacuum"/> <solidref ref="sMliLayer"/>
+   <physvol> <volumeref ref="MliLayer_Kapton"/> <positionref ref="pMliLayer_Kapton"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="MliLayer_Mylar"/> <positionref ref="pMliLayer_Mylar"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="MliLayer_Polyester"/> <positionref ref="pMliLayer_Polyester"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="MliLayer_Al"/> <positionref ref="pMliLayer_Al"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="MliLayer_Ag"/> <positionref ref="pMliLayer_Ag"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="MliLayer_Inconel"/> <positionref ref="pMliLayer_Inconel"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="MliLayer_Teflon"/> <positionref ref="pMliLayer_Teflon"/> <rotationref ref="identity"/></physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100000"/>
+</volume>
+<volume name="PmtSiliconeRing2">
+  <materialref ref="Silicone_Dens0p9114"/> <solidref ref="sPmtSiliconeRing2"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="090909"/>
+</volume>
+<volume name="PmtSiliconeRubber">
+  <materialref ref="SiliconeRubber_Dens1p3"/> <solidref ref="sPmtSiliconeRubber"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="071007"/>
+</volume>
+<volume name="PmtMumetallHulse52">
+  <materialref ref="Mumetal_Dens10p914"/> <solidref ref="sPmtMumetallHulse52"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtMumetallTrichter132">
+  <materialref ref="Mumetal_Dens8p149"/> <solidref ref="sPmtMumetallTrichter132"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="PmtMumetallHulse133">
+  <materialref ref="Mumetal_Dens10p77"/> <solidref ref="sPmtMumetallHulse133"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="NaiSiliconePad">
+  <materialref ref="SiliconePad_Dens1p1"/> <solidref ref="sNaiSiliconePad"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="051005"/>
+</volume>
+<volume name="NaiHulse">
+  <materialref ref="Aluminum_3p4364_Dens1p31"/> <solidref ref="sNaiHulse"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="NaiMumetallTopf">
+  <materialref ref="Mumetal_Dens7p26"/> <solidref ref="sNaiMumetallTopf"/>
+   <physvol> <volumeref ref="NaiHulse"/> <positionref ref="pNaiHulse"/> <rotationref ref="identity"/></physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="NaiCrystalAssem">
+  <materialref ref="Aluminum_3p4364_Dens2p285"/> <solidref ref="sNaiCrystalAssem"/>
+   <physvol> <volumeref ref="NaiSiliconeRing"/> <positionref ref="pNaiSiliconeRing"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="NaiSiliconeDisk"/> <positionref ref="pNaiSiliconeDisk"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="NaiOpticalWindowEpoxy"/> <positionref ref="pNaiOpticalWindowEpoxy"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="NaiSiliconePad"/> <positionref ref="pNaiSiliconePad"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="NaiReflector"/> <positionref ref="pNaiReflector"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="NaiBeWindow"/> <positionref ref="pNaiBeWindow"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="NaiNothing"/> <positionref ref="pNaiNothing"/> <rotationref ref="identity"/></physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="World">
+  <materialref ref="Vacuum"/> <solidref ref="sNaiDetectorMother"/>
+   <physvol> <volumeref ref="DeckelFee"/> <positionref ref="pDeckelFee"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="FeeMitPcb"/> <positionref ref="pFeeMitPcb"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtTubusRear"/> <positionref ref="pNaiPmtTubusRear"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtTubusRearRingRear"/> <positionref ref="pNaiPmtTubusRearRingRear"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtTubusRearRingFront"/> <positionref ref="pNaiPmtTubusRearRingFront"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtTubusMid"/> <positionref ref="pNaiPmtTubusMid"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtTubusMidRing"/> <positionref ref="pNaiPmtTubusMidRing"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtTubusFront"/> <positionref ref="pNaiPmtTubusFront"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubus"/> <positionref ref="pNaiPmtInnentubus"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubusFeeRear"/> <positionref ref="pNaiPmtInnentubusFeeRear"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubusRingFront"/> <positionref ref="pNaiPmtInnentubusRingFront"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubusRingMid"/> <positionref ref="pNaiPmtInnentubusRingMid"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatRing"/> <positionref ref="pNaiPmtThermostatRing"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pNaiPmtThermostatMount_0"/> <rotationref ref="rotNaiPmtThermostatMount_0"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pNaiPmtThermostatMount_1"/> <rotationref ref="rotNaiPmtThermostatMount_1"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pNaiPmtThermostatMount_2"/> <rotationref ref="rotNaiPmtThermostatMount_2"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pNaiPmtThermostatMount_3"/> <rotationref ref="rotNaiPmtThermostatMount_3"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pNaiPmtThermostatMount_4"/> <rotationref ref="rotNaiPmtThermostatMount_4"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pNaiPmtThermostatMount_5"/> <rotationref ref="rotNaiPmtThermostatMount_5"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallFassungFront"/> <positionref ref="pNaiPmtMumetallFassungFront"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallFassungRear"/> <positionref ref="pNaiPmtMumetallFassungRear"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="MliLayer"/> <positionref ref="pMliLayer"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallRing161"/> <positionref ref="pNaiPmtMumetallRing161"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse161"/> <positionref ref="pNaiPmtMumetallHulse161"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse146"/> <positionref ref="pNaiPmtMumetallHulse146"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallRing146"/> <positionref ref="pNaiPmtMumetallRing146"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallTrichter127"/> <positionref ref="pNaiPmtMumetallTrichter127"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallTrichter127Ring"/> <positionref ref="pNaiPmtMumetallTrichter127Ring"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse112"/> <positionref ref="pNaiPmtMumetallHulse112"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse112lg"/> <positionref ref="pNaiPmtMumetallHulse112lg"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtIfRing"/> <positionref ref="pNaiPmtIfRing"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtGewindering"/> <positionref ref="pNaiPmtGewindering"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtBaseFeeRing"/> <positionref ref="pNaiPmtBaseFeeRing"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtConnection"/> <positionref ref="pNaiPmtConnection"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtBase"/> <positionref ref="pNaiPmtBase"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMid"/> <positionref ref="pNaiPmtMid"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtFront"/> <positionref ref="pNaiPmtFront"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pNaiPmtIfBracket_0"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pNaiPmtIfBracket_1"/> <rotationref ref="rotPmtIfBracket_1"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pNaiPmtIfBracket_2"/> <rotationref ref="rotPmtIfBracket_2"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pNaiPmtIfBracket_3"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pNaiPmtIfBracket_4"/> <rotationref ref="rotPmtIfBracket_4"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pNaiPmtIfBracket_5"/> <rotationref ref="rotPmtIfBracket_5"/> </physvol>
+   <physvol> <volumeref ref="PmtSteckerkonsole"/><positionref ref="pNaiPmtSteckerkonsole"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtP02"/> <positionref ref="pNaiPmtP02"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtSteckerplatte"/><positionref ref="pNaiPmtSteckerplatte"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="NaiCrystalAssem"/> <positionref ref="pNaiCrystalAssem"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtSiliconeRing2"/> <positionref ref="pNaiPmtSiliconeRing2"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="PmtSiliconeRubber"/> <positionref ref="pNaiPmtSiliconeRubber"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="PmtIfRing2"/> <positionref ref="pNaiPmtIfRing2"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse52"/> <positionref ref="pNaiPmtMumetallHulse52"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallTrichter132"/> <positionref ref="pNaiPmtMumetallTrichter132"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse133"/> <positionref ref="pNaiPmtMumetallHulse133"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="NaiMumetallTopf"/> <positionref ref="pNaiMumetallTopf"/> <rotationref ref="rotNaiMumetallTopf"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="0"/>
+   <auxiliary auxtype="solid"  auxvalue="0"/>
+   <auxiliary auxtype="color"  auxvalue="000500"/>
+</volume>
+<volume name="BgoPmtTubusRear">
+  <materialref ref="Aluminum_3p4364_Dens3p26"/> <solidref ref="sPmtTubusRear"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="BgoPmtTubusRearRingRear">
+  <materialref ref="Aluminum_3p4364_Dens3p26"/> <solidref ref="sPmtTubusRearRingRear"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="BgoPmtTubusRearRingFront">
+  <materialref ref="Aluminum_3p4364_Dens3p26"/> <solidref ref="sPmtTubusRearRingFront"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="BgoPmtTubusMid">
+  <materialref ref="Aluminum_3p4364_Dens3p26"/> <solidref ref="sPmtTubusMid"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="BgoPmtTubusMidRing">
+  <materialref ref="Aluminum_3p4364_Dens3p26"/> <solidref ref="sPmtTubusMidRing"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="BgoPmtTubusFront">
+  <materialref ref="Aluminum_3p4364_Dens3p26"/> <solidref ref="sPmtTubusFront"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="BgoSiliconeDisk">
+  <materialref ref="Silicone_Dens1p045"/> <solidref ref="sBgoSiliconeDisk"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="090909"/>
+</volume>
+<volume name="BgoBracketRing1">
+  <materialref ref="TiAl6V4_Dens5p966"/> <solidref ref="sBgoBracketRing1"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010309"/>
+</volume>
+<volume name="BgoBracketCone">
+  <materialref ref="TiAl6V4_Dens5p966"/> <solidref ref="sBgoBracketCone"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010309"/>
+</volume>
+<volume name="BgoSiliconeRing2">
+  <materialref ref="Silicone_Dens1p045"/> <solidref ref="sBgoSiliconeRing2"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="090909"/>
+</volume>
+<volume name="BgoBracketRing2">
+  <materialref ref="TiAl6V4_Dens5p966"/> <solidref ref="sBgoBracketRing2"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010309"/>
+</volume>
+<volume name="BgoBracketRing3">
+  <materialref ref="TiAl6V4_Dens5p966"/> <solidref ref="sBgoBracketRing3"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010309"/>
+</volume>
+<volume name="BgoBracketRing4">
+  <materialref ref="TiAl6V4_Dens5p966"/> <solidref ref="sBgoBracketRing4"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010309"/>
+</volume>
+<volume name="BgoBracketCfkRing1">
+  <materialref ref="CFKbracket"/> <solidref ref="sBgoBracketCfkRing1"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010003"/>
+</volume>
+<volume name="BgoBracketCfkRing2">
+  <materialref ref="CFKbracket"/> <solidref ref="sBgoBracketCfkRing2"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010003"/>
+</volume>
+<volume name="BgoBracketCfkCone">
+  <materialref ref="CFKbracket"/> <solidref ref="sBgoBracketCfkCone"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010003"/>
+</volume>
+<volume name="PmtSteckerkonsoleA">
+  <materialref ref="GenericElec_Dens6p268"/> <solidref ref="sPmtSteckerkonsoleA"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070707"/>
+</volume>
+<volume name="PmtP02A">
+  <materialref ref="GenericElec_Dens7p160"/> <solidref ref="sPmtP02A"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070707"/>
+</volume>
+<volume name="BgoPmtSteckerplatte">
+  <materialref ref="GenericElec_Dens6p558"/> <solidref ref="sPmtSteckerplatte"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070707"/>
+</volume>
+<volume name="BgoPmtSteckerplatteA">
+  <materialref ref="GenericElec_Dens6p558"/> <solidref ref="sPmtSteckerplatteA"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="070707"/>
+</volume>
+<volume name="BgoFlansch">
+  <materialref ref="TiAl6V4_Dens9p81"/> <solidref ref="sBgoFlansch"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010309"/>
+</volume>
+<volume name="BgoKappe">
+  <materialref ref="Aluminum_3p4364_Dens2p348"/> <solidref ref="sBgoKappe"/>
+   <physvol> <volumeref ref="BgoFlansch"/> <positionref ref="pBgoFlansch"/> <rotationref ref="identity"/> </physvol> 
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="BgoBracketMumetalRing">
+  <materialref ref="Mumetal_Dens8p81"/> <solidref ref="sBgoBracketMumetalRing"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="BgoBracketMumetalCone">
+  <materialref ref="Mumetal_Dens9p49"/> <solidref ref="sBgoBracketMumetalCone"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="BgoCrystal">
+  <materialref ref="BGO"/> <solidref ref="sBgoCrystal"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010707"/>
+</volume>
+<volume name="MumetallBgo">
+  <materialref ref="Mumetal_Dens8p82"/> <solidref ref="sMumetallBgo"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000505"/>
+</volume>
+<volume name="MumetallBgoEpoxy">
+  <materialref ref="MumetallEpoxy"/> <solidref ref="sMumetallBgoEpoxy"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="000202"/>
+</volume>
+<volume name="BgoOpticalGlass1">
+  <materialref ref="NBK7Glass"/> <solidref ref="sBgoOpticalGlass1"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100505"/>
+</volume>
+<volume name="BgoOpticalGlass2">
+  <materialref ref="NBK7Glass"/> <solidref ref="sBgoOpticalGlass2"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100505"/>
+</volume>
+<volume name="BgoOpticalGlass3">
+  <materialref ref="NBK7Glass"/> <solidref ref="sBgoOpticalGlass3"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100505"/>
+</volume>
+<volume name="BgoOpticalGlass4">
+  <materialref ref="NBK7Glass"/> <solidref ref="sBgoOpticalGlass4"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100505"/>
+</volume>
+<volume name="BgoOpticalGlass5">
+  <materialref ref="NBK7Glass"/> <solidref ref="sBgoOpticalGlass5"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100505"/>
+</volume>
+<volume name="BgoOpticalGlass6">
+  <materialref ref="NBK7Glass"/> <solidref ref="sBgoOpticalGlass6"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100505"/>
+</volume>
+<volume name="BgoOpticalCement">
+  <materialref ref="OpticalCement"/> <solidref ref="sBgoOpticalCement"/>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="101004"/>
+</volume>
+<volume name="BgoMillipore">
+  <materialref ref="Millipore"/> <solidref ref="sBgoMillipore"/>
+   <physvol> <volumeref ref="BgoCrystal"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalCement"/> <positionref ref="pBgoOpticalCementA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalCement"/> <positionref ref="pBgoOpticalCementB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass1"/> <positionref ref="pBgoOpticalGlass1A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass1"/> <positionref ref="pBgoOpticalGlass1B"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="050505"/>
+</volume>
+<volume name="BgoAlFoil">
+  <materialref ref="Aluminum"/> <solidref ref="sBgoAlFoil"/>
+   <physvol> <volumeref ref="BgoMillipore"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass2"/> <positionref ref="pBgoOpticalGlass2A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass2"/> <positionref ref="pBgoOpticalGlass2B"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="BgoFiberglassEpoxy">
+  <materialref ref="FiberglassEpoxy"/> <solidref ref="sBgoFiberglassEpoxy"/>
+   <physvol> <volumeref ref="BgoAlFoil"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass3"/> <positionref ref="pBgoOpticalGlass3A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass3"/> <positionref ref="pBgoOpticalGlass3B"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="100202"/>
+</volume>
+<volume name="BgoAlFoil2">
+  <materialref ref="Aluminum"/> <solidref ref="sBgoAlFoil2"/>
+   <physvol> <volumeref ref="BgoFiberglassEpoxy"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass4"/> <positionref ref="pBgoOpticalGlass4A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass4"/> <positionref ref="pBgoOpticalGlass4B"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="080808"/>
+</volume>
+<volume name="BgoCrystalCfk">
+  <materialref ref="BgoCFK"/> <solidref ref="sBgoCrystalCfk"/>
+   <physvol> <volumeref ref="MumetallBgoEpoxy"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="MumetallBgo"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoAlFoil2"/> <positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass5"/> <positionref ref="pBgoOpticalGlass5A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass5"/> <positionref ref="pBgoOpticalGlass5B"/> <rotationref ref="identity"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="1"/>
+   <auxiliary auxtype="solid"  auxvalue="1"/>
+   <auxiliary auxtype="color"  auxvalue="010003"/>
+</volume>
+<volume name="BgoDetectorMother">
+  <materialref ref="Vacuum"/> <solidref ref="sBgoDetectorMother"/>
+   <physvol> <volumeref ref="BgoCrystalCfk"/><positionref ref="center"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoSiliconeDisk"/><positionref ref="pBgoSiliconeDiskA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoSiliconeDisk"/><positionref ref="pBgoSiliconeDiskB"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketRing1"/><positionref ref="pBgoBracketRing1A"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketRing1"/><positionref ref="pBgoBracketRing1B"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketCone"/><positionref ref="pBgoBracketConeA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketCone"/><positionref ref="pBgoBracketConeB"/> <rotationref ref="rotPiYaxis"/> </physvol> 
+   <physvol> <volumeref ref="PmtFront"/><positionref ref="pBgoPmtFrontA"/> <rotationref ref="rotPiYaxis"/> </physvol> 
+   <physvol> <volumeref ref="PmtFront"/><positionref ref="pBgoPmtFrontB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMid"/><positionref ref="pBgoPmtMidA"/> <rotationref ref="rotPiYaxis"/> </physvol> 
+   <physvol> <volumeref ref="PmtMid"/><positionref ref="pBgoPmtMidB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtBase"/><positionref ref="pBgoPmtBaseA"/> <rotationref ref="rotPiYaxis"/> </physvol> 
+   <physvol> <volumeref ref="PmtBase"/><positionref ref="pBgoPmtBaseB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse52"/> <positionref ref="pBgoPmtMumetallHulse52A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse52"/> <positionref ref="pBgoPmtMumetallHulse52B"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallTrichter132"/> <positionref ref="pBgoPmtMumetallTrichter132A"/> <rotationref ref="rotPiYaxis"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallTrichter132"/> <positionref ref="pBgoPmtMumetallTrichter132B"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse133"/> <positionref ref="pBgoPmtMumetallHulse133A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse133"/> <positionref ref="pBgoPmtMumetallHulse133B"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketA_0"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketA_1"/> <rotationref ref="rotPmtIfBracket_1"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketA_2"/> <rotationref ref="rotPmtIfBracket_2"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketA_3"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketA_4"/> <rotationref ref="rotPmtIfBracket_4"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketA_5"/> <rotationref ref="rotPmtIfBracket_5"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketB_0"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketB_1"/> <rotationref ref="rotPmtIfBracket_1"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketB_2"/> <rotationref ref="rotPmtIfBracket_2"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketB_3"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketB_4"/> <rotationref ref="rotPmtIfBracket_4"/> </physvol>
+   <physvol> <volumeref ref="PmtIfBracket"/> <positionref ref="pBgoPmtIfBracketB_5"/> <rotationref ref="rotPmtIfBracket_5"/> </physvol>
+   <physvol> <volumeref ref="PmtConnection"/><positionref ref="pBgoPmtConnectionA"/> <rotationref ref="rotPiYaxis"/> </physvol> 
+   <physvol> <volumeref ref="PmtConnection"/><positionref ref="pBgoPmtConnectionB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtBaseFeeRing"/><positionref ref="pBgoPmtBaseFeeRingA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="PmtBaseFeeRing"/><positionref ref="pBgoPmtBaseFeeRingB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubusFeeRear"/><positionref ref="pBgoPmtInnentubusFeeRearA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="PmtInnentubusFeeRear"/><positionref ref="pBgoPmtInnentubusFeeRearB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoPmtTubusRear"/><positionref ref="pBgoPmtTubusRearA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoPmtTubusRear"/><positionref ref="pBgoPmtTubusRearB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoPmtTubusRearRingRear"/><positionref ref="pBgoPmtTubusRearRingRearA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoPmtTubusRearRingRear"/><positionref ref="pBgoPmtTubusRearRingRearB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoPmtTubusRearRingFront"/><positionref ref="pBgoPmtTubusRearRingFrontA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoPmtTubusRearRingFront"/><positionref ref="pBgoPmtTubusRearRingFrontB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoPmtTubusMid"/><positionref ref="pBgoPmtTubusMidA"/> <rotationref ref="rotPiYaxis"/> </physvol> 
+   <physvol> <volumeref ref="BgoPmtTubusMid"/><positionref ref="pBgoPmtTubusMidB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoPmtTubusMidRing"/><positionref ref="pBgoPmtTubusMidRingA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoPmtTubusMidRing"/><positionref ref="pBgoPmtTubusMidRingB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoPmtTubusFront"/><positionref ref="pBgoPmtTubusFrontA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoPmtTubusFront"/><positionref ref="pBgoPmtTubusFrontB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse146"/> <positionref ref="pBgoPmtMumetallHulse146A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse146"/> <positionref ref="pBgoPmtMumetallHulse146B"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallRing146"/> <positionref ref="pBgoPmtMumetallRing146A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallRing146"/> <positionref ref="pBgoPmtMumetallRing146B"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallTrichter127"/> <positionref ref="pBgoPmtMumetallTrichter127A"/> <rotationref ref="rotPiYaxis"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallTrichter127"/> <positionref ref="pBgoPmtMumetallTrichter127B"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallTrichter127Ring"/> <positionref ref="pBgoPmtMumetallTrichter127RingA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallTrichter127Ring"/> <positionref ref="pBgoPmtMumetallTrichter127RingB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse112"/> <positionref ref="pBgoPmtMumetallHulse112A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse112"/> <positionref ref="pBgoPmtMumetallHulse112B"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse112lg"/> <positionref ref="pBgoPmtMumetallHulse112lgA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtMumetallHulse112lg"/> <positionref ref="pBgoPmtMumetallHulse112lgB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubus"/> <positionref ref="pBgoPmtInnentubusA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubus"/> <positionref ref="pBgoPmtInnentubusB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubusRingFront"/> <positionref ref="pBgoPmtInnentubusRingFrontA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubusRingFront"/> <positionref ref="pBgoPmtInnentubusRingFrontB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubusRingMid"/> <positionref ref="pBgoPmtInnentubusRingMidA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtInnentubusRingMid"/> <positionref ref="pBgoPmtInnentubusRingMidB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatRing"/> <positionref ref="pBgoPmtThermostatRingA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pBgoPmtThermostatMountA_0"/> <rotationref ref="rotBgoPmtThermostatMountA_0"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pBgoPmtThermostatMountA_1"/> <rotationref ref="rotBgoPmtThermostatMountA_1"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMountVac"/> <positionref ref="pBgoPmtThermostatMountA_2"/> <rotationref ref="rotBgoPmtThermostatMountA_2"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pBgoPmtThermostatMountA_3"/> <rotationref ref="rotBgoPmtThermostatMountA_3"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pBgoPmtThermostatMountA_4"/> <rotationref ref="rotBgoPmtThermostatMountA_4"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMountVac"/> <positionref ref="pBgoPmtThermostatMountA_5"/> <rotationref ref="rotBgoPmtThermostatMountA_5"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatRing"/> <positionref ref="pBgoPmtThermostatRingB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pBgoPmtThermostatMountB_0"/> <rotationref ref="rotBgoPmtThermostatMountB_0"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMountVac"/> <positionref ref="pBgoPmtThermostatMountB_1"/> <rotationref ref="rotBgoPmtThermostatMountB_1"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pBgoPmtThermostatMountB_2"/> <rotationref ref="rotBgoPmtThermostatMountB_2"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pBgoPmtThermostatMountB_3"/> <rotationref ref="rotBgoPmtThermostatMountB_3"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMountVac"/> <positionref ref="pBgoPmtThermostatMountB_4"/> <rotationref ref="rotBgoPmtThermostatMountB_4"/> </physvol>
+   <physvol> <volumeref ref="PmtThermostatMount"/> <positionref ref="pBgoPmtThermostatMountB_5"/> <rotationref ref="rotBgoPmtThermostatMountB_5"/> </physvol>
+   <physvol> <volumeref ref="PmtGewindering"/> <positionref ref="pBgoPmtGewinderingA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtGewindering"/> <positionref ref="pBgoPmtGewinderingB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="DeckelFee"/> <positionref ref="pBgoDeckelFeeA"/> <rotationref ref="rotPiYaxis"/> </physvol>
+   <physvol> <volumeref ref="DeckelFee"/> <positionref ref="pBgoDeckelFeeB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="FeeMitPcb"/> <positionref ref="pBgoFeeMitPcbA"/> <rotationref ref="rotPiYaxis"/> </physvol>
+   <physvol> <volumeref ref="FeeMitPcb"/> <positionref ref="pBgoFeeMitPcbB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtSteckerkonsoleA"/> <positionref ref="pBgoPmtSteckerkonsoleA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtSteckerkonsole"/> <positionref ref="pBgoPmtSteckerkonsoleB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtP02A"/> <positionref ref="pBgoPmtP02A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtP02"/> <positionref ref="pBgoPmtP02B"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoPmtSteckerplatteA"/> <positionref ref="pBgoPmtSteckerplatteA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoPmtSteckerplatte"/> <positionref ref="pBgoPmtSteckerplatteB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="PmtSiliconeRubber"/> <positionref ref="pBgoPmtSiliconeRubberA"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="PmtSiliconeRubber"/> <positionref ref="pBgoPmtSiliconeRubberB"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="PmtSiliconeRing2"/> <positionref ref="pBgoSiliconeRing2A"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="PmtSiliconeRing2"/> <positionref ref="pBgoSiliconeRing2B"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass6"/> <positionref ref="pBgoOpticalGlass6A"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="BgoOpticalGlass6"/> <positionref ref="pBgoOpticalGlass6B"/> <rotationref ref="identity"/></physvol>
+   <physvol> <volumeref ref="BgoBracketRing2"/><positionref ref="pBgoBracketRing2A"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketRing2"/><positionref ref="pBgoBracketRing2B"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketRing3"/><positionref ref="pBgoBracketRing3A"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketRing3"/><positionref ref="pBgoBracketRing3B"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketRing4"/><positionref ref="pBgoBracketRing4A"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketRing4"/><positionref ref="pBgoBracketRing4B"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketCfkRing1"/><positionref ref="center"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoBracketCfkRing2"/><positionref ref="pBgoBracketCfkRing2A"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoBracketCfkRing2"/><positionref ref="pBgoBracketCfkRing2B"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoBracketCfkCone"/><positionref ref="pBgoBracketCfkConeA"/> <rotationref ref="identity"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketCfkCone"/><positionref ref="pBgoBracketCfkConeB"/> <rotationref ref="rotPiYaxis"/> </physvol>
+   <physvol> <volumeref ref="BgoKappe"/><positionref ref="pBgoKappe"/> <rotationref ref="rotBgoKappe"/> </physvol> 
+   <physvol> <volumeref ref="BgoBracketMumetalRing"/><positionref ref="pBgoBracketMumetalRingA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoBracketMumetalRing"/><positionref ref="pBgoBracketMumetalRingB"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoBracketMumetalCone"/><positionref ref="pBgoBracketMumetalConeA"/> <rotationref ref="identity"/> </physvol>
+   <physvol> <volumeref ref="BgoBracketMumetalCone"/><positionref ref="pBgoBracketMumetalConeB"/> <rotationref ref="rotPiYaxis"/> </physvol>
+   <auxiliary auxtype="sdflag"  auxvalue="0"/>
+   <auxiliary auxtype="trigflag"  auxvalue="0"/>
+   <auxiliary auxtype="visible"  auxvalue="0"/>
+   <auxiliary auxtype="solid"  auxvalue="0"/>
+   <auxiliary auxtype="color"  auxvalue="000500"/>
+</volume>
+ </structure>
+ <setup name="phy" version="1.0"> <world ref="World"/> </setup>
+</gdml>
+

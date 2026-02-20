@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--   GDML translation from the Fastrad file : "ModèleFastradray"
+	Processed the 2016/07/03 at 14h59 by the GDML module of Fastrad 3.6.1.0
+	Result file : "ModèleFastrad.gdml"
+-->
+
+<gdml xmlns:gdml="http://cern.ch/2001/Schemas/GDML" 
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+xsi:noNamespaceSchemaLocation="./gdml_schema/gdml2.xsd">
+
+
+<define>
+	<constant name="HALFPI" value="pi/2."/>
+	<constant name="PI" value="1.*pi"/>
+	<constant name="TWOPI" value="2.*pi"/>
+	<position name="center"/>
+	<rotation name="identity"/>
+	<rotation name="aligneSurX" y="HALFPI" />
+	<rotation name="aligneSurY" x="HALFPI" />
+</define>
+
+<!-- Materials definition -->
+
+<materials>
+	<element name="videRef" formula="VACUUM" Z="1">
+		<atom value="1"/>
+	</element>
+	<element name="aluminium" formula="Al" Z="13">
+		<atom value="26.981539"/>
+	</element>
+	<element name="silicium" formula="Si" Z="14">
+		<atom value="28.085500"/>
+	</element>
+
+	<material name="VACUUM" formula="VACUUM">
+		<D value ="1E-25" unit="g/cm3"/>
+		<fraction n="1.0" ref="videRef"/>
+	</material>
+	<material name="ALUMINIUM" formula="ALUMINIUM">
+		<D value ="2.700000" unit="g/cm3"/>
+		<fraction n="1.000000" ref="aluminium"/>
+	</material>
+	<material name="ALUMINIUMLAT" formula="ALUMINIUM">
+		<D value ="1.197000" unit="g/cm3"/>
+		<fraction n="1.000000" ref="aluminium"/>
+	</material>
+	<material name="ALUMINIUMCENTER" formula="ALUMINIUM">
+		<D value ="1.90000" unit="g/cm3"/>
+		<fraction n="1.000000" ref="aluminium"/>
+	</material>
+	<material name="SILICIUM" formula="SILICIUM">
+		<D value ="2.330000" unit="g/cm3"/>
+		<fraction n="1.000000" ref="silicium"/>
+	</material>
+</materials>
+
+<solids>
+	<sphere name="__World__SphereRef" rmin="0." rmax="7816.0880856485892" startphi="0." deltaphi="TWOPI" starttheta="0." deltatheta="PI"/>
+	<box name="Boite0x__1873104096" x="1794" y="1400" z="100"/>
+	<box name="Boite0x__1873101792" x="112.2" y="803.70000000000005" z="197.19999999999999"/>
+	<box name="Boite0x__1873098816" x="1508.5999999999999" y="5000" z="1"/>
+	<box name="Boite0x__1873097184" x="1508.5999999999999" y="5000" z="1"/>
+	<tube name="CylindreY0x__1873098624" rmin="0" rmax="56.609999999999999" z="1001" startphi="0" deltaphi="TWOPI"/>
+	<tube name="CylindreZ0x__1873093440" rmin="0" rmax="747.25" z="1287.7" startphi="0" deltaphi="TWOPI"/>
+	<box name="Boite0x__1873095744" x="1889.3" y="56.399999999999999" z="1584.9000000000001"/>
+	<box name="Boite0x__1873098336" x="1889.3" y="56.399999999999999" z="1584.9000000000001"/>
+	<box name="Boite0x__1873099008" x="1794.5" y="1800.4000000000001" z="919.79999999999995"/>
+	<tube name="CylindreY0x__1873092960" rmin="0" rmax="56.609999999999999" z="1001" startphi="0" deltaphi="TWOPI"/>
+	<box name="Boite0x__1873093632" x="1794" y="1300" z="250"/>
+</solids>
+
+<structure>
+
+	<volume name="Element0x__1819282368__vol">
+		<materialref ref="ALUMINIUMLAT"/>
+		<solidref ref="Boite0x__1873104096"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1819282368"/> -->
+	</volume>
+
+	<volume name="Element0x__1865485200__vol">
+		<materialref ref="ALUMINIUM"/>
+		<solidref ref="Boite0x__1873101792"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1865485200"/> -->
+	</volume>
+
+	<volume name="Element0x__1865484144__vol">
+		<materialref ref="ALUMINIUM"/>
+		<solidref ref="Boite0x__1873098816"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1865484144"/> -->
+	</volume>
+
+	<volume name="Element0x__1865486832__vol">
+		<materialref ref="ALUMINIUM"/>
+		<solidref ref="Boite0x__1873097184"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1865486832"/> -->
+	</volume>
+
+	<volume name="Element0x__1865485680__vol">
+		<materialref ref="ALUMINIUM"/>
+		<solidref ref="CylindreY0x__1873098624"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1865485680"/> -->
+	</volume>
+
+	<volume name="Element0x__1873100448__vol">
+		<materialref ref="ALUMINIUMCENTER"/>
+		<solidref ref="CylindreZ0x__1873093440"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1873100448"/> -->
+	</volume>
+
+	<volume name="Element0x__1873104384__vol">
+		<materialref ref="ALUMINIUM"/>
+		<solidref ref="Boite0x__1873095744"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1873104384"/> -->
+	</volume>
+
+	<volume name="Element0x__1873098144__vol">
+		<materialref ref="ALUMINIUM"/>
+		<solidref ref="Boite0x__1873098336"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1873098144"/> -->
+	</volume>
+
+	<volume name="Element0x__1873097376__vol">
+		<materialref ref="ALUMINIUMLAT"/>
+		<solidref ref="Boite0x__1873099008"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1873097376"/> -->
+	</volume>
+
+	<volume name="Element0x__1873094496__vol">
+		<materialref ref="ALUMINIUM"/>
+		<solidref ref="CylindreY0x__1873092960"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1873094496"/> -->
+	</volume>
+
+	<volume name="Element0x__1873096704__vol">
+		<materialref ref="ALUMINIUMLAT"/>
+		<solidref ref="Boite0x__1873093632"/>
+		<!-- <auxiliary auxtype="Hierarchy" auxvalue="Structure, Region, Element0x__1873096704"/> -->
+	</volume>
+
+	<volume name="Structure0x__1819282560">
+		<materialref ref="VACUUM"/>
+		<solidref ref="__World__SphereRef"/>
+
+		<physvol name="Element0x__1819282368">
+			<volumeref ref="Element0x__1819282368__vol"/>
+			<position name="posRef_1" x="0" y="0" z="980"/>
+			<rotationref ref="identity"/>
+		</physvol>
+		<physvol name="Element0x__1865485200">
+			<volumeref ref="Element0x__1865485200__vol"/>
+			<position name="posRef_2" x="807" y="0" z="550"/>
+			<rotationref ref="identity"/>
+		</physvol>
+		<physvol name="Element0x__1865484144">
+			<volumeref ref="Element0x__1865484144__vol"/>
+			<position name="posRef_3" x="0" y="-4475" z="0"/>
+			<rotationref ref="identity"/>
+		</physvol>
+		<physvol name="Element0x__1865486832">
+			<volumeref ref="Element0x__1865486832__vol"/>
+			<position name="posRef_4" x="0" y="4475" z="0"/>
+			<rotationref ref="identity"/>
+		</physvol>
+		<physvol name="Element0x__1865485680">
+			<volumeref ref="Element0x__1865485680__vol"/>
+			<position name="posRef_5" x="0" y="-1470" z="0"/>
+			<rotation name="rotRef_1" x="HALFPI" z="HALFPI"/>
+		</physvol>
+		<physvol name="Element0x__1873100448">
+			<volumeref ref="Element0x__1873100448__vol"/>
+		</physvol>
+		<physvol name="Element0x__1873104384">
+			<volumeref ref="Element0x__1873104384__vol"/>
+			<position name="posRef_6" x="0" y="-932.79999999999995" z="150"/>
+			<rotationref ref="identity"/>
+		</physvol>
+		<physvol name="Element0x__1873098144">
+			<volumeref ref="Element0x__1873098144__vol"/>
+			<position name="posRef_7" x="0" y="932.79999999999995" z="150"/>
+			<rotationref ref="identity"/>
+		</physvol>
+		<physvol name="Element0x__1873097376">
+			<volumeref ref="Element0x__1873097376__vol"/>
+			<position name="posRef_8" x="0" y="0" z="1500"/>
+			<rotationref ref="identity"/>
+		</physvol>
+		<physvol name="Element0x__1873094496">
+			<volumeref ref="Element0x__1873094496__vol"/>
+			<position name="posRef_9" x="0" y="1470" z="0"/>
+			<rotation name="rotRef_2" x="HALFPI" z="HALFPI"/>
+		</physvol>
+		<physvol name="Element0x__1873096704">
+			<volumeref ref="Element0x__1873096704__vol"/>
+			<position name="posRef_10" x="0" y="0" z="800"/>
+			<rotationref ref="identity"/>
+		</physvol>
+	</volume>
+</structure>
+
+<setup name="Setup" version="1.0">
+	<world ref="Structure0x__1819282560"/>
+</setup>
+
+</gdml>
