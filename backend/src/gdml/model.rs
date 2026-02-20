@@ -206,9 +206,16 @@ pub struct Volume {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileRef {
+    pub name: String,
+    pub volname: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhysVol {
     pub name: Option<String>,
     pub volume_ref: String,
+    pub file_ref: Option<FileRef>,
     pub position: Option<PlacementPos>,
     pub rotation: Option<PlacementRot>,
 }

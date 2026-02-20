@@ -7,6 +7,7 @@ use crate::state::app_state::SharedState;
 pub fn create_router(state: SharedState) -> Router {
     Router::new()
         .route("/api/files/upload", post(handlers::upload_file))
+        .route("/api/files/upload-multi", post(handlers::upload_files))
         .route("/api/document/summary", get(handlers::get_summary))
         .route("/api/document/meshes", get(handlers::get_meshes))
         .route("/api/document/defines", get(handlers::get_defines))

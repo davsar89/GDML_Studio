@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<gdml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd">
+
+  <define>
+    <constant name="child_tube_rmax" value="25"/>
+    <constant name="child_tube_z"    value="80"/>
+    <constant name="child_box_size"  value="120"/>
+  </define>
+
+  <materials>
+    <material name="Copper" Z="29">
+      <D value="8.92" unit="g/cm3"/>
+      <atom value="63.546"/>
+    </material>
+  </materials>
+
+  <solids>
+    <box  name="ChildWorldBox" x="200" y="200" z="200" lunit="mm"/>
+    <tube name="CopperTube" rmin="10" rmax="child_tube_rmax" z="child_tube_z"
+          deltaphi="360" aunit="deg" lunit="mm"/>
+    <box  name="CopperBox" x="child_box_size" y="child_box_size" z="child_box_size" lunit="mm"/>
+  </solids>
+
+  <structure>
+    <volume name="CopperTubeVol">
+      <materialref ref="Copper"/>
+      <solidref ref="CopperTube"/>
+    </volume>
+
+    <volume name="CopperBoxVol">
+      <materialref ref="Copper"/>
+      <solidref ref="CopperBox"/>
+    </volume>
+
+    <volume name="ChildWorld">
+      <materialref ref="Copper"/>
+      <solidref ref="ChildWorldBox"/>
+      <physvol>
+        <volumeref ref="CopperTubeVol"/>
+        <position x="0" y="0" z="0" unit="mm"/>
+      </physvol>
+      <physvol>
+        <volumeref ref="CopperBoxVol"/>
+        <position x="0" y="80" z="0" unit="mm"/>
+      </physvol>
+    </volume>
+  </structure>
+
+  <setup name="Default" version="1.0">
+    <world ref="ChildWorld"/>
+  </setup>
+
+</gdml>

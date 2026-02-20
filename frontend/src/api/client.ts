@@ -19,6 +19,17 @@ export async function uploadFile(filename: string, content: string) {
   });
 }
 
+export async function uploadFiles(
+  files: Record<string, string>,
+  mainFile: string,
+) {
+  return fetchJson<DocumentSummary>('/api/files/upload-multi', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files, main_file: mainFile }),
+  });
+}
+
 export async function getSummary() {
   return fetchJson<DocumentSummary>('/api/document/summary');
 }

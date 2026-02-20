@@ -551,6 +551,7 @@ fn read_physvol_body(
     name: Option<String>,
 ) -> Result<PhysVol> {
     let mut volume_ref = String::new();
+    let mut file_ref = None;
     let mut position = None;
     let mut rotation = None;
     let mut buf = Vec::new();
@@ -563,6 +564,11 @@ fn read_physvol_body(
                 match tag.as_ref() {
                     b"volumeref" => {
                         volume_ref = get_attr(inner, "ref").unwrap_or_default();
+                    }
+                    b"file" => {
+                        let fname = get_attr(inner, "name").unwrap_or_default();
+                        let volname = get_attr(inner, "volname");
+                        file_ref = Some(FileRef { name: fname, volname });
                     }
                     b"position" => {
                         position = Some(PlacementPos::Inline(Position {
@@ -600,6 +606,12 @@ fn read_physvol_body(
                 match tag.as_ref() {
                     b"volumeref" => {
                         volume_ref = get_attr(inner, "ref").unwrap_or_default();
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"file" => {
+                        let fname = get_attr(inner, "name").unwrap_or_default();
+                        let volname = get_attr(inner, "volname");
+                        file_ref = Some(FileRef { name: fname, volname });
                         reader.read_to_end(inner.to_end().name())?;
                     }
                     b"position" => {
@@ -651,6 +663,7 @@ fn read_physvol_body(
     Ok(PhysVol {
         name,
         volume_ref,
+        file_ref,
         position,
         rotation,
     })

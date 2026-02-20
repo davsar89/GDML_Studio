@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<gdml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd">
+
+  <define>
+    <constant name="world_radius" value="2000"/>
+    <constant name="box_side"     value="200"/>
+  </define>
+
+  <materials>
+    <material name="Aluminium" Z="13">
+      <D value="2.70" unit="g/cm3"/>
+      <atom value="26.982"/>
+    </material>
+  </materials>
+
+  <solids>
+    <sphere name="WorldSphere" rmax="world_radius" deltaphi="360" deltatheta="180"
+            aunit="deg" lunit="mm"/>
+    <box    name="AlBox" x="box_side" y="box_side" z="box_side" lunit="mm"/>
+  </solids>
+
+  <structure>
+    <volume name="AlBoxVol">
+      <materialref ref="Aluminium"/>
+      <solidref ref="AlBox"/>
+    </volume>
+
+    <volume name="MotherWorld">
+      <materialref ref="Aluminium"/>
+      <solidref ref="WorldSphere"/>
+
+      <!-- Direct child geometry -->
+      <physvol>
+        <volumeref ref="AlBoxVol"/>
+        <position x="-300" y="0" z="0" unit="mm"/>
+      </physvol>
+
+      <!-- Included sub-detector from child file -->
+      <physvol>
+        <file name="test_modular_child.gdml" volname="ChildWorld"/>
+        <position x="300" y="0" z="0" unit="mm"/>
+      </physvol>
+    </volume>
+  </structure>
+
+  <setup name="Default" version="1.0">
+    <world ref="MotherWorld"/>
+  </setup>
+
+</gdml>

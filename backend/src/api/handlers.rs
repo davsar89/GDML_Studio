@@ -19,6 +19,123 @@ pub struct UploadFileRequest {
     pub segments: Option<u32>,
 }
 
+#[derive(Deserialize)]
+pub struct UploadFilesRequest {
+    pub files: HashMap<String, String>,
+    pub main_file: String,
+    pub segments: Option<u32>,
+}
+
+/// Merge a child GdmlDocument into the main document, resolving file_ref physvols.
+fn merge_child_into_main(
+    main_doc: &mut GdmlDocument,
+    child_doc: &GdmlDocument,
+    file_ref_name: &str,
+    volname: &Option<String>,
+    warnings: &mut Vec<String>,
+) {
+    // Determine the child's target volume (volname or its world_ref)
+    let child_world = volname
+        .as_deref()
+        .unwrap_or(&child_doc.setup.world_ref)
+        .to_string();
+
+    if child_world.is_empty() {
+        warnings.push(format!(
+            "Child file '{}' has no world reference and no volname specified",
+            file_ref_name
+        ));
+        return;
+    }
+
+    // Collect existing names to detect duplicates
+    let existing_solids: HashSet<String> = main_doc
+        .solids
+        .solids
+        .iter()
+        .map(|s| s.name().to_string())
+        .collect();
+    let existing_materials: HashSet<String> = main_doc
+        .materials
+        .materials
+        .iter()
+        .map(|m| m.name.clone())
+        .collect();
+    let existing_elements: HashSet<String> = main_doc
+        .materials
+        .elements
+        .iter()
+        .map(|e| e.name.clone())
+        .collect();
+    let existing_volumes: HashSet<String> = main_doc
+        .structure
+        .volumes
+        .iter()
+        .map(|v| v.name.clone())
+        .collect();
+
+    // Merge defines (constants, quantities, variables, expressions, positions, rotations)
+    main_doc.defines.constants.extend(child_doc.defines.constants.clone());
+    main_doc.defines.quantities.extend(child_doc.defines.quantities.clone());
+    main_doc.defines.variables.extend(child_doc.defines.variables.clone());
+    main_doc.defines.expressions.extend(child_doc.defines.expressions.clone());
+    main_doc.defines.positions.extend(child_doc.defines.positions.clone());
+    main_doc.defines.rotations.extend(child_doc.defines.rotations.clone());
+
+    // Merge elements (skip duplicates)
+    for elem in &child_doc.materials.elements {
+        if !existing_elements.contains(&elem.name) {
+            main_doc.materials.elements.push(elem.clone());
+        }
+    }
+
+    // Merge materials (skip duplicates)
+    for mat in &child_doc.materials.materials {
+        if !existing_materials.contains(&mat.name) {
+            main_doc.materials.materials.push(mat.clone());
+        }
+    }
+
+    // Merge solids (skip duplicates)
+    for solid in &child_doc.solids.solids {
+        if !existing_solids.contains(solid.name()) {
+            main_doc.solids.solids.push(solid.clone());
+        }
+    }
+
+    // Merge volumes (skip duplicates)
+    for vol in &child_doc.structure.volumes {
+        if !existing_volumes.contains(&vol.name) {
+            main_doc.structure.volumes.push(vol.clone());
+        }
+    }
+
+    // Now resolve file_ref physvols: replace file_ref with volume_ref pointing to child_world
+    for vol in &mut main_doc.structure.volumes {
+        for pv in &mut vol.physvols {
+            if let Some(ref fref) = pv.file_ref {
+                if fref.name == file_ref_name {
+                    pv.volume_ref = child_world.clone();
+                    pv.file_ref = None;
+                }
+            }
+        }
+    }
+}
+
+/// Collect all file references from a parsed document.
+fn collect_file_refs(doc: &GdmlDocument) -> Vec<(String, Option<String>)> {
+    let mut refs = Vec::new();
+    for vol in &doc.structure.volumes {
+        for pv in &vol.physvols {
+            if let Some(ref fref) = pv.file_ref {
+                refs.push((fref.name.clone(), fref.volname.clone()));
+            }
+        }
+    }
+    refs
+}
+
 pub async fn upload_file(
     State(state): State<SharedState>,
     Json(req): Json<UploadFileRequest>,
@@ -31,6 +148,18 @@ pub async fn upload_file(
     let doc = parser::parse_gdml_from_bytes(req.content.as_bytes(), req.filename.clone())
         .map_err(|e| ApiError::bad_request(&format!("Parse error: {}", e)))?;
 
+    // Check for unresolved file references
+    let file_refs = collect_file_refs(&doc);
+    let mut extra_warnings = Vec::new();
+    if !file_refs.is_empty() {
+        let names: Vec<_> = file_refs.iter().map(|(n, _)| n.as_str()).collect();
+        extra_warnings.push(format!(
+            "File contains references to external files that were not provided: {}. \
+             Select all GDML files together to resolve these references.",
+            names.join(", ")
+        ));
+    }
+
     // Evaluate expressions
     let mut engine = EvalEngine::new();
     engine
@@ -39,8 +168,9 @@ pub async fn upload_file(
 
     // Tessellate solids
     let segments = req.segments.unwrap_or_else(config::mesh_segments);
-    let (meshes, warnings) = tessellator::tessellate_all_solids(&doc.solids, &engine, segments)
+    let (meshes, mut warnings) = tessellator::tessellate_all_solids(&doc.solids, &engine, segments)
         .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
+    warnings.extend(extra_warnings);
 
     let summary = json!({
         "filename": doc.filename,
@@ -64,6 +194,96 @@ pub async fn upload_file(
         meshes,
         warnings,
         file_path: req.filename,
+    });
+
+    Ok(Json(summary))
+}
+
+pub async fn upload_files(
+    State(state): State<SharedState>,
+    Json(req): Json<UploadFilesRequest>,
+) -> Result<Json<Value>, ApiError> {
+    if !req.main_file.ends_with(".gdml") {
+        return Err(ApiError::bad_request("Only .gdml files are supported"));
+    }
+
+    let main_content = req
+        .files
+        .get(&req.main_file)
+        .ok_or_else(|| ApiError::bad_request("Main file not found in uploaded files"))?;
+
+    // Parse the main file
+    let mut main_doc =
+        parser::parse_gdml_from_bytes(main_content.as_bytes(), req.main_file.clone())
+            .map_err(|e| ApiError::bad_request(&format!("Parse error in {}: {}", req.main_file, e)))?;
+
+    // Parse all other files into a lookup map
+    let mut child_docs: HashMap<String, GdmlDocument> = HashMap::new();
+    for (name, content) in &req.files {
+        if name != &req.main_file {
+            match parser::parse_gdml_from_bytes(content.as_bytes(), name.clone()) {
+                Ok(doc) => {
+                    child_docs.insert(name.clone(), doc);
+                }
+                Err(e) => {
+                    return Err(ApiError::bad_request(&format!(
+                        "Parse error in {}: {}",
+                        name, e
+                    )));
+                }
+            }
+        }
+    }
+
+    // Resolve file references: merge child documents into main
+    let mut merge_warnings = Vec::new();
+    let file_refs = collect_file_refs(&main_doc);
+    for (ref_name, volname) in &file_refs {
+        if let Some(child_doc) = child_docs.get(ref_name) {
+            merge_child_into_main(&mut main_doc, child_doc, ref_name, volname, &mut merge_warnings);
+        } else {
+            merge_warnings.push(format!(
+                "Referenced file '{}' was not provided in the upload",
+                ref_name
+            ));
+        }
+    }
+
+    // Evaluate expressions on the merged document
+    let mut engine = EvalEngine::new();
+    engine
+        .evaluate_all(&main_doc.defines)
+        .map_err(|e| ApiError::internal(&format!("Expression evaluation error: {}", e)))?;
+
+    // Tessellate solids
+    let segments = req.segments.unwrap_or_else(config::mesh_segments);
+    let (meshes, mut warnings) =
+        tessellator::tessellate_all_solids(&main_doc.solids, &engine, segments)
+            .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
+    warnings.extend(merge_warnings);
+
+    let summary = json!({
+        "filename": main_doc.filename,
+        "defines_count": main_doc.defines.constants.len() + main_doc.defines.quantities.len()
+            + main_doc.defines.variables.len() + main_doc.defines.expressions.len(),
+        "positions_count": main_doc.defines.positions.len(),
+        "rotations_count": main_doc.defines.rotations.len(),
+        "materials_count": main_doc.materials.materials.len(),
+        "elements_count": main_doc.materials.elements.len(),
+        "solids_count": main_doc.solids.solids.len(),
+        "volumes_count": main_doc.structure.volumes.len(),
+        "meshes_count": meshes.len(),
+        "world_ref": main_doc.setup.world_ref,
+        "warnings": warnings,
+    });
+
+    let mut state_w = state.write().await;
+    state_w.loaded = Some(LoadedDocument {
+        document: main_doc,
+        engine,
+        meshes,
+        warnings,
+        file_path: req.main_file,
     });
 
     Ok(Json(summary))

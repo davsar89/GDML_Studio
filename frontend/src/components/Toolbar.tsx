@@ -2,6 +2,45 @@ import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { clearAllGeometries } from './Viewport/geometryCache';
 
+/** Scan GDML text for <file name="..."> references and return the referenced filenames. */
+function findFileRefs(content: string): string[] {
+  const refs: string[] = [];
+  const re = /<file\s[^>]*name\s*=\s*"([^"]+)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    refs.push(m[1]);
+  }
+  return refs;
+}
+
+/**
+ * Given a map of filename→content, determine the "main" file.
+ * The main file is the one that references other files via <file> but is not
+ * itself referenced by any other file.  Falls back to the first file.
+ */
+function detectMainFile(files: Record<string, string>): string {
+  const names = Object.keys(files);
+  if (names.length === 1) return names[0];
+
+  const referencedNames = new Set<string>();
+  const refCountMap: Record<string, number> = {};
+
+  for (const [name, content] of Object.entries(files)) {
+    const refs = findFileRefs(content);
+    refCountMap[name] = refs.length;
+    for (const r of refs) referencedNames.add(r);
+  }
+
+  // Main = references others but is not referenced itself
+  for (const name of names) {
+    if (refCountMap[name] > 0 && !referencedNames.has(name)) {
+      return name;
+    }
+  }
+  // Fallback: the one with the most references
+  return names.sort((a, b) => (refCountMap[b] || 0) - (refCountMap[a] || 0))[0];
+}
+
 export default function Toolbar() {
   const loading = useAppStore((s) => s.loading);
   const summary = useAppStore((s) => s.summary);
@@ -12,9 +51,10 @@ export default function Toolbar() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.gdml';
+    input.multiple = true;
     input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
+      const fileList = input.files;
+      if (!fileList || fileList.length === 0) return;
 
       const store = useAppStore.getState();
       store.setLoading(true);
@@ -22,8 +62,33 @@ export default function Toolbar() {
       clearAllGeometries();
 
       try {
-        const content = await file.text();
-        const result = await api.uploadFile(file.name, content);
+        // Read all selected files
+        const fileMap: Record<string, string> = {};
+        for (let i = 0; i < fileList.length; i++) {
+          const f = fileList[i];
+          fileMap[f.name] = await f.text();
+        }
+
+        let result: Awaited<ReturnType<typeof api.uploadFile>>;
+
+        if (fileList.length === 1) {
+          // Single file — check if it references other files
+          const name = fileList[0].name;
+          const content = fileMap[name];
+          const refs = findFileRefs(content);
+
+          if (refs.length > 0) {
+            // Auto-detect: prompt user (via warning) but still load what we can
+            result = await api.uploadFile(name, content);
+          } else {
+            result = await api.uploadFile(name, content);
+          }
+        } else {
+          // Multiple files — auto-detect main and use multi-upload
+          const mainFile = detectMainFile(fileMap);
+          result = await api.uploadFiles(fileMap, mainFile);
+        }
+
         store.setSummary(result);
 
         const meshData = await api.getMeshes();
@@ -37,7 +102,8 @@ export default function Toolbar() {
         store.setVolumes(structData.volumes);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
-        store.setError(`Failed to load ${file.name}: ${msg}`);
+        const names = Array.from(fileList).map((f) => f.name).join(', ');
+        store.setError(`Failed to load ${names}: ${msg}`);
       } finally {
         store.setLoading(false);
       }
@@ -62,7 +128,7 @@ export default function Toolbar() {
         GDML Studio
       </span>
       <button onClick={handleOpenFile} disabled={loading} style={btnStyle}>
-        {loading ? 'Loading...' : 'Open File'}
+        {loading ? 'Loading...' : 'Open File(s)'}
       </button>
       {summary && (
         <>
