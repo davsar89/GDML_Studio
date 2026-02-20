@@ -69,7 +69,7 @@ fn run_pipeline(gdml_path: &Path) -> PipelineResult {
 
 #[test]
 fn test_bgo_det_model_pipeline() {
-    let path = project_root().join("BgoDetModel_v2_00.gdml");
+    let path = project_root().join("sample_data/BgoDetModel_v2_00.gdml");
     assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
@@ -101,7 +101,7 @@ fn test_bgo_det_model_pipeline() {
 
 #[test]
 fn test_fermi_satellite_pipeline() {
-    let path = project_root().join("fermi_simple_elements_satellite.gdml");
+    let path = project_root().join("sample_data/fermi_simple_elements_satellite.gdml");
     assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
@@ -131,7 +131,7 @@ fn test_fermi_satellite_pipeline() {
 
 #[test]
 fn test_nai_det_model_pipeline() {
-    let path = project_root().join("NaiDetModelWithMLI_v2_00.gdml");
+    let path = project_root().join("sample_data/NaiDetModelWithMLI_v2_00.gdml");
     assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
@@ -163,9 +163,9 @@ fn test_nai_det_model_pipeline() {
 fn test_all_files_have_setup_section() {
     let root = project_root();
     let files = [
-        "BgoDetModel_v2_00.gdml",
-        "fermi_simple_elements_satellite.gdml",
-        "NaiDetModelWithMLI_v2_00.gdml",
+        "sample_data/BgoDetModel_v2_00.gdml",
+        "sample_data/fermi_simple_elements_satellite.gdml",
+        "sample_data/NaiDetModelWithMLI_v2_00.gdml",
     ];
 
     for file in &files {
@@ -185,9 +185,9 @@ fn test_all_files_have_setup_section() {
 fn test_all_files_materials_non_empty() {
     let root = project_root();
     let files = [
-        "BgoDetModel_v2_00.gdml",
-        "fermi_simple_elements_satellite.gdml",
-        "NaiDetModelWithMLI_v2_00.gdml",
+        "sample_data/BgoDetModel_v2_00.gdml",
+        "sample_data/fermi_simple_elements_satellite.gdml",
+        "sample_data/NaiDetModelWithMLI_v2_00.gdml",
     ];
 
     for file in &files {
@@ -210,9 +210,9 @@ fn test_mesh_geometry_validity() {
     // normals divisible by 3, indices divisible by 3, and index values in range.
     let root = project_root();
     let files = [
-        "BgoDetModel_v2_00.gdml",
-        "fermi_simple_elements_satellite.gdml",
-        "NaiDetModelWithMLI_v2_00.gdml",
+        "sample_data/BgoDetModel_v2_00.gdml",
+        "sample_data/fermi_simple_elements_satellite.gdml",
+        "sample_data/NaiDetModelWithMLI_v2_00.gdml",
     ];
 
     for file in &files {

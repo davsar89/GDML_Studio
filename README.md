@@ -37,9 +37,9 @@ Open the URL printed by Vite, click **Open File**, and provide the path to a `.g
 
 A few GDML files are included in the repo root for quick testing:
 
-- `BgoDetModel_v2_00.gdml`
-- `NaiDetModelWithMLI_v2_00.gdml`
-- `fermi_simple_elements_satellite.gdml`
+- `sample_data/BgoDetModel_v2_00.gdml`
+- `sample_data/NaiDetModelWithMLI_v2_00.gdml`
+- `sample_data/fermi_simple_elements_satellite.gdml`
 
 ## Tests
 
