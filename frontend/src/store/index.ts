@@ -11,6 +11,8 @@ interface AppState {
   defines: DefineValue[];
   volumes: VolumeInfo[];
   selectedVolume: string | null;
+  meshOpacity: number;
+  hiddenVolumes: Set<string>;
 
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -20,6 +22,8 @@ interface AppState {
   setDefines: (defines: DefineValue[]) => void;
   setVolumes: (volumes: VolumeInfo[]) => void;
   setSelectedVolume: (name: string | null) => void;
+  setMeshOpacity: (opacity: number) => void;
+  toggleVolumeVisibility: (volumeName: string) => void;
   reset: () => void;
 }
 
@@ -32,6 +36,8 @@ export const useAppStore = create<AppState>((set) => ({
   defines: [],
   volumes: [],
   selectedVolume: null,
+  meshOpacity: 1.0,
+  hiddenVolumes: new Set<string>(),
 
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
@@ -41,6 +47,17 @@ export const useAppStore = create<AppState>((set) => ({
   setDefines: (defines) => set({ defines }),
   setVolumes: (volumes) => set({ volumes }),
   setSelectedVolume: (name) => set({ selectedVolume: name }),
+  setMeshOpacity: (opacity) => set({ meshOpacity: opacity }),
+  toggleVolumeVisibility: (volumeName) =>
+    set((state) => {
+      const next = new Set(state.hiddenVolumes);
+      if (next.has(volumeName)) {
+        next.delete(volumeName);
+      } else {
+        next.add(volumeName);
+      }
+      return { hiddenVolumes: next };
+    }),
   reset: () => {
     clearAllGeometries();
     set({
@@ -52,6 +69,8 @@ export const useAppStore = create<AppState>((set) => ({
       defines: [],
       volumes: [],
       selectedVolume: null,
+      meshOpacity: 1.0,
+      hiddenVolumes: new Set<string>(),
     });
   },
 }));

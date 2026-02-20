@@ -5,6 +5,8 @@ import { clearAllGeometries } from './Viewport/geometryCache';
 export default function Toolbar() {
   const loading = useAppStore((s) => s.loading);
   const summary = useAppStore((s) => s.summary);
+  const meshOpacity = useAppStore((s) => s.meshOpacity);
+  const setMeshOpacity = useAppStore((s) => s.setMeshOpacity);
 
   const handleOpenFile = () => {
     const input = document.createElement('input');
@@ -63,9 +65,26 @@ export default function Toolbar() {
         {loading ? 'Loading...' : 'Open File'}
       </button>
       {summary && (
-        <span style={{ fontSize: 12, color: '#8899aa' }}>
-          {summary.filename} &mdash; {summary.solids_count} solids, {summary.volumes_count} volumes, {summary.meshes_count} meshes
-        </span>
+        <>
+          <span style={{ fontSize: 12, color: '#8899aa' }}>
+            {summary.filename} &mdash; {summary.solids_count} solids, {summary.volumes_count} volumes, {summary.meshes_count} meshes
+          </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <label style={{ fontSize: 11, color: '#8899aa' }}>Opacity</label>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={meshOpacity}
+              onChange={(e) => setMeshOpacity(Number(e.target.value))}
+              style={{ width: 100, accentColor: '#e94560' }}
+            />
+            <span style={{ fontSize: 11, color: '#b0b8c0', minWidth: 32, textAlign: 'right' }}>
+              {Math.round(meshOpacity * 100)}%
+            </span>
+          </div>
+        </>
       )}
     </div>
   );

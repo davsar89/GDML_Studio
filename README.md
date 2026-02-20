@@ -38,7 +38,7 @@ cd backend
 cargo run --release
 ```
 
-The backend compiles and starts an HTTP server on `http://127.0.0.1:3001`.
+The backend compiles and starts an HTTP server on `http://127.0.0.1:4001`.
 On the first run, Cargo will download and compile all dependencies (this may take a minute or two).
 
 ### 3. Start the frontend (in a separate terminal)

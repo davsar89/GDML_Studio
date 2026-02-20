@@ -262,6 +262,7 @@ pub struct SceneNode {
     pub solid_name: String,
     pub material_name: String,
     pub color: Option<String>,
+    pub density: Option<f64>,
     pub position: [f64; 3],
     pub rotation: [f64; 3],
     pub is_world: bool,

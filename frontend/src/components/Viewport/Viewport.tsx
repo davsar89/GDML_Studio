@@ -102,13 +102,19 @@ export default function Viewport() {
         </div>
       )}
       <Canvas
+        flat
         camera={{ position: [500, 500, 500], fov: 50, near: 0.1, far: 100000 }}
         gl={{ antialias: true }}
       >
         <color attach="background" args={['#0d1117']} />
-        <ambientLight intensity={0.4} />
-        <directionalLight position={[500, 500, 500]} intensity={0.8} />
-        <directionalLight position={[-300, -200, -400]} intensity={0.3} />
+        <ambientLight intensity={1.0} />
+        <hemisphereLight args={['#b1e1ff', '#666680', 0.8]} />
+        <directionalLight position={[500, 500, 500]} intensity={1.8} />
+        <directionalLight position={[-300, -200, -400]} intensity={1.0} />
+        <directionalLight position={[0, -500, 300]} intensity={0.7} />
+        <directionalLight position={[0, 500, -500]} intensity={0.5} />
+        <directionalLight position={[-500, 0, 0]} intensity={0.5} />
+        <directionalLight position={[500, 0, -500]} intensity={0.4} />
         {sceneGraph && <Scene node={sceneGraph} />}
         <DynamicGrid />
         <AutoFitCamera sceneGraph={sceneGraph} />

@@ -4,6 +4,7 @@ export interface SceneNode {
   solid_name: string;
   material_name: string;
   color: string | null;
+  density: number | null;
   position: [number, number, number];
   rotation: [number, number, number];
   is_world: boolean;

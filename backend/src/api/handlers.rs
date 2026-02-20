@@ -250,10 +250,28 @@ fn build_scene_graph(doc: &GdmlDocument, engine: &EvalEngine) -> SceneNode {
         .map(|v| (v.name.as_str(), v))
         .collect();
 
+    // Build material name → density (g/cm³) lookup
+    let density_map: HashMap<&str, f64> = doc
+        .materials
+        .materials
+        .iter()
+        .filter_map(|m| {
+            let d = m.density.as_ref()?;
+            let val = d.value.parse::<f64>().ok()?;
+            // Convert to g/cm³ if unit is specified
+            let density = match d.unit.as_deref() {
+                Some("kg/m3") | Some("kg/m³") => val / 1000.0,
+                Some("mg/cm3") | Some("mg/cm³") => val / 1000.0,
+                _ => val, // default g/cm³
+            };
+            Some((m.name.as_str(), density))
+        })
+        .collect();
+
     let mut visited = HashSet::new();
 
     if let Some(world_vol) = vol_map.get(world_ref.as_str()) {
-        build_volume_node(world_vol, &vol_map, engine, [0.0; 3], [0.0; 3], true, &mut visited)
+        build_volume_node(world_vol, &vol_map, &density_map, engine, [0.0; 3], [0.0; 3], true, &mut visited)
     } else {
         SceneNode {
             name: "World".to_string(),
@@ -261,6 +279,7 @@ fn build_scene_graph(doc: &GdmlDocument, engine: &EvalEngine) -> SceneNode {
             solid_name: String::new(),
             material_name: String::new(),
             color: None,
+            density: None,
             position: [0.0; 3],
             rotation: [0.0; 3],
             is_world: true,
@@ -272,6 +291,7 @@ fn build_scene_graph(doc: &GdmlDocument, engine: &EvalEngine) -> SceneNode {
 fn build_volume_node(
     vol: &Volume,
     vol_map: &HashMap<&str, &Volume>,
+    density_map: &HashMap<&str, f64>,
     engine: &EvalEngine,
     position: [f64; 3],
     rotation: [f64; 3],
@@ -285,6 +305,8 @@ fn build_volume_node(
         .iter()
         .find(|a| a.auxtype == "color")
         .map(|a| a.auxvalue.clone());
+
+    let density = density_map.get(vol.material_ref.as_str()).copied();
 
     let children: Vec<SceneNode> = vol
         .physvols
@@ -304,7 +326,7 @@ fn build_volume_node(
             let pos = resolve_placement_pos(&pv.position, engine);
             let rot = resolve_placement_rot(&pv.rotation, engine);
 
-            Some(build_volume_node(child_vol, vol_map, engine, pos, rot, false, visited))
+            Some(build_volume_node(child_vol, vol_map, density_map, engine, pos, rot, false, visited))
         })
         .collect();
 
@@ -316,6 +338,7 @@ fn build_volume_node(
         solid_name: vol.solid_ref.clone(),
         material_name: vol.material_ref.clone(),
         color,
+        density,
         position,
         rotation,
         is_world,
