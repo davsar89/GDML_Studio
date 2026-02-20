@@ -53,22 +53,24 @@ Vite will print a local URL (typically `http://localhost:5173`).
 
 ### 4. Use the application
 
-Open the Vite URL in your browser, click **Open File**, and provide the **absolute path** to a `.gdml` file (e.g. one of the sample files below).
+Open the Vite URL in your browser, click **Open File**, and select a `.gdml` file (e.g. one of the sample files below).
 
 ## Sample Files
 
-Three GDML files are included in `sample_data/` for quick testing:
+GDML files are included in `sample_data/` for quick testing:
 
 | File | Size | Description |
 |------|------|-------------|
 | `sample_data/BgoDetModel_v2_00.gdml` | 158 KB | BGO detector model |
 | `sample_data/NaiDetModelWithMLI_v2_00.gdml` | 167 KB | NaI detector model with MLI |
 | `sample_data/fermi_simple_elements_satellite.gdml` | 7.7 KB | Fermi satellite simple geometry |
+| `sample_data/test_all_features.gdml` | 4 KB | Test file exercising all solid types |
 
 ## Running Tests
 
 ```bash
-# Backend integration tests (from project root)
+# Backend tests
+cd backend
 cargo test
 
 # Frontend type check
