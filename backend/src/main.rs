@@ -1,5 +1,6 @@
+use axum::http::{HeaderName, Method};
 use std::net::SocketAddr;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
 use tracing_subscriber;
 
@@ -16,11 +17,17 @@ async fn main() {
     // API routes
     let api_router = api::routes::create_router(shared_state.clone());
 
-    // CORS for dev mode (Vite runs on different port)
+    // CORS restricted to localhost origins (Vite dev server + production)
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::predicate(|origin, _| {
+            if let Ok(s) = origin.to_str() {
+                s.starts_with("http://localhost:") || s.starts_with("http://127.0.0.1:")
+            } else {
+                false
+            }
+        }))
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers([HeaderName::from_static("content-type")]);
 
     // Try to serve static frontend files
     let cwd = std::env::current_dir().unwrap_or_default();

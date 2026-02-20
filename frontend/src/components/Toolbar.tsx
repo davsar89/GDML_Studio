@@ -1,37 +1,46 @@
 import { useAppStore } from '../store';
 import * as api from '../api/client';
+import { clearAllGeometries } from './Viewport/geometryCache';
 
 export default function Toolbar() {
   const loading = useAppStore((s) => s.loading);
   const summary = useAppStore((s) => s.summary);
 
-  const handleOpenFile = async () => {
-    const path = prompt('Enter the full path to a GDML file:');
-    if (!path) return;
+  const handleOpenFile = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.gdml';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
 
-    const store = useAppStore.getState();
-    store.setLoading(true);
-    store.setError(null);
+      const store = useAppStore.getState();
+      store.setLoading(true);
+      store.setError(null);
+      clearAllGeometries();
 
-    try {
-      const result = await api.openFile(path);
-      store.setSummary(result);
+      try {
+        const content = await file.text();
+        const result = await api.uploadFile(file.name, content);
+        store.setSummary(result);
 
-      const meshData = await api.getMeshes();
-      store.setMeshes(meshData.meshes);
-      store.setSceneGraph(meshData.scene_graph);
+        const meshData = await api.getMeshes();
+        store.setMeshes(meshData.meshes);
+        store.setSceneGraph(meshData.scene_graph);
 
-      const defData = await api.getDefines();
-      store.setDefines(defData.defines);
+        const defData = await api.getDefines();
+        store.setDefines(defData.defines);
 
-      const structData = await api.getStructure();
-      store.setVolumes(structData.volumes);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      store.setError(`Failed to load ${path}: ${msg}`);
-    } finally {
-      store.setLoading(false);
-    }
+        const structData = await api.getStructure();
+        store.setVolumes(structData.volumes);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        store.setError(`Failed to load ${file.name}: ${msg}`);
+      } finally {
+        store.setLoading(false);
+      }
+    };
+    input.click();
   };
 
   return (

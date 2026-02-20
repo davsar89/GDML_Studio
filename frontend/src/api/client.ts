@@ -11,11 +11,11 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export async function openFile(path: string) {
-  return fetchJson<DocumentSummary>('/api/files/open', {
+export async function uploadFile(filename: string, content: string) {
+  return fetchJson<DocumentSummary>('/api/files/upload', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path }),
+    body: JSON.stringify({ filename, content }),
   });
 }
 

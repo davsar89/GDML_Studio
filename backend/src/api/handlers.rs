@@ -3,9 +3,9 @@ use axum::response::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 
 use super::errors::ApiError;
+use crate::config;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
 use crate::gdml::parser;
@@ -13,26 +13,22 @@ use crate::mesh::tessellator;
 use crate::state::app_state::{LoadedDocument, SharedState};
 
 #[derive(Deserialize)]
-pub struct OpenFileRequest {
-    pub path: String,
+pub struct UploadFileRequest {
+    pub filename: String,
+    pub content: String,
+    pub segments: Option<u32>,
 }
 
-pub async fn open_file(
+pub async fn upload_file(
     State(state): State<SharedState>,
-    Json(req): Json<OpenFileRequest>,
+    Json(req): Json<UploadFileRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    let path = Path::new(&req.path);
-    if path.extension().and_then(|e| e.to_str()) != Some("gdml") {
+    if !req.filename.ends_with(".gdml") {
         return Err(ApiError::bad_request("Only .gdml files are supported"));
     }
-    if !path.exists() {
-        return Err(ApiError::not_found(&format!("File not found: {}", req.path)));
-    }
 
-    let path_str = req.path.clone();
-
-    // Parse GDML
-    let doc = parser::parse_gdml(path)
+    // Parse GDML from uploaded content
+    let doc = parser::parse_gdml_from_bytes(req.content.as_bytes(), req.filename.clone())
         .map_err(|e| ApiError::bad_request(&format!("Parse error: {}", e)))?;
 
     // Evaluate expressions
@@ -42,7 +38,8 @@ pub async fn open_file(
         .map_err(|e| ApiError::internal(&format!("Expression evaluation error: {}", e)))?;
 
     // Tessellate solids
-    let (meshes, warnings) = tessellator::tessellate_all_solids(&doc.solids, &engine)
+    let segments = req.segments.unwrap_or_else(config::mesh_segments);
+    let (meshes, warnings) = tessellator::tessellate_all_solids(&doc.solids, &engine, segments)
         .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
 
     let summary = json!({
@@ -66,7 +63,7 @@ pub async fn open_file(
         engine,
         meshes,
         warnings,
-        file_path: path_str,
+        file_path: req.filename,
     });
 
     Ok(Json(summary))

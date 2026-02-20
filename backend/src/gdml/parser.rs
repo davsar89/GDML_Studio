@@ -11,8 +11,12 @@ pub fn parse_gdml(path: &Path) -> Result<GdmlDocument> {
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .unwrap_or_default();
+    parse_gdml_from_bytes(&raw, filename)
+}
 
-    let mut reader = Reader::from_reader(raw.as_slice());
+/// Parse GDML from raw bytes with a given filename.
+pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocument> {
+    let mut reader = Reader::from_reader(raw);
     reader.config_mut().trim_text(true);
 
     let mut defines = DefineSection::default();
