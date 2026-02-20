@@ -4,3 +4,6 @@ target/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local project notes
+CLAUDE.md
