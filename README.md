@@ -15,37 +15,61 @@ The backend exposes a REST API that the frontend consumes. Communication is JSON
 
 ## Prerequisites
 
-- **Rust** (stable toolchain)
-- **Node.js** (v18+) and **npm**
+- **Rust** stable toolchain — [install via rustup](https://rustup.rs/)
+- **Node.js** v18+ and **npm** — [install from nodejs.org](https://nodejs.org/)
 
-## Getting Started
+## Quick Start
+
+### 1. Clone the repository
 
 ```bash
-# Backend
+git clone git@github.com:davsar89/GDML_Studio.git
+cd GDML_Studio
+```
+
+### 2. Start the backend
+
+```bash
 cd backend
 cargo run --release
+```
 
-# Frontend (separate terminal)
+The backend compiles and starts an HTTP server on `http://127.0.0.1:3001`.
+On the first run, Cargo will download and compile all dependencies (this may take a minute or two).
+
+### 3. Start the frontend (in a separate terminal)
+
+```bash
 cd frontend
-npm install
+npm install      # only needed on first run
 npm run dev
 ```
 
-Open the URL printed by Vite, click **Open File**, and provide the path to a `.gdml` file.
+Vite will print a local URL (typically `http://localhost:5173`).
+
+### 4. Use the application
+
+Open the Vite URL in your browser, click **Open File**, and provide the **absolute path** to a `.gdml` file (e.g. one of the sample files below).
 
 ## Sample Files
 
-A few GDML files are included in the repo root for quick testing:
+Three GDML files are included in `sample_data/` for quick testing:
 
-- `sample_data/BgoDetModel_v2_00.gdml`
-- `sample_data/NaiDetModelWithMLI_v2_00.gdml`
-- `sample_data/fermi_simple_elements_satellite.gdml`
+| File | Size | Description |
+|------|------|-------------|
+| `sample_data/BgoDetModel_v2_00.gdml` | 158 KB | BGO detector model |
+| `sample_data/NaiDetModelWithMLI_v2_00.gdml` | 167 KB | NaI detector model with MLI |
+| `sample_data/fermi_simple_elements_satellite.gdml` | 7.7 KB | Fermi satellite simple geometry |
 
-## Tests
+## Running Tests
 
 ```bash
-cargo test        # backend integration tests
-cd frontend && npx tsc --noEmit   # frontend type check
+# Backend integration tests (from project root)
+cargo test
+
+# Frontend type check
+cd frontend
+npx tsc --noEmit
 ```
 
 ## License
