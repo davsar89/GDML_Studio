@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gdml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd">
+
+  <!-- =================================================================== -->
+  <!-- DEFINES: Tests constants, quantities, variables, and expressions.   -->
+  <!-- It also tests the engine's custom N.* fix (e.g., 360.*deg)          -->
+  <!-- =================================================================== -->
+  <define>
+    <constant name="HALF_PI" value="pi/2" />
+    <constant name="deg" value="pi/180" />
+
+    <quantity name="thickness" type="length" value="10.0" unit="mm" />
+    <variable name="x_offset" value="100.0" />
+    <expression name="calc_y">x_offset * 1.5</expression>
+
+    <position name="pos_box" x="x_offset" y="calc_y" z="0" unit="mm" />
+    <rotation name="rot_box" x="0" y="HALF_PI" z="0" unit="rad" />
+
+    <position name="pos_tube" x="-150" y="0" z="0" unit="mm" />
+    <!-- Testing the engine's 'fix_gdml_expr' which turns 45.*deg to 45.0*deg -->
+    <rotation name="rot_tube" x="45.*deg" y="0" z="0" unit="rad" />
+  </define>
+
+  <!-- =================================================================== -->
+  <!-- MATERIALS: Tests elements, materials, D, T, P, fractions, composite -->
+  <!-- =================================================================== -->
+  <materials>
+    <!-- Basic Elements -->
+    <element name="H" formula="H" Z="1">
+      <atom value="1.0079" />
+    </element>
+    <element name="O" formula="O" Z="8">
+      <atom value="15.999" />
+    </element>
+    <element name="N" formula="N" Z="7">
+      <atom value="14.007" />
+    </element>
+    <element name="Al_el" formula="Al" Z="13">
+      <atom value="26.98" />
+    </element>
+
+    <!-- Simple material with physical properties -->
+    <material name="Aluminium" Z="13">
+      <D value="2.7" unit="g/cm3" />
+      <T value="293.15" unit="K" />
+      <P value="1.0" unit="atm" />
+      <atom value="26.98" />
+    </material>
+
+    <!-- Composite material (e.g. Molecules) -->
+    <material name="Water">
+      <D value="1.0" unit="g/cm3" />
+      <composite n="2" ref="H" />
+      <composite n="1" ref="O" />
+    </material>
+
+    <!-- Fractional material (e.g. Mixtures/Air) -->
+    <material name="Air">
+      <D value="0.001205" unit="g/cm3" />
+      <fraction n="0.754" ref="N" />
+      <fraction n="0.232" ref="O" />
+      <fraction n="0.014" ref="Al_el" />
+    </material>
+  </materials>
+
+  <!-- =================================================================== -->
+  <!-- SOLIDS: Tests the 4 supported primitives and their parameters       -->
+  <!-- =================================================================== -->
+  <solids>
+    <!-- Mother volume bounds -->
+    <box name="WorldBox" x="10000" y="10000" z="10000" lunit="mm" />
+
+    <!-- Test evaluating variables in solid dimensions -->
+    <box name="MyBox" x="thickness*5" y="50" z="50" lunit="mm" />
+
+    <!-- Tube with a hole (rmin > 0) -->
+    <tube name="MyTube" rmin="10" rmax="25" z="100" startphi="0" deltaphi="TWOPI" aunit="rad" lunit="mm" />
+
+    <!-- Solid Partial Tube (rmin = 0, partial phi) -->
+    <tube name="MyPartialTube" rmin="0" rmax="20" z="50" startphi="0" deltaphi="pi" aunit="rad" lunit="mm" />
+
+    <!-- Cone with a hole -->
+    <cone name="MyCone" rmin1="5" rmax1="15" rmin2="10" rmax2="30" z="80" startphi="0" deltaphi="360.*deg" aunit="rad" lunit="mm" />
+
+    <!-- Sphere with a hole, partial theta, and full phi -->
+    <sphere name="MySphere" rmin="15" rmax="40" startphi="0" deltaphi="360.*deg" starttheta="0" deltatheta="180.*deg" aunit="rad" lunit="mm" />
+  </solids>
+
+  <!-- =================================================================== -->
+  <!-- STRUCTURE: Tests volumes, hierarchy, placement, inline vs ref tags, -->
+  <!-- and auxiliary coloring.                                             -->
+  <!-- =================================================================== -->
+  <structure>
+    <!-- Leaf Volumes -->
+    <volume name="BoxVol">
+      <materialref ref="Aluminium" />
+      <solidref ref="MyBox" />
+      <auxiliary auxtype="color" auxvalue="FF5555" />
+    </volume>
+
+    <volume name="TubeVol">
+      <materialref ref="Water" />
+      <solidref ref="MyTube" />
+      <auxiliary auxtype="color" auxvalue="55FF55" />
+    </volume>
+
+    <volume name="PartialTubeVol">
+      <materialref ref="Aluminium" />
+      <solidref ref="MyPartialTube" />
+      <auxiliary auxtype="color" auxvalue="55FFFF" />
+    </volume>
+
+    <volume name="ConeVol">
+      <materialref ref="Water" />
+      <solidref ref="MyCone" />
+      <auxiliary auxtype="color" auxvalue="5555FF" />
+    </volume>
+
+    <volume name="SphereVol">
+      <materialref ref="Aluminium" />
+      <solidref ref="MySphere" />
+      <auxiliary auxtype="color" auxvalue="FFFF55" />
+    </volume>
+
+    <!-- Mother Volume -->
+    <volume name="World">
+      <materialref ref="Air" />
+      <solidref ref="WorldBox" />
+      <auxiliary auxtype="color" auxvalue="222222" />
+
+      <!-- Placement via defined references -->
+      <physvol name="pv_box">
+        <volumeref ref="BoxVol" />
+        <positionref ref="pos_box" />
+        <rotationref ref="rot_box" />
+      </physvol>
+
+      <physvol name="pv_tube">
+        <volumeref ref="TubeVol" />
+        <positionref ref="pos_tube" />
+        <rotationref ref="rot_tube" />
+      </physvol>
+
+      <!-- Placement via inline definitions -->
+      <physvol name="pv_partial_tube">
+        <volumeref ref="PartialTubeVol" />
+        <position name="pos_inline1" x="0" y="200" z="0" unit="mm" />
+        <rotation name="rot_inline1" x="0" y="0" z="45.*deg" unit="rad" />
+      </physvol>
+
+      <!-- Placement with missing rotation (defaults to 0,0,0) -->
+      <physvol name="pv_cone">
+        <volumeref ref="ConeVol" />
+        <position name="pos_inline2" x="200" y="-200" z="50" unit="mm" />
+      </physvol>
+
+      <physvol name="pv_sphere">
+        <volumeref ref="SphereVol" />
+        <position name="pos_inline3" x="-200" y="-150" z="0" unit="mm" />
+      </physvol>
+    </volume>
+  </structure>
+
+  <!-- =================================================================== -->
+  <!-- SETUP: Sets the entry point node for the recursive scene graph.     -->
+  <!-- =================================================================== -->
+  <setup name="Default" version="1.0">
+    <world ref="World" />
+  </setup>
+
+</gdml>

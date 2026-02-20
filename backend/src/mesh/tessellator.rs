@@ -4,7 +4,6 @@ use std::f64::consts::PI;
 
 use super::primitives::{box_mesh, cone_mesh, sphere_mesh, tube_mesh};
 use super::types::TriangleMesh;
-use crate::config::MESH_SEGMENTS;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
 use crate::gdml::units;
@@ -12,13 +11,14 @@ use crate::gdml::units;
 pub fn tessellate_all_solids(
     solids: &SolidSection,
     engine: &EvalEngine,
+    segments: u32,
 ) -> Result<(HashMap<String, TriangleMesh>, Vec<String>)> {
     let mut meshes = HashMap::new();
     let mut warnings = Vec::new();
 
     for solid in &solids.solids {
         let name = solid.name().to_string();
-        match tessellate_solid(solid, engine) {
+        match tessellate_solid(solid, engine, segments) {
             Ok(mesh) => {
                 meshes.insert(name, mesh);
             }
@@ -33,12 +33,12 @@ pub fn tessellate_all_solids(
     Ok((meshes, warnings))
 }
 
-fn tessellate_solid(solid: &Solid, engine: &EvalEngine) -> Result<TriangleMesh> {
+fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
     match solid {
         Solid::Box(s) => tessellate_box_solid(s, engine),
-        Solid::Tube(s) => tessellate_tube_solid(s, engine),
-        Solid::Cone(s) => tessellate_cone_solid(s, engine),
-        Solid::Sphere(s) => tessellate_sphere_solid(s, engine),
+        Solid::Tube(s) => tessellate_tube_solid(s, engine, segments),
+        Solid::Cone(s) => tessellate_cone_solid(s, engine, segments),
+        Solid::Sphere(s) => tessellate_sphere_solid(s, engine, segments),
     }
 }
 
@@ -80,7 +80,7 @@ fn tessellate_box_solid(s: &BoxSolid, engine: &EvalEngine) -> Result<TriangleMes
     Ok(box_mesh::tessellate_box(x, y, z))
 }
 
-fn tessellate_tube_solid(s: &TubeSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+fn tessellate_tube_solid(s: &TubeSolid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
@@ -92,11 +92,11 @@ fn tessellate_tube_solid(s: &TubeSolid, engine: &EvalEngine) -> Result<TriangleM
         None => 2.0 * PI,
     };
     Ok(tube_mesh::tessellate_tube(
-        rmin, rmax, z, startphi, deltaphi, MESH_SEGMENTS,
+        rmin, rmax, z, startphi, deltaphi, segments,
     ))
 }
 
-fn tessellate_cone_solid(s: &ConeSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+fn tessellate_cone_solid(s: &ConeSolid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let rmin1 = resolve_opt_with_lunit(engine, &s.rmin1, lunit);
@@ -110,11 +110,11 @@ fn tessellate_cone_solid(s: &ConeSolid, engine: &EvalEngine) -> Result<TriangleM
         None => 2.0 * PI,
     };
     Ok(cone_mesh::tessellate_cone(
-        rmin1, rmax1, rmin2, rmax2, z, startphi, deltaphi, MESH_SEGMENTS,
+        rmin1, rmax1, rmin2, rmax2, z, startphi, deltaphi, segments,
     ))
 }
 
-fn tessellate_sphere_solid(s: &SphereSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+fn tessellate_sphere_solid(s: &SphereSolid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
@@ -130,6 +130,6 @@ fn tessellate_sphere_solid(s: &SphereSolid, engine: &EvalEngine) -> Result<Trian
         None => PI,
     };
     Ok(sphere_mesh::tessellate_sphere(
-        rmin, rmax, startphi, deltaphi, starttheta, deltatheta, MESH_SEGMENTS,
+        rmin, rmax, startphi, deltaphi, starttheta, deltatheta, segments,
     ))
 }

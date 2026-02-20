@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SceneNode, MeshData, DocumentSummary, DefineValue, VolumeInfo } from './types';
+import { clearAllGeometries } from '../components/Viewport/geometryCache';
 
 interface AppState {
   loading: boolean;
@@ -40,7 +41,8 @@ export const useAppStore = create<AppState>((set) => ({
   setDefines: (defines) => set({ defines }),
   setVolumes: (volumes) => set({ volumes }),
   setSelectedVolume: (name) => set({ selectedVolume: name }),
-  reset: () =>
+  reset: () => {
+    clearAllGeometries();
     set({
       loading: false,
       error: null,
@@ -50,5 +52,6 @@ export const useAppStore = create<AppState>((set) => ({
       defines: [],
       volumes: [],
       selectedVolume: null,
-    }),
+    });
+  },
 }));

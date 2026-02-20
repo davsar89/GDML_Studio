@@ -46,6 +46,7 @@ function SceneNodeGroup({ node }: { node: SceneNode }) {
           color={color}
           selected={isSelected}
           name={node.volume_name}
+          solidName={node.solid_name}
         />
       )}
       {node.children.map((child, i) => (

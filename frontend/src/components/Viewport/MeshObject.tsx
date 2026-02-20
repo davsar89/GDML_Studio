@@ -1,35 +1,24 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import type { MeshData } from '../../store/types';
 import { useAppStore } from '../../store';
+import { getOrCreateGeometry, releaseGeometry } from './geometryCache';
 
 interface Props {
   meshData: MeshData;
   color: string;
   selected: boolean;
   name: string;
+  solidName: string;
 }
 
-export default function MeshObject({ meshData, color, selected, name }: Props) {
+export default function MeshObject({ meshData, color, selected, name, solidName }: Props) {
   const meshRef = useRef<THREE.Mesh>(null);
-
-  const geometry = useMemo(() => {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(meshData.positions, 3),
-    );
-    geo.setAttribute(
-      'normal',
-      new THREE.Float32BufferAttribute(meshData.normals, 3),
-    );
-    geo.setIndex(new THREE.Uint32BufferAttribute(meshData.indices, 1));
-    return geo;
-  }, [meshData]);
+  const geometry = getOrCreateGeometry(solidName, meshData);
 
   useEffect(() => {
-    return () => { geometry.dispose(); };
-  }, [geometry]);
+    return () => { releaseGeometry(solidName); };
+  }, [solidName]);
 
   const handleClick = (e: THREE.Event) => {
     // @ts-expect-error: ThreeEvent stopPropagation
