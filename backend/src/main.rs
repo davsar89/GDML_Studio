@@ -26,7 +26,7 @@ async fn main() {
                 false
             }
         }))
-        .allow_methods([Method::GET, Method::POST])
+        .allow_methods([Method::GET, Method::POST, Method::PUT])
         .allow_headers([HeaderName::from_static("content-type")]);
 
     // Try to serve static frontend files

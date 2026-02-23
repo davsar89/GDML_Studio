@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SceneNode, MeshData, DocumentSummary, DefineValue, VolumeInfo } from './types';
+import type { SceneNode, MeshData, DocumentSummary, DefineValue, VolumeInfo, MaterialInfo, ElementInfo } from './types';
 import { clearAllGeometries } from '../components/Viewport/geometryCache';
 
 interface AppState {
@@ -10,7 +10,10 @@ interface AppState {
   sceneGraph: SceneNode | null;
   defines: DefineValue[];
   volumes: VolumeInfo[];
+  materials: MaterialInfo[];
+  elements: ElementInfo[];
   selectedVolume: string | null;
+  selectedMaterial: string | null;
   meshOpacity: number;
   hiddenVolumes: Set<string>;
 
@@ -21,7 +24,10 @@ interface AppState {
   setSceneGraph: (graph: SceneNode) => void;
   setDefines: (defines: DefineValue[]) => void;
   setVolumes: (volumes: VolumeInfo[]) => void;
+  setMaterials: (materials: MaterialInfo[]) => void;
+  setElements: (elements: ElementInfo[]) => void;
   setSelectedVolume: (name: string | null) => void;
+  setSelectedMaterial: (name: string | null) => void;
   setMeshOpacity: (opacity: number) => void;
   toggleVolumeVisibility: (volumeName: string) => void;
   reset: () => void;
@@ -35,7 +41,10 @@ export const useAppStore = create<AppState>((set) => ({
   sceneGraph: null,
   defines: [],
   volumes: [],
+  materials: [],
+  elements: [],
   selectedVolume: null,
+  selectedMaterial: null,
   meshOpacity: 1.0,
   hiddenVolumes: new Set<string>(),
 
@@ -46,7 +55,10 @@ export const useAppStore = create<AppState>((set) => ({
   setSceneGraph: (graph) => set({ sceneGraph: graph }),
   setDefines: (defines) => set({ defines }),
   setVolumes: (volumes) => set({ volumes }),
+  setMaterials: (materials) => set({ materials }),
+  setElements: (elements) => set({ elements }),
   setSelectedVolume: (name) => set({ selectedVolume: name }),
+  setSelectedMaterial: (name) => set({ selectedMaterial: name }),
   setMeshOpacity: (opacity) => set({ meshOpacity: opacity }),
   toggleVolumeVisibility: (volumeName) =>
     set((state) => {
@@ -68,7 +80,10 @@ export const useAppStore = create<AppState>((set) => ({
       sceneGraph: null,
       defines: [],
       volumes: [],
+      materials: [],
+      elements: [],
       selectedVolume: null,
+      selectedMaterial: null,
       meshOpacity: 1.0,
       hiddenVolumes: new Set<string>(),
     });

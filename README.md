@@ -55,6 +55,28 @@ Vite will print a local URL (typically `http://localhost:5173`).
 
 Open the Vite URL in your browser, click **Open File**, and select a `.gdml` file (e.g. one of the sample files below).
 
+### Material Editor
+
+The **Materials** tab in the left panel lists all materials and elements defined in the loaded GDML file. Select a material to edit its properties:
+
+- **Density** — edit the numeric value and choose a unit (g/cm3, kg/m3, mg/cm3)
+- **Formula** — set or clear the chemical formula
+- **Z** — set or clear the atomic number (for simple materials)
+- **Components** — add or remove element references with fraction or composite weights
+
+Use the **NIST Material Lookup** button to search the built-in database of 309 Geant4 predefined materials (elemental, compound, HEP, space, and biochemical categories) and apply a NIST density to the selected material.
+
+### Volume Material Assignment
+
+Select a volume in the 3D scene or tree view to open the **Volume Detail** panel. Use the material dropdown to reassign which material a volume references.
+
+### Save / Export
+
+The toolbar provides two export options:
+
+- **Save** — overwrites the original GDML file with the current state (materials, elements, volumes)
+- **Save As** — saves to a new file path
+
 ## Sample Files
 
 GDML files are included in `sample_data/` for quick testing:

@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import VolumeTree from './VolumeTree';
 import DefinesTree from './DefinesTree';
+import MaterialsPanel from './MaterialsPanel';
+import VolumeDetail from './VolumeDetail';
 
-type Tab = 'structure' | 'defines';
+type Tab = 'structure' | 'defines' | 'materials';
 
 export default function TreePanel() {
   const [tab, setTab] = useState<Tab>('structure');
@@ -18,7 +20,7 @@ export default function TreePanel() {
       }}
     >
       <div style={{ display: 'flex', borderBottom: '1px solid #0f3460' }}>
-        {(['structure', 'defines'] as Tab[]).map((t) => (
+        {(['structure', 'defines', 'materials'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -39,8 +41,14 @@ export default function TreePanel() {
         ))}
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: 8 }}>
-        {tab === 'structure' && <VolumeTree />}
+        {tab === 'structure' && (
+          <>
+            <VolumeTree />
+            <VolumeDetail />
+          </>
+        )}
         {tab === 'defines' && <DefinesTree />}
+        {tab === 'materials' && <MaterialsPanel />}
       </div>
     </div>
   );

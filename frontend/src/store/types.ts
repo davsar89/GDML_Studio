@@ -51,3 +51,46 @@ export interface VolumeInfo {
   physvols: { name: string | null; volume_ref: string }[];
   auxiliaries: { auxtype: string; auxvalue: string }[];
 }
+
+// ─── Material/Element types ─────────────────────────────────────────────────
+
+export interface PropertyValue {
+  value: string;
+  unit: string | null;
+}
+
+export interface MaterialDensity {
+  value: string;
+  unit: string | null;
+}
+
+export interface MaterialComponent {
+  Fraction?: { n: string; ref_name: string };
+  Composite?: { n: string; ref_name: string };
+}
+
+export interface MaterialInfo {
+  name: string;
+  formula: string | null;
+  z: string | null;
+  density: MaterialDensity | null;
+  density_ref: string | null;
+  temperature: PropertyValue | null;
+  pressure: PropertyValue | null;
+  atom_value: string | null;
+  components: MaterialComponent[];
+}
+
+export interface ElementInfo {
+  name: string;
+  formula: string | null;
+  z: string | null;
+  atom_value: string | null;
+}
+
+export interface NistMaterial {
+  name: string;
+  density: number;
+  state: string;
+  category: string;
+}

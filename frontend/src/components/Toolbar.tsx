@@ -41,6 +41,16 @@ function detectMainFile(files: Record<string, string>): string {
   return names.sort((a, b) => (refCountMap[b] || 0) - (refCountMap[a] || 0))[0];
 }
 
+function downloadFile(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'application/xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function Toolbar() {
   const loading = useAppStore((s) => s.loading);
   const summary = useAppStore((s) => s.summary);
@@ -100,6 +110,11 @@ export default function Toolbar() {
 
         const structData = await api.getStructure();
         store.setVolumes(structData.volumes);
+
+        // Fetch materials and elements into store
+        const matData = await api.getMaterials();
+        store.setMaterials(matData.materials);
+        store.setElements(matData.elements);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         const names = Array.from(fileList).map((f) => f.name).join(', ');
@@ -109,6 +124,33 @@ export default function Toolbar() {
       }
     };
     input.click();
+  };
+
+  const handleSaveAs = async () => {
+    try {
+      const { gdml } = await api.exportGdml();
+      const filename = prompt('Save as:', summary?.filename || 'output.gdml');
+      if (filename) {
+        downloadFile(gdml, filename);
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      useAppStore.getState().setError(`Export failed: ${msg}`);
+    }
+  };
+
+  const handleSave = async () => {
+    const fname = summary?.filename || 'output.gdml';
+    if (!window.confirm(`Download will overwrite your local copy of "${fname}". Continue?`)) {
+      return;
+    }
+    try {
+      const { gdml } = await api.exportGdml();
+      downloadFile(gdml, fname);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      useAppStore.getState().setError(`Export failed: ${msg}`);
+    }
   };
 
   return (
@@ -132,6 +174,8 @@ export default function Toolbar() {
       </button>
       {summary && (
         <>
+          <button onClick={handleSave} style={btnStyle}>Save</button>
+          <button onClick={handleSaveAs} style={btnStyle}>Save As</button>
           <span style={{ fontSize: 12, color: '#8899aa' }}>
             {summary.filename} &mdash; {summary.solids_count} solids, {summary.volumes_count} volumes, {summary.meshes_count} meshes
           </span>

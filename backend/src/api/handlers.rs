@@ -1,4 +1,4 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use super::errors::ApiError;
 use crate::config;
 use crate::eval::engine::EvalEngine;
+use crate::gdml::materials as nist;
 use crate::gdml::model::*;
 use crate::gdml::parser;
 use crate::mesh::tessellator;
@@ -632,4 +633,288 @@ fn resolve_placement_rot(rot: &Option<PlacementRot>, engine: &EvalEngine) -> [f6
             .unwrap_or([0.0; 3]),
         None => [0.0; 3],
     }
+}
+
+// ─── NIST Materials ─────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct NistSearchQuery {
+    pub search: Option<String>,
+    pub category: Option<String>,
+}
+
+pub async fn get_nist_materials(
+    Query(query): Query<NistSearchQuery>,
+) -> Json<Value> {
+    let results = nist::search_nist_materials(
+        query.search.as_deref().unwrap_or(""),
+        query.category.as_deref(),
+    );
+    Json(json!({ "materials": results }))
+}
+
+// ─── Material CRUD ──────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct UpdateMaterialRequest {
+    pub name: String,
+    pub material: Material,
+}
+
+pub async fn update_material(
+    State(state): State<SharedState>,
+    Json(req): Json<UpdateMaterialRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let mut state_w = state.write().await;
+    let loaded = state_w
+        .loaded
+        .as_mut()
+        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+
+    let mat = loaded
+        .document
+        .materials
+        .materials
+        .iter_mut()
+        .find(|m| m.name == req.name)
+        .ok_or_else(|| ApiError::not_found(&format!("Material '{}' not found", req.name)))?;
+
+    *mat = req.material;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+pub struct AddMaterialRequest {
+    pub material: Material,
+}
+
+pub async fn add_material(
+    State(state): State<SharedState>,
+    Json(req): Json<AddMaterialRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let mut state_w = state.write().await;
+    let loaded = state_w
+        .loaded
+        .as_mut()
+        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+
+    let exists = loaded
+        .document
+        .materials
+        .materials
+        .iter()
+        .any(|m| m.name == req.material.name);
+    if exists {
+        return Err(ApiError::bad_request(&format!(
+            "Material '{}' already exists",
+            req.material.name
+        )));
+    }
+
+    loaded.document.materials.materials.push(req.material);
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+pub struct DeleteMaterialRequest {
+    pub name: String,
+}
+
+pub async fn delete_material(
+    State(state): State<SharedState>,
+    Json(req): Json<DeleteMaterialRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let mut state_w = state.write().await;
+    let loaded = state_w
+        .loaded
+        .as_mut()
+        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+
+    // Check if material is in use by any volume
+    let in_use = loaded
+        .document
+        .structure
+        .volumes
+        .iter()
+        .any(|v| v.material_ref == req.name);
+    if in_use {
+        return Err(ApiError::bad_request(&format!(
+            "Material '{}' is still referenced by one or more volumes",
+            req.name
+        )));
+    }
+
+    let before = loaded.document.materials.materials.len();
+    loaded
+        .document
+        .materials
+        .materials
+        .retain(|m| m.name != req.name);
+    if loaded.document.materials.materials.len() == before {
+        return Err(ApiError::not_found(&format!(
+            "Material '{}' not found",
+            req.name
+        )));
+    }
+
+    Ok(Json(json!({ "ok": true })))
+}
+
+// ─── Element CRUD ───────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct UpdateElementRequest {
+    pub name: String,
+    pub element: Element,
+}
+
+pub async fn update_element(
+    State(state): State<SharedState>,
+    Json(req): Json<UpdateElementRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let mut state_w = state.write().await;
+    let loaded = state_w
+        .loaded
+        .as_mut()
+        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+
+    let el = loaded
+        .document
+        .materials
+        .elements
+        .iter_mut()
+        .find(|e| e.name == req.name)
+        .ok_or_else(|| ApiError::not_found(&format!("Element '{}' not found", req.name)))?;
+
+    *el = req.element;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+pub struct AddElementRequest {
+    pub element: Element,
+}
+
+pub async fn add_element(
+    State(state): State<SharedState>,
+    Json(req): Json<AddElementRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let mut state_w = state.write().await;
+    let loaded = state_w
+        .loaded
+        .as_mut()
+        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+
+    let exists = loaded
+        .document
+        .materials
+        .elements
+        .iter()
+        .any(|e| e.name == req.element.name);
+    if exists {
+        return Err(ApiError::bad_request(&format!(
+            "Element '{}' already exists",
+            req.element.name
+        )));
+    }
+
+    loaded.document.materials.elements.push(req.element);
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+pub struct DeleteElementRequest {
+    pub name: String,
+}
+
+pub async fn delete_element(
+    State(state): State<SharedState>,
+    Json(req): Json<DeleteElementRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let mut state_w = state.write().await;
+    let loaded = state_w
+        .loaded
+        .as_mut()
+        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+
+    // Check if element is referenced by any material component
+    let in_use = loaded.document.materials.materials.iter().any(|m| {
+        m.components.iter().any(|c| match c {
+            MaterialComponent::Fraction { ref_name, .. } => ref_name == &req.name,
+            MaterialComponent::Composite { ref_name, .. } => ref_name == &req.name,
+        })
+    });
+    if in_use {
+        return Err(ApiError::bad_request(&format!(
+            "Element '{}' is still referenced by one or more materials",
+            req.name
+        )));
+    }
+
+    let before = loaded.document.materials.elements.len();
+    loaded
+        .document
+        .materials
+        .elements
+        .retain(|e| e.name != req.name);
+    if loaded.document.materials.elements.len() == before {
+        return Err(ApiError::not_found(&format!(
+            "Element '{}' not found",
+            req.name
+        )));
+    }
+
+    Ok(Json(json!({ "ok": true })))
+}
+
+// ─── Volume material ref ────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct UpdateMaterialRefRequest {
+    pub volume_name: String,
+    pub material_ref: String,
+}
+
+pub async fn update_volume_material_ref(
+    State(state): State<SharedState>,
+    Json(req): Json<UpdateMaterialRefRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let mut state_w = state.write().await;
+    let loaded = state_w
+        .loaded
+        .as_mut()
+        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+
+    let vol = loaded
+        .document
+        .structure
+        .volumes
+        .iter_mut()
+        .find(|v| v.name == req.volume_name)
+        .ok_or_else(|| {
+            ApiError::not_found(&format!("Volume '{}' not found", req.volume_name))
+        })?;
+
+    vol.material_ref = req.material_ref;
+    Ok(Json(json!({ "ok": true })))
+}
+
+// ─── Export ─────────────────────────────────────────────────────────────────
+
+pub async fn export_gdml(
+    State(state): State<SharedState>,
+) -> Result<Json<Value>, ApiError> {
+    let state_r = state.read().await;
+    let loaded = state_r
+        .loaded
+        .as_ref()
+        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+
+    let xml = nist::serialize_gdml(&loaded.document)
+        .map_err(|e| ApiError::internal(&format!("Serialization error: {}", e)))?;
+
+    Ok(Json(json!({
+        "gdml": xml,
+        "filename": loaded.document.filename,
+    })))
 }
