@@ -31,7 +31,21 @@ git clone git@github.com:davsar89/GDML_Studio.git
 cd GDML_Studio
 ```
 
-### 2. Start the backend
+### 2. One-command start (recommended)
+
+Scripts that build the backend, run tests, start both servers, and open the browser:
+
+```bash
+# Linux / macOS
+./run.sh
+
+# Windows
+run.bat
+```
+
+### 3. Manual start
+
+**Backend** (terminal 1):
 
 ```bash
 cd backend
@@ -41,7 +55,7 @@ cargo run --release
 The backend compiles and starts an HTTP server on `http://127.0.0.1:4001`.
 On the first run, Cargo will download and compile all dependencies (this may take a minute or two).
 
-### 3. Start the frontend (in a separate terminal)
+**Frontend** (terminal 2):
 
 ```bash
 cd frontend
