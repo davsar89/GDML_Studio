@@ -5,6 +5,42 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# --- Check prerequisites ---
+MISSING=""
+
+if ! command -v cargo > /dev/null 2>&1; then
+    MISSING="rust"
+fi
+
+if ! command -v node > /dev/null 2>&1 || ! command -v npm > /dev/null 2>&1; then
+    if [ -z "$MISSING" ]; then
+        MISSING="node"
+    else
+        MISSING="both"
+    fi
+fi
+
+if [ -n "$MISSING" ]; then
+    echo "ERROR: Missing required tools."
+    echo ""
+    if [ "$MISSING" = "rust" ] || [ "$MISSING" = "both" ]; then
+        echo "  Rust (cargo) is not installed."
+        echo "    Install: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+        echo "    Docs:    https://rustup.rs/"
+        echo ""
+    fi
+    if [ "$MISSING" = "node" ] || [ "$MISSING" = "both" ]; then
+        echo "  Node.js / npm is not installed."
+        echo "    Install: https://nodejs.org/ (download LTS)"
+        echo "    Or use nvm: curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash"
+        echo ""
+    fi
+    exit 1
+fi
+
+echo "Prerequisites OK: cargo $(cargo --version | cut -d' ' -f2), node $(node --version), npm $(npm --version)"
+echo ""
+
 echo "=== Building backend (release) ==="
 cd backend
 cargo build --release

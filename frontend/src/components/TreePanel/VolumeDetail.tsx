@@ -5,11 +5,15 @@ export default function VolumeDetail() {
   const selectedVolume = useAppStore((s) => s.selectedVolume);
   const volumes = useAppStore((s) => s.volumes);
   const materials = useAppStore((s) => s.materials);
+  const setSelectedMaterial = useAppStore((s) => s.setSelectedMaterial);
+  const setActiveTreeTab = useAppStore((s) => s.setActiveTreeTab);
 
   if (!selectedVolume) return null;
 
   const vol = volumes.find((v) => v.name === selectedVolume);
   if (!vol) return null;
+
+  const mat = materials.find((m) => m.name === vol.material_ref);
 
   const handleMaterialChange = async (newRef: string) => {
     try {
@@ -24,6 +28,11 @@ export default function VolumeDetail() {
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
     }
+  };
+
+  const handleEditMaterial = () => {
+    setSelectedMaterial(vol.material_ref);
+    setActiveTreeTab('materials');
   };
 
   return (
@@ -71,6 +80,57 @@ export default function VolumeDetail() {
             )}
           </select>
         </div>
+        {mat && (
+          <div
+            style={{
+              marginTop: 4,
+              padding: '3px 6px',
+              background: '#1a1a2e',
+              borderRadius: 3,
+              color: '#8899aa',
+              fontSize: 10,
+              lineHeight: 1.5,
+            }}
+          >
+            {mat.density != null && (
+              <div>
+                <span style={{ color: '#7a8a9a' }}>Density: </span>
+                <span style={{ color: '#b0b8c0' }}>
+                  {mat.density.value}{mat.density.unit ? ` ${mat.density.unit}` : ' g/cm³'}
+                </span>
+              </div>
+            )}
+            {mat.formula && (
+              <div>
+                <span style={{ color: '#7a8a9a' }}>Formula: </span>
+                <span style={{ color: '#b0b8c0' }}>{mat.formula}</span>
+              </div>
+            )}
+            {mat.z != null && (
+              <div>
+                <span style={{ color: '#7a8a9a' }}>Z: </span>
+                <span style={{ color: '#b0b8c0' }}>{mat.z}</span>
+              </div>
+            )}
+          </div>
+        )}
+        <button
+          onClick={handleEditMaterial}
+          style={{
+            marginTop: 4,
+            width: '100%',
+            padding: '3px 0',
+            background: '#0f3460',
+            color: '#e94560',
+            border: '1px solid #e94560',
+            borderRadius: 3,
+            cursor: 'pointer',
+            fontSize: 10,
+            fontWeight: 600,
+          }}
+        >
+          Edit Material
+        </button>
       </div>
     </div>
   );

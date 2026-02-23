@@ -679,7 +679,18 @@ pub async fn update_material(
         .find(|m| m.name == req.name)
         .ok_or_else(|| ApiError::not_found(&format!("Material '{}' not found", req.name)))?;
 
+    let new_name = req.material.name.clone();
     *mat = req.material;
+
+    // Cascade rename to volumes
+    if req.name != new_name {
+        for vol in &mut loaded.document.structure.volumes {
+            if vol.material_ref == req.name {
+                vol.material_ref = new_name.clone();
+            }
+        }
+    }
+
     Ok(Json(json!({ "ok": true })))
 }
 

@@ -35,7 +35,30 @@ export default function MeshObject({ meshData, color, selected, name, solidName,
   };
 
   return (
-    <mesh ref={meshRef} geometry={geometry} onClick={handleClick}>
+    <mesh
+      ref={meshRef}
+      geometry={geometry}
+      onClick={handleClick}
+      onContextMenu={(e: any) => {
+        e.stopPropagation();
+        e.nativeEvent?.preventDefault?.();
+        e.nativeEvent?.stopImmediatePropagation?.();
+        const store = useAppStore.getState();
+        store.setSelectedVolume(name);
+        const nativeX = e.nativeEvent?.clientX ?? e.clientX ?? 0;
+        const nativeY = e.nativeEvent?.clientY ?? e.clientY ?? 0;
+        store.openContextMenu(nativeX, nativeY, [
+          {
+            label: store.hiddenVolumes.has(name) ? 'Show' : 'Hide',
+            action: () => useAppStore.getState().toggleVolumeVisibility(name),
+          },
+          {
+            label: 'Edit Material',
+            action: () => useAppStore.getState().setActiveTreeTab('materials'),
+          },
+        ]);
+      }}
+    >
       <meshStandardMaterial
         color={selected ? '#ff6090' : color}
         side={THREE.DoubleSide}

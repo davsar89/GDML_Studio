@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useAppStore } from '../../store';
 import VolumeTree from './VolumeTree';
 import DefinesTree from './DefinesTree';
 import MaterialsPanel from './MaterialsPanel';
@@ -7,7 +7,8 @@ import VolumeDetail from './VolumeDetail';
 type Tab = 'structure' | 'defines' | 'materials';
 
 export default function TreePanel() {
-  const [tab, setTab] = useState<Tab>('structure');
+  const tab = useAppStore((s) => s.activeTreeTab);
+  const setTab = useAppStore((s) => s.setActiveTreeTab);
 
   return (
     <div

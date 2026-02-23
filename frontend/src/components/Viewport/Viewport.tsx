@@ -85,7 +85,7 @@ export default function Viewport() {
   const loading = useAppStore((s) => s.loading);
 
   return (
-    <div style={{ width: '100%', height: '100%', background: '#0d1117', position: 'relative' }}>
+    <div style={{ width: '100%', height: '100%', background: '#0d1117', position: 'relative' }} onContextMenu={(e) => e.preventDefault()}>
       {loading && (
         <div style={{
           position: 'absolute',

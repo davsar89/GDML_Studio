@@ -5,6 +5,58 @@ setlocal
 set SCRIPT_DIR=%~dp0
 cd /d "%SCRIPT_DIR%"
 
+REM --- Check prerequisites ---
+set "MISSING_RUST=0"
+set "MISSING_NODE=0"
+
+where cargo >nul 2>&1
+if errorlevel 1 set "MISSING_RUST=1"
+
+where node >nul 2>&1
+if errorlevel 1 set "MISSING_NODE=1"
+
+where npm >nul 2>&1
+if errorlevel 1 set "MISSING_NODE=1"
+
+if "%MISSING_RUST%"=="1" if "%MISSING_NODE%"=="1" goto :missing_both
+if "%MISSING_RUST%"=="1" goto :missing_rust
+if "%MISSING_NODE%"=="1" goto :missing_node
+goto :prereqs_ok
+
+:missing_both
+echo ERROR: Missing required tools.
+echo.
+echo   Rust (cargo) is not installed.
+echo     Install: https://rustup.rs/ (download and run rustup-init.exe)
+echo.
+echo   Node.js / npm is not installed.
+echo     Install: https://nodejs.org/ (download LTS installer)
+echo.
+pause
+exit /b 1
+
+:missing_rust
+echo ERROR: Missing required tools.
+echo.
+echo   Rust (cargo) is not installed.
+echo     Install: https://rustup.rs/ (download and run rustup-init.exe)
+echo.
+pause
+exit /b 1
+
+:missing_node
+echo ERROR: Missing required tools.
+echo.
+echo   Node.js / npm is not installed.
+echo     Install: https://nodejs.org/ (download LTS installer)
+echo.
+pause
+exit /b 1
+
+:prereqs_ok
+echo Prerequisites OK.
+echo.
+
 echo === Building backend (release) ===
 cd backend
 cargo build --release

@@ -16,6 +16,8 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
   const setSelectedVolume = useAppStore((s) => s.setSelectedVolume);
   const hiddenVolumes = useAppStore((s) => s.hiddenVolumes);
   const toggleVolumeVisibility = useAppStore((s) => s.toggleVolumeVisibility);
+  const openContextMenu = useAppStore((s) => s.openContextMenu);
+  const setActiveTreeTab = useAppStore((s) => s.setActiveTreeTab);
   const isSelected = selectedVolume === node.volume_name;
   const isHidden = hiddenVolumes.has(node.volume_name);
 
@@ -23,6 +25,15 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
     <div>
       <div
         onClick={() => setSelectedVolume(node.volume_name)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const hidden = hiddenVolumes.has(node.volume_name);
+          openContextMenu(e.clientX, e.clientY, [
+            { label: hidden ? 'Show' : 'Hide', action: () => toggleVolumeVisibility(node.volume_name) },
+            { label: 'Edit Material', action: () => { setSelectedVolume(node.volume_name); setActiveTreeTab('materials'); } },
+          ]);
+        }}
         style={{
           paddingLeft: depth * 12 + 4,
           paddingTop: 2,

@@ -33,7 +33,8 @@ cd GDML_Studio
 
 ### 2. One-command start (recommended)
 
-Scripts that build the backend, run tests, start both servers, and open the browser:
+Scripts that build the backend, run tests, start both servers, and open the browser.
+The scripts check for prerequisites first and will tell you exactly what to install if anything is missing.
 
 ```bash
 # Linux / macOS
@@ -77,6 +78,7 @@ The **Materials** tab in the left panel lists all materials and elements defined
 - **Formula** — set or clear the chemical formula
 - **Z** — set or clear the atomic number (for simple materials)
 - **Components** — add or remove element references with fraction or composite weights
+- **Auto-rename** — when you change a material's formula, GDML Studio offers to rename the material to match
 
 Use the **NIST Material Lookup** button to search the built-in database of 309 Geant4 predefined materials (elemental, compound, HEP, space, and biochemical categories) and apply a NIST density to the selected material.
 

@@ -43,27 +43,24 @@ function MaterialsList({
   selectedMaterial: string | null;
   onSelect: (name: string | null) => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [newName, setNewName] = useState('');
-
   const handleAdd = async () => {
-    if (!newName.trim()) return;
+    const materials = useAppStore.getState().materials;
+    const newMat: MaterialInfo = {
+      name: '',
+      formula: null,
+      z: null,
+      density: { value: '1.0', unit: 'g/cm3' },
+      density_ref: null,
+      temperature: null,
+      pressure: null,
+      atom_value: null,
+      components: [],
+    };
+    newMat.name = generateMaterialName(newMat, materials);
     try {
-      await api.addMaterial({
-        name: newName.trim(),
-        formula: null,
-        z: null,
-        density: { value: '1.0', unit: 'g/cm3' },
-        density_ref: null,
-        temperature: null,
-        pressure: null,
-        atom_value: null,
-        components: [],
-      });
+      await api.addMaterial(newMat);
       await refreshMaterials();
-      setAdding(false);
-      setNewName('');
-      onSelect(newName.trim());
+      onSelect(newMat.name);
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
     }
@@ -84,26 +81,20 @@ function MaterialsList({
     <div>
       <div style={{ ...sectionHeader, marginBottom: 4 }}>
         <span>Materials ({materials.length})</span>
-        <button onClick={() => setAdding(!adding)} style={smallBtn}>+</button>
+        <button onClick={handleAdd} style={smallBtn}>+</button>
       </div>
-      {adding && (
-        <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-            placeholder="Material name"
-            style={inputStyle}
-            autoFocus
-          />
-          <button onClick={handleAdd} style={smallBtn}>Add</button>
-        </div>
-      )}
       <div style={{ maxHeight: 160, overflow: 'auto' }}>
         {materials.map((m) => (
           <div
             key={m.name}
             onClick={() => onSelect(m.name === selectedMaterial ? null : m.name)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              useAppStore.getState().openContextMenu(e.clientX, e.clientY, [
+                { label: 'Edit', action: () => onSelect(m.name) },
+                { label: 'Delete', action: () => handleDelete(m.name) },
+              ]);
+            }}
             style={{
               padding: '2px 4px',
               cursor: 'pointer',
@@ -178,6 +169,7 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
   }, [material.name, material.density?.value, material.density?.unit, material.formula, material.z]);
 
   const save = useCallback(async (overrides: Partial<MaterialInfo> = {}) => {
+    const materials = useAppStore.getState().materials;
     const updated: MaterialInfo = {
       name: material.name,
       components: material.components,
@@ -190,9 +182,14 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
       z: z || null,
       ...overrides,
     };
+    updated.name = generateMaterialName(updated, materials);
+    const oldName = material.name;
     try {
-      await api.updateMaterial(material.name, updated);
+      await api.updateMaterial(oldName, updated);
       await refreshMaterialsAndMeshes();
+      if (updated.name !== oldName) {
+        useAppStore.getState().setSelectedMaterial(updated.name);
+      }
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
     }
@@ -279,10 +276,16 @@ function ComponentsList({
   const [compN, setCompN] = useState('');
 
   const saveComponents = async (components: MaterialComponent[]) => {
+    const materials = useAppStore.getState().materials;
     const updated: MaterialInfo = { ...material, components };
+    updated.name = generateMaterialName(updated, materials);
+    const oldName = material.name;
     try {
-      await api.updateMaterial(material.name, updated);
-      await refreshMaterials();
+      await api.updateMaterial(oldName, updated);
+      await refreshMaterialsAndMeshes();
+      if (updated.name !== oldName) {
+        useAppStore.getState().setSelectedMaterial(updated.name);
+      }
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
     }
@@ -382,13 +385,19 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
   }, [open, search, category, doSearch]);
 
   const handleApply = async (nist: NistMaterial) => {
+    const materials = useAppStore.getState().materials;
     const updated: MaterialInfo = {
       ...material,
       density: { value: String(nist.density), unit: 'g/cm3' },
     };
+    updated.name = generateMaterialName(updated, materials);
+    const oldName = material.name;
     try {
-      await api.updateMaterial(material.name, updated);
+      await api.updateMaterial(oldName, updated);
       await refreshMaterialsAndMeshes();
+      if (updated.name !== oldName) {
+        useAppStore.getState().setSelectedMaterial(updated.name);
+      }
       setOpen(false);
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
@@ -548,6 +557,44 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+function generateMaterialName(
+  mat: MaterialInfo,
+  allMaterials: MaterialInfo[],
+): string {
+  // Determine base
+  let base = 'Material';
+  if (mat.formula) {
+    base = mat.formula;
+  } else if (mat.components.length > 0) {
+    const first = mat.components[0].Fraction?.ref_name
+      ?? mat.components[0].Composite?.ref_name ?? 'Material';
+    base = mat.components.length > 1 ? `${first}+${mat.components.length}` : first;
+  } else if (mat.z) {
+    base = `Z${mat.z}`;
+  }
+
+  // Density suffix
+  let suffix = '';
+  if (mat.density?.value) {
+    const unitTag = (!mat.density.unit || mat.density.unit === 'g/cm3')
+      ? '' : `_${mat.density.unit.replace(/\//g, '')}`;
+    suffix = `_d${mat.density.value}${unitTag}`;
+  }
+
+  let name = `${base}${suffix}`;
+
+  // Uniqueness — skip self
+  const others = allMaterials
+    .filter((m) => m.name !== mat.name)
+    .map((m) => m.name);
+  if (others.includes(name)) {
+    let i = 2;
+    while (others.includes(`${name}_${i}`)) i++;
+    name = `${name}_${i}`;
+  }
+  return name;
+}
+
 async function refreshMaterials() {
   const data = await api.getMaterials();
   const store = useAppStore.getState();
@@ -558,12 +605,16 @@ async function refreshMaterials() {
 async function refreshMaterialsAndMeshes() {
   await refreshMaterials();
   try {
-    const meshData = await api.getMeshes();
+    const [meshData, structData] = await Promise.all([
+      api.getMeshes(),
+      api.getStructure(),
+    ]);
     const store = useAppStore.getState();
     store.setMeshes(meshData.meshes);
     store.setSceneGraph(meshData.scene_graph);
+    store.setVolumes(structData.volumes);
   } catch (e: unknown) {
-    console.warn('Mesh refresh failed:', e);
+    console.warn('Refresh failed:', e);
   }
 }
 

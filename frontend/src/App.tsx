@@ -1,6 +1,7 @@
 import { useAppStore } from './store';
 import Toolbar from './components/Toolbar';
 import Layout from './components/Layout';
+import ContextMenu from './components/ContextMenu';
 
 export default function App() {
   const error = useAppStore((s) => s.error);
@@ -17,6 +18,7 @@ export default function App() {
         </div>
       )}
       <Layout />
+      <ContextMenu />
     </div>
   );
 }
