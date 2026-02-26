@@ -68,6 +68,7 @@ if errorlevel 1 (
 
 echo.
 echo === Running backend tests ===
+taskkill /F /IM gdml-studio-backend.exe /T >nul 2>&1
 cargo test
 if errorlevel 1 (
     echo Backend tests failed.

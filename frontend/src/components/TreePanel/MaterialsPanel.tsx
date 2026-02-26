@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '../../store';
 import type { MaterialInfo, ElementInfo, MaterialComponent, NistMaterial } from '../../store/types';
 import * as api from '../../api/client';
+import { importNistMaterial } from '../../utils/nistImport';
 
 export default function MaterialsPanel() {
   const materials = useAppStore((s) => s.materials);
@@ -56,7 +57,7 @@ function MaterialsList({
       atom_value: null,
       components: [],
     };
-    newMat.name = generateMaterialName(newMat, materials);
+    newMat.name = generateDefaultMaterialName(newMat, materials);
     try {
       await api.addMaterial(newMat);
       await refreshMaterials();
@@ -142,11 +143,59 @@ function MaterialEditor({
   elements: ElementInfo[];
 }) {
   const mat = materials.find((m) => m.name === materialName);
+  const [renaming, setRenaming] = useState(false);
+  const [renameTo, setRenameTo] = useState('');
+
   if (!mat) return null;
+
+  const handleStartRename = () => {
+    setRenameTo(mat.name);
+    setRenaming(true);
+  };
+
+  const handleCommitRename = async () => {
+    const newName = renameTo.trim();
+    if (!newName || newName === mat.name) {
+      setRenaming(false);
+      return;
+    }
+    try {
+      const updated = { ...mat, name: newName };
+      await api.updateMaterial(mat.name, updated);
+      await refreshMaterialsAndMeshes();
+      useAppStore.getState().setSelectedMaterial(newName);
+      setRenaming(false);
+    } catch (e: unknown) {
+      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   return (
     <div style={{ borderTop: '1px solid #0f3460', paddingTop: 6 }}>
-      <div style={sectionHeader}>Edit: {mat.name}</div>
+      <div style={sectionHeader}>
+        {renaming ? (
+          <input
+            value={renameTo}
+            onChange={(e) => setRenameTo(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCommitRename();
+              if (e.key === 'Escape') setRenaming(false);
+            }}
+            onBlur={handleCommitRename}
+            style={{ ...inputStyle, flex: 1, fontSize: 11, fontWeight: 700 }}
+            autoFocus
+          />
+        ) : (
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Edit: {mat.name}
+          </span>
+        )}
+        {!renaming && (
+          <button onClick={handleStartRename} style={smallBtn} title="Rename material">
+            &#9998;
+          </button>
+        )}
+      </div>
       <MaterialFields material={mat} />
       <ComponentsList material={mat} elements={elements} />
       <NistMaterialPicker material={mat} />
@@ -159,9 +208,14 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
   const [densityUnit, setDensityUnit] = useState(material.density?.unit || 'g/cm3');
   const [formula, setFormula] = useState(material.formula || '');
   const [z, setZ] = useState(material.z || '');
-  const dirtyRef = useRef(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    // Cancel pending save when material identity changes (e.g., after rename)
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
     setDensityVal(material.density?.value || '');
     setDensityUnit(material.density?.unit || 'g/cm3');
     setFormula(material.formula || '');
@@ -169,7 +223,6 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
   }, [material.name, material.density?.value, material.density?.unit, material.formula, material.z]);
 
   const save = useCallback(async (overrides: Partial<MaterialInfo> = {}) => {
-    const materials = useAppStore.getState().materials;
     const updated: MaterialInfo = {
       name: material.name,
       components: material.components,
@@ -182,29 +235,36 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
       z: z || null,
       ...overrides,
     };
-    updated.name = generateMaterialName(updated, materials);
-    const oldName = material.name;
     try {
-      await api.updateMaterial(oldName, updated);
+      await api.updateMaterial(material.name, updated);
       await refreshMaterialsAndMeshes();
-      if (updated.name !== oldName) {
-        useAppStore.getState().setSelectedMaterial(updated.name);
-      }
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
     }
   }, [material.name, material.components, material.temperature, material.pressure, material.atom_value, material.density_ref, densityVal, densityUnit, formula, z]);
 
-  const handleBlur = useCallback(() => {
-    if (dirtyRef.current) {
-      dirtyRef.current = false;
-      save();
-    }
+  const scheduleSave = useCallback((overrides?: Partial<MaterialInfo>) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
+      save(overrides);
+    }, 500);
+  }, [save]);
+
+  // Flush pending save on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+        save();
+      }
+    };
   }, [save]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      dirtyRef.current = false;
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
       save();
       e.currentTarget.blur();
     }
@@ -215,8 +275,7 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
       <FieldRow label="Density">
         <input
           value={densityVal}
-          onChange={(e) => { setDensityVal(e.target.value); dirtyRef.current = true; }}
-          onBlur={handleBlur}
+          onChange={(e) => { setDensityVal(e.target.value); scheduleSave(); }}
           onKeyDown={handleKeyDown}
           style={{ ...inputStyle, width: 80 }}
         />
@@ -233,8 +292,7 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
       <FieldRow label="Formula">
         <input
           value={formula}
-          onChange={(e) => { setFormula(e.target.value); dirtyRef.current = true; }}
-          onBlur={handleBlur}
+          onChange={(e) => { setFormula(e.target.value); scheduleSave(); }}
           onKeyDown={handleKeyDown}
           style={{ ...inputStyle, flex: 1 }}
         />
@@ -242,8 +300,7 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
       <FieldRow label="Z">
         <input
           value={z}
-          onChange={(e) => { setZ(e.target.value); dirtyRef.current = true; }}
-          onBlur={handleBlur}
+          onChange={(e) => { setZ(e.target.value); scheduleSave(); }}
           onKeyDown={handleKeyDown}
           style={{ ...inputStyle, width: 50 }}
         />
@@ -276,16 +333,10 @@ function ComponentsList({
   const [compN, setCompN] = useState('');
 
   const saveComponents = async (components: MaterialComponent[]) => {
-    const materials = useAppStore.getState().materials;
     const updated: MaterialInfo = { ...material, components };
-    updated.name = generateMaterialName(updated, materials);
-    const oldName = material.name;
     try {
-      await api.updateMaterial(oldName, updated);
+      await api.updateMaterial(material.name, updated);
       await refreshMaterialsAndMeshes();
-      if (updated.name !== oldName) {
-        useAppStore.getState().setSelectedMaterial(updated.name);
-      }
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
     }
@@ -385,14 +436,9 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
   }, [open, search, category, doSearch]);
 
   const handleApply = async (nist: NistMaterial) => {
-    const materials = useAppStore.getState().materials;
-    const updated: MaterialInfo = {
-      ...material,
-      density: { value: String(nist.density), unit: 'g/cm3' },
-    };
-    updated.name = generateMaterialName(updated, materials);
     const oldName = material.name;
     try {
+      const updated = await importNistMaterial(nist);
       await api.updateMaterial(oldName, updated);
       await refreshMaterialsAndMeshes();
       if (updated.name !== oldName) {
@@ -444,9 +490,10 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
                 }}
                 onMouseOver={(e) => (e.currentTarget.style.background = '#0f3460')}
                 onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
-                title={`${n.name} - ${n.density} g/cm3 (${n.state}, ${n.category})`}
+                title={`${n.name}${n.formula ? ' (' + n.formula + ')' : ''} - ${n.density} g/cm3 (${n.state}, ${n.category})`}
               >
                 <span style={{ color: '#56d6c8' }}>{n.name}</span>
+                {n.formula && <span style={{ color: '#8899aa', marginLeft: 4 }}>{n.formula}</span>}
                 <span style={{ color: '#666', marginLeft: 6 }}>{n.density} g/cm3</span>
                 <span style={{ color: '#555', marginLeft: 4 }}>{n.state}</span>
               </div>
@@ -469,6 +516,36 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
   const [newName, setNewName] = useState('');
   const [newZ, setNewZ] = useState('');
   const [newAtom, setNewAtom] = useState('');
+  const [elSuggestions, setElSuggestions] = useState<NistMaterial[]>([]);
+  const [showElSuggestions, setShowElSuggestions] = useState(false);
+  const elSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleNameChange = (value: string) => {
+    setNewName(value);
+    if (elSearchTimeout.current) clearTimeout(elSearchTimeout.current);
+    if (value.length >= 1) {
+      elSearchTimeout.current = setTimeout(async () => {
+        try {
+          const data = await api.getNistMaterials(value, 'Elemental');
+          setElSuggestions(data.materials.slice(0, 10));
+          setShowElSuggestions(data.materials.length > 0);
+        } catch {
+          setElSuggestions([]);
+          setShowElSuggestions(false);
+        }
+      }, 200);
+    } else {
+      setElSuggestions([]);
+      setShowElSuggestions(false);
+    }
+  };
+
+  const handleSelectSuggestion = (nist: NistMaterial) => {
+    setNewName(nist.name);
+    if (nist.z != null) setNewZ(String(nist.z));
+    if (nist.atom_value != null) setNewAtom(String(nist.atom_value));
+    setShowElSuggestions(false);
+  };
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
@@ -484,6 +561,8 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
       setNewName('');
       setNewZ('');
       setNewAtom('');
+      setElSuggestions([]);
+      setShowElSuggestions(false);
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
     }
@@ -513,8 +592,42 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
       {expanded && (
         <>
           {adding && (
-            <div style={{ display: 'flex', gap: 3, marginBottom: 3, flexWrap: 'wrap' }}>
-              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Name" style={{ ...inputStyle, width: 60 }} autoFocus />
+            <div style={{ display: 'flex', gap: 3, marginBottom: 3, flexWrap: 'wrap', position: 'relative' }}>
+              <div style={{ position: 'relative', width: 60 }}>
+                <input
+                  value={newName}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  onFocus={() => { if (elSuggestions.length > 0) setShowElSuggestions(true); }}
+                  onBlur={() => setTimeout(() => setShowElSuggestions(false), 150)}
+                  placeholder="Name"
+                  style={{ ...inputStyle, width: '100%' }}
+                  autoFocus
+                />
+                {showElSuggestions && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, zIndex: 100,
+                    background: '#1a1a2e', border: '1px solid #0f3460', borderRadius: 3,
+                    maxHeight: 120, overflow: 'auto', width: 180,
+                  }}>
+                    {elSuggestions.map((s) => (
+                      <div
+                        key={s.name}
+                        onMouseDown={() => handleSelectSuggestion(s)}
+                        style={{
+                          fontSize: 10, fontFamily: 'monospace', color: '#b0b8c0',
+                          padding: '2px 4px', cursor: 'pointer',
+                        }}
+                        onMouseOver={(e) => (e.currentTarget.style.background = '#0f3460')}
+                        onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <span style={{ color: '#56d6c8' }}>{s.name}</span>
+                        {s.z != null && <span style={{ color: '#666', marginLeft: 4 }}>Z={s.z}</span>}
+                        {s.atom_value != null && <span style={{ color: '#666', marginLeft: 4 }}>A={s.atom_value}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               <input value={newZ} onChange={(e) => setNewZ(e.target.value)} placeholder="Z" style={{ ...inputStyle, width: 30 }} />
               <input value={newAtom} onChange={(e) => setNewAtom(e.target.value)} placeholder="Atom" style={{ ...inputStyle, width: 50 }} />
               <button onClick={handleAdd} style={smallBtn}>Add</button>
@@ -557,7 +670,7 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function generateMaterialName(
+function generateDefaultMaterialName(
   mat: MaterialInfo,
   allMaterials: MaterialInfo[],
 ): string {

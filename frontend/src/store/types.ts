@@ -88,9 +88,19 @@ export interface ElementInfo {
   atom_value: string | null;
 }
 
+export interface NistComponent {
+  type: 'Fraction' | 'Composite';
+  ref: string;
+  n: number;
+}
+
 export interface NistMaterial {
   name: string;
   density: number;
   state: string;
   category: string;
+  z: number | null;
+  atom_value: number | null;
+  formula: string | null;
+  components: NistComponent[];
 }

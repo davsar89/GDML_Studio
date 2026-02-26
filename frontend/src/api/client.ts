@@ -72,6 +72,14 @@ export async function getNistMaterials(search?: string, category?: string) {
   );
 }
 
+export async function getNistMaterial(name: string) {
+  const params = new URLSearchParams();
+  params.set('name', name);
+  return fetchJson<{ material: NistMaterial }>(
+    `/api/nist/material?${params.toString()}`,
+  );
+}
+
 // ─── Material CRUD ──────────────────────────────────────────────────────────
 
 export async function updateMaterial(name: string, material: MaterialInfo) {

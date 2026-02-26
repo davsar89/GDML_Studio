@@ -1,12 +1,29 @@
+import { useRef } from 'react';
 import { useAppStore } from '../../store';
+import type { NistMaterial } from '../../store/types';
 import * as api from '../../api/client';
+import { importNistMaterial } from '../../utils/nistImport';
+import SearchableCombobox from '../SearchableCombobox';
+
+async function refreshMaterialsAndMeshes() {
+  const matData = await api.getMaterials();
+  const store = useAppStore.getState();
+  store.setMaterials(matData.materials);
+  store.setElements(matData.elements);
+  const [meshData, structData] = await Promise.all([
+    api.getMeshes(),
+    api.getStructure(),
+  ]);
+  store.setMeshes(meshData.meshes);
+  store.setSceneGraph(meshData.scene_graph);
+  store.setVolumes(structData.volumes);
+}
 
 export default function VolumeDetail() {
   const selectedVolume = useAppStore((s) => s.selectedVolume);
   const volumes = useAppStore((s) => s.volumes);
   const materials = useAppStore((s) => s.materials);
-  const setSelectedMaterial = useAppStore((s) => s.setSelectedMaterial);
-  const setActiveTreeTab = useAppStore((s) => s.setActiveTreeTab);
+  const comboboxRef = useRef<HTMLInputElement>(null);
 
   if (!selectedVolume) return null;
 
@@ -15,24 +32,20 @@ export default function VolumeDetail() {
 
   const mat = materials.find((m) => m.name === vol.material_ref);
 
-  const handleMaterialChange = async (newRef: string) => {
+  const handleMaterialSelect = async (name: string, isNist: boolean, nistData?: NistMaterial) => {
     try {
-      await api.updateVolumeMaterialRef(vol.name, newRef);
-      // Re-fetch structure and meshes for updated coloring
-      const structData = await api.getStructure();
-      const store = useAppStore.getState();
-      store.setVolumes(structData.volumes);
-      const meshData = await api.getMeshes();
-      store.setMeshes(meshData.meshes);
-      store.setSceneGraph(meshData.scene_graph);
+      if (isNist && nistData) {
+        // Auto-import from NIST, then assign
+        const newMat = await importNistMaterial(nistData);
+        await api.addMaterial(newMat);
+        await api.updateVolumeMaterialRef(vol.name, newMat.name);
+      } else {
+        await api.updateVolumeMaterialRef(vol.name, name);
+      }
+      await refreshMaterialsAndMeshes();
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
     }
-  };
-
-  const handleEditMaterial = () => {
-    setSelectedMaterial(vol.material_ref);
-    setActiveTreeTab('materials');
   };
 
   return (
@@ -56,29 +69,13 @@ export default function VolumeDetail() {
           <span>{vol.solid_ref}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ color: '#8899aa' }}>Material: </span>
-          <select
+          <span style={{ color: '#8899aa', flexShrink: 0 }}>Material: </span>
+          <SearchableCombobox
             value={vol.material_ref}
-            onChange={(e) => handleMaterialChange(e.target.value)}
-            style={{
-              background: '#1a1a2e',
-              color: '#e0e0e0',
-              border: '1px solid #0f3460',
-              borderRadius: 3,
-              padding: '1px 4px',
-              fontSize: 10,
-              fontFamily: 'monospace',
-              outline: 'none',
-            }}
-          >
-            {materials.map((m) => (
-              <option key={m.name} value={m.name}>{m.name}</option>
-            ))}
-            {/* If current material_ref doesn't match any loaded material, show it anyway */}
-            {!materials.some((m) => m.name === vol.material_ref) && (
-              <option value={vol.material_ref}>{vol.material_ref}</option>
-            )}
-          </select>
+            materials={materials}
+            onChange={handleMaterialSelect}
+            inputRef={comboboxRef}
+          />
         </div>
         {mat && (
           <div
@@ -96,7 +93,7 @@ export default function VolumeDetail() {
               <div>
                 <span style={{ color: '#7a8a9a' }}>Density: </span>
                 <span style={{ color: '#b0b8c0' }}>
-                  {mat.density.value}{mat.density.unit ? ` ${mat.density.unit}` : ' g/cm³'}
+                  {mat.density.value}{mat.density.unit ? ` ${mat.density.unit}` : ' g/cm3'}
                 </span>
               </div>
             )}
@@ -114,23 +111,6 @@ export default function VolumeDetail() {
             )}
           </div>
         )}
-        <button
-          onClick={handleEditMaterial}
-          style={{
-            marginTop: 4,
-            width: '100%',
-            padding: '3px 0',
-            background: '#0f3460',
-            color: '#e94560',
-            border: '1px solid #e94560',
-            borderRadius: 3,
-            cursor: 'pointer',
-            fontSize: 10,
-            fontWeight: 600,
-          }}
-        >
-          Edit Material
-        </button>
       </div>
     </div>
   );

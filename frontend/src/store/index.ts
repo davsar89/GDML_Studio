@@ -41,7 +41,6 @@ interface AppState {
   closeContextMenu: () => void;
   reset: () => void;
 }
-
 export const useAppStore = create<AppState>((set) => ({
   loading: false,
   error: null,

@@ -16,6 +16,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/document/structure", get(handlers::get_structure))
         // NIST database
         .route("/api/nist/materials", get(handlers::get_nist_materials))
+        .route("/api/nist/material", get(handlers::get_nist_material))
         // Material CRUD
         .route("/api/document/materials/update", put(handlers::update_material))
         .route("/api/document/materials/add", post(handlers::add_material))

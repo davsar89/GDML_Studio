@@ -653,6 +653,19 @@ pub async fn get_nist_materials(
     Json(json!({ "materials": results }))
 }
 
+#[derive(Deserialize)]
+pub struct NistMaterialQuery {
+    pub name: String,
+}
+
+pub async fn get_nist_material(
+    Query(query): Query<NistMaterialQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let mat = nist::find_nist_material(&query.name)
+        .ok_or_else(|| ApiError::not_found(&format!("NIST material '{}' not found", query.name)))?;
+    Ok(Json(json!({ "material": mat })))
+}
+
 // ─── Material CRUD ──────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
