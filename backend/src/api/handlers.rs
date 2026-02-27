@@ -529,7 +529,7 @@ fn build_volume_node(
 
     let density = density_map.get(vol.material_ref.as_str()).copied();
 
-    let children: Vec<SceneNode> = vol
+    let mut children: Vec<SceneNode> = vol
         .physvols
         .iter()
         .filter_map(|pv| {
@@ -550,6 +550,39 @@ fn build_volume_node(
             Some(build_volume_node(child_vol, vol_map, density_map, engine, pos, rot, false, visited))
         })
         .collect();
+
+    // Expand replicavol into child nodes
+    if let Some(ref replica) = vol.replica {
+        if let Some(child_vol) = vol_map.get(replica.volume_ref.as_str()) {
+            let number = engine.resolve_value(&replica.number) as usize;
+            let width_val = engine.resolve_value(&replica.width);
+            let width_unit = replica.width_unit.as_deref().unwrap_or("mm");
+            let width_mm = crate::gdml::units::length_to_mm(width_val, width_unit);
+
+            let offset_val = engine.resolve_value(&replica.offset);
+            let offset_unit = replica.offset_unit.as_deref().unwrap_or("mm");
+            let offset_mm = crate::gdml::units::length_to_mm(offset_val, offset_unit);
+
+            // Determine axis index: x=0, y=1, z=2
+            let axis = if replica.direction[0].as_deref().map(|v| engine.resolve_value(v)).unwrap_or(0.0).abs() > 0.5 {
+                0
+            } else if replica.direction[1].as_deref().map(|v| engine.resolve_value(v)).unwrap_or(0.0).abs() > 0.5 {
+                1
+            } else {
+                2
+            };
+
+            for n in 0..number {
+                let mut pos = [0.0_f64; 3];
+                pos[axis] = offset_mm + (n as f64) * width_mm;
+                let child_node = build_volume_node(
+                    child_vol, vol_map, density_map, engine,
+                    pos, [0.0; 3], false, visited,
+                );
+                children.push(child_node);
+            }
+        }
+    }
 
     visited.remove(&vol.name);
 

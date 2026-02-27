@@ -263,6 +263,76 @@ fn write_materials(writer: &mut Writer<Cursor<Vec<u8>>>, materials: &MaterialSec
     Ok(())
 }
 
+fn write_placement_pos(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    pos: &PlacementPos,
+    inline_tag: &str,
+    ref_tag: &str,
+) -> Result<()> {
+    match pos {
+        PlacementPos::Inline(p) => {
+            let mut pe = BytesStart::new(inline_tag);
+            if !p.name.is_empty() {
+                pe.push_attribute(("name", p.name.as_str()));
+            }
+            if let Some(ref x) = p.x {
+                pe.push_attribute(("x", x.as_str()));
+            }
+            if let Some(ref y) = p.y {
+                pe.push_attribute(("y", y.as_str()));
+            }
+            if let Some(ref z) = p.z {
+                pe.push_attribute(("z", z.as_str()));
+            }
+            if let Some(ref u) = p.unit {
+                pe.push_attribute(("unit", u.as_str()));
+            }
+            writer.write_event(Event::Empty(pe))?;
+        }
+        PlacementPos::Ref(name) => {
+            let mut pr = BytesStart::new(ref_tag);
+            pr.push_attribute(("ref", name.as_str()));
+            writer.write_event(Event::Empty(pr))?;
+        }
+    }
+    Ok(())
+}
+
+fn write_placement_rot(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    rot: &PlacementRot,
+    inline_tag: &str,
+    ref_tag: &str,
+) -> Result<()> {
+    match rot {
+        PlacementRot::Inline(r) => {
+            let mut re = BytesStart::new(inline_tag);
+            if !r.name.is_empty() {
+                re.push_attribute(("name", r.name.as_str()));
+            }
+            if let Some(ref x) = r.x {
+                re.push_attribute(("x", x.as_str()));
+            }
+            if let Some(ref y) = r.y {
+                re.push_attribute(("y", y.as_str()));
+            }
+            if let Some(ref z) = r.z {
+                re.push_attribute(("z", z.as_str()));
+            }
+            if let Some(ref u) = r.unit {
+                re.push_attribute(("unit", u.as_str()));
+            }
+            writer.write_event(Event::Empty(re))?;
+        }
+        PlacementRot::Ref(name) => {
+            let mut rr = BytesStart::new(ref_tag);
+            rr.push_attribute(("ref", name.as_str()));
+            writer.write_event(Event::Empty(rr))?;
+        }
+    }
+    Ok(())
+}
+
 fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("solids")))?;
 
@@ -353,6 +423,39 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                     elem.push_attribute(("lunit", u.as_str()));
                 }
                 writer.write_event(Event::Empty(elem))?;
+            }
+            Solid::Boolean(bs) => {
+                let tag_name = match bs.operation {
+                    BooleanOp::Subtraction => "subtraction",
+                    BooleanOp::Union => "union",
+                    BooleanOp::Intersection => "intersection",
+                };
+                let mut elem = BytesStart::new(tag_name);
+                elem.push_attribute(("name", bs.name.as_str()));
+                writer.write_event(Event::Start(elem))?;
+
+                let mut first = BytesStart::new("first");
+                first.push_attribute(("ref", bs.first_ref.as_str()));
+                writer.write_event(Event::Empty(first))?;
+
+                let mut second = BytesStart::new("second");
+                second.push_attribute(("ref", bs.second_ref.as_str()));
+                writer.write_event(Event::Empty(second))?;
+
+                if let Some(ref pos) = bs.position {
+                    write_placement_pos(writer, pos, "position", "positionref")?;
+                }
+                if let Some(ref rot) = bs.rotation {
+                    write_placement_rot(writer, rot, "rotation", "rotationref")?;
+                }
+                if let Some(ref pos) = bs.first_position {
+                    write_placement_pos(writer, pos, "firstposition", "firstpositionref")?;
+                }
+                if let Some(ref rot) = bs.first_rotation {
+                    write_placement_rot(writer, rot, "firstrotation", "firstrotationref")?;
+                }
+
+                writer.write_event(Event::End(BytesEnd::new(tag_name)))?;
             }
         }
     }
@@ -454,6 +557,48 @@ fn write_structure(writer: &mut Writer<Cursor<Vec<u8>>>, structure: &StructureSe
             }
 
             writer.write_event(Event::End(BytesEnd::new("physvol")))?;
+        }
+
+        // Write replicavol if present
+        if let Some(ref replica) = vol.replica {
+            let mut rv = BytesStart::new("replicavol");
+            rv.push_attribute(("number", replica.number.as_str()));
+            writer.write_event(Event::Start(rv))?;
+
+            let mut vref = BytesStart::new("volumeref");
+            vref.push_attribute(("ref", replica.volume_ref.as_str()));
+            writer.write_event(Event::Empty(vref))?;
+
+            writer.write_event(Event::Start(BytesStart::new("replicate_along_axis")))?;
+
+            let mut dir = BytesStart::new("direction");
+            if let Some(ref x) = replica.direction[0] {
+                dir.push_attribute(("x", x.as_str()));
+            }
+            if let Some(ref y) = replica.direction[1] {
+                dir.push_attribute(("y", y.as_str()));
+            }
+            if let Some(ref z) = replica.direction[2] {
+                dir.push_attribute(("z", z.as_str()));
+            }
+            writer.write_event(Event::Empty(dir))?;
+
+            let mut w = BytesStart::new("width");
+            w.push_attribute(("value", replica.width.as_str()));
+            if let Some(ref u) = replica.width_unit {
+                w.push_attribute(("unit", u.as_str()));
+            }
+            writer.write_event(Event::Empty(w))?;
+
+            let mut o = BytesStart::new("offset");
+            o.push_attribute(("value", replica.offset.as_str()));
+            if let Some(ref u) = replica.offset_unit {
+                o.push_attribute(("unit", u.as_str()));
+            }
+            writer.write_event(Event::Empty(o))?;
+
+            writer.write_event(Event::End(BytesEnd::new("replicate_along_axis")))?;
+            writer.write_event(Event::End(BytesEnd::new("replicavol")))?;
         }
 
         for aux in &vol.auxiliaries {

@@ -128,6 +128,7 @@ pub enum Solid {
     Tube(TubeSolid),
     Cone(ConeSolid),
     Sphere(SphereSolid),
+    Boolean(BooleanSolid),
 }
 
 impl Solid {
@@ -137,8 +138,28 @@ impl Solid {
             Solid::Tube(s) => &s.name,
             Solid::Cone(s) => &s.name,
             Solid::Sphere(s) => &s.name,
+            Solid::Boolean(s) => &s.name,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BooleanOp {
+    Subtraction,
+    Union,
+    Intersection,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BooleanSolid {
+    pub name: String,
+    pub operation: BooleanOp,
+    pub first_ref: String,
+    pub second_ref: String,
+    pub position: Option<PlacementPos>,
+    pub rotation: Option<PlacementRot>,
+    pub first_position: Option<PlacementPos>,
+    pub first_rotation: Option<PlacementRot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -203,6 +224,18 @@ pub struct Volume {
     pub solid_ref: String,
     pub physvols: Vec<PhysVol>,
     pub auxiliaries: Vec<Auxiliary>,
+    pub replica: Option<ReplicaVol>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplicaVol {
+    pub volume_ref: String,
+    pub number: String,
+    pub direction: [Option<String>; 3],
+    pub width: String,
+    pub width_unit: Option<String>,
+    pub offset: String,
+    pub offset_unit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

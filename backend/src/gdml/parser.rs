@@ -96,6 +96,21 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"sphere" if section == Section::Solids => {
                         parse_sphere_solid(e, &mut solids);
                     }
+                    b"subtraction" if section == Section::Solids => {
+                        let name = get_attr(e, "name").unwrap_or_default();
+                        let bs = read_boolean_solid_body(&mut reader, name, BooleanOp::Subtraction)?;
+                        solids.solids.push(Solid::Boolean(bs));
+                    }
+                    b"union" if section == Section::Solids => {
+                        let name = get_attr(e, "name").unwrap_or_default();
+                        let bs = read_boolean_solid_body(&mut reader, name, BooleanOp::Union)?;
+                        solids.solids.push(Solid::Boolean(bs));
+                    }
+                    b"intersection" if section == Section::Solids => {
+                        let name = get_attr(e, "name").unwrap_or_default();
+                        let bs = read_boolean_solid_body(&mut reader, name, BooleanOp::Intersection)?;
+                        solids.solids.push(Solid::Boolean(bs));
+                    }
                     b"volume" if section == Section::Structure => {
                         let vol_name = get_attr(e, "name").unwrap_or_default();
                         read_volume_body(&mut reader, vol_name, &mut structure)?;
@@ -482,6 +497,7 @@ fn read_volume_body(
     let mut solid_ref = String::new();
     let mut physvols = Vec::new();
     let mut auxiliaries = Vec::new();
+    let mut replica = None;
     let mut buf = Vec::new();
 
     loop {
@@ -522,6 +538,10 @@ fn read_volume_body(
                         let pv = read_physvol_body(reader, pv_name)?;
                         physvols.push(pv);
                     }
+                    b"replicavol" => {
+                        let number = get_attr(inner, "number").unwrap_or_else(|| "0".to_string());
+                        replica = Some(read_replicavol_body(reader, number)?);
+                    }
                     _ => {}
                 }
             }
@@ -542,6 +562,7 @@ fn read_volume_body(
         solid_ref,
         physvols,
         auxiliaries,
+        replica,
     });
     Ok(())
 }
@@ -666,6 +687,295 @@ fn read_physvol_body(
         file_ref,
         position,
         rotation,
+    })
+}
+
+// ─── Boolean solid parser ────────────────────────────────────────────────────
+
+fn read_boolean_solid_body(
+    reader: &mut Reader<&[u8]>,
+    name: String,
+    operation: BooleanOp,
+) -> Result<BooleanSolid> {
+    let mut first_ref = String::new();
+    let mut second_ref = String::new();
+    let mut position = None;
+    let mut rotation = None;
+    let mut first_position = None;
+    let mut first_rotation = None;
+    let mut buf = Vec::new();
+
+    let end_tag: &[u8] = match operation {
+        BooleanOp::Subtraction => b"subtraction",
+        BooleanOp::Union => b"union",
+        BooleanOp::Intersection => b"intersection",
+    };
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"first" => {
+                        first_ref = get_attr(inner, "ref").unwrap_or_default();
+                    }
+                    b"second" => {
+                        second_ref = get_attr(inner, "ref").unwrap_or_default();
+                    }
+                    b"position" => {
+                        position = Some(PlacementPos::Inline(Position {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                    }
+                    b"positionref" => {
+                        position = Some(PlacementPos::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                    }
+                    b"rotation" => {
+                        rotation = Some(PlacementRot::Inline(Rotation {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                    }
+                    b"rotationref" => {
+                        rotation = Some(PlacementRot::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                    }
+                    b"firstposition" => {
+                        first_position = Some(PlacementPos::Inline(Position {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                    }
+                    b"firstpositionref" => {
+                        first_position = Some(PlacementPos::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                    }
+                    b"firstrotation" => {
+                        first_rotation = Some(PlacementRot::Inline(Rotation {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                    }
+                    b"firstrotationref" => {
+                        first_rotation = Some(PlacementRot::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::Start(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"first" => {
+                        first_ref = get_attr(inner, "ref").unwrap_or_default();
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"second" => {
+                        second_ref = get_attr(inner, "ref").unwrap_or_default();
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"position" => {
+                        position = Some(PlacementPos::Inline(Position {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"positionref" => {
+                        position = Some(PlacementPos::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"rotation" => {
+                        rotation = Some(PlacementRot::Inline(Rotation {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"rotationref" => {
+                        rotation = Some(PlacementRot::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"firstposition" => {
+                        first_position = Some(PlacementPos::Inline(Position {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"firstpositionref" => {
+                        first_position = Some(PlacementPos::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"firstrotation" => {
+                        first_rotation = Some(PlacementRot::Inline(Rotation {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"firstrotationref" => {
+                        first_rotation = Some(PlacementRot::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref inner)) => {
+                if inner.local_name().as_ref() == end_tag {
+                    break;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(anyhow::anyhow!("XML error in boolean solid: {}", e)),
+            _ => {}
+        }
+    }
+
+    Ok(BooleanSolid {
+        name,
+        operation,
+        first_ref,
+        second_ref,
+        position,
+        rotation,
+        first_position,
+        first_rotation,
+    })
+}
+
+// ─── Replicavol parser ──────────────────────────────────────────────────────
+
+fn read_replicavol_body(
+    reader: &mut Reader<&[u8]>,
+    number: String,
+) -> Result<ReplicaVol> {
+    let mut volume_ref = String::new();
+    let mut direction = [None, None, None];
+    let mut width = String::new();
+    let mut width_unit = None;
+    let mut offset = String::new();
+    let mut offset_unit = None;
+    let mut buf = Vec::new();
+    let mut in_replicate = false;
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"volumeref" => {
+                        volume_ref = get_attr(inner, "ref").unwrap_or_default();
+                    }
+                    b"direction" if in_replicate => {
+                        direction[0] = get_attr(inner, "x");
+                        direction[1] = get_attr(inner, "y");
+                        direction[2] = get_attr(inner, "z");
+                    }
+                    b"width" if in_replicate => {
+                        width = get_attr(inner, "value").unwrap_or_default();
+                        width_unit = get_attr(inner, "unit");
+                    }
+                    b"offset" if in_replicate => {
+                        offset = get_attr(inner, "value").unwrap_or_default();
+                        offset_unit = get_attr(inner, "unit");
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::Start(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"volumeref" => {
+                        volume_ref = get_attr(inner, "ref").unwrap_or_default();
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"replicate_along_axis" => {
+                        in_replicate = true;
+                    }
+                    b"direction" if in_replicate => {
+                        direction[0] = get_attr(inner, "x");
+                        direction[1] = get_attr(inner, "y");
+                        direction[2] = get_attr(inner, "z");
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"width" if in_replicate => {
+                        width = get_attr(inner, "value").unwrap_or_default();
+                        width_unit = get_attr(inner, "unit");
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"offset" if in_replicate => {
+                        offset = get_attr(inner, "value").unwrap_or_default();
+                        offset_unit = get_attr(inner, "unit");
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"replicate_along_axis" => {
+                        in_replicate = false;
+                    }
+                    b"replicavol" => break,
+                    _ => {}
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(anyhow::anyhow!("XML error in replicavol: {}", e)),
+            _ => {}
+        }
+    }
+
+    Ok(ReplicaVol {
+        volume_ref,
+        number,
+        direction,
+        width,
+        width_unit,
+        offset,
+        offset_unit,
     })
 }
 

@@ -1,0 +1,317 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+
+<gdml xmlns:gdml="http://cern.ch/2001/Schemas/GDML"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="./gdml.xsd">
+
+  <!-- ============================================================
+       PINHOLE camera CZT — complete compact/lab geometry
+       Contains: world box, CZT 64x64 pixel assembly (rotated 180° X),
+                 lead plate with knife-edge aperture, 4 lead side walls.
+       ============================================================ -->
+
+  <define>
+    <rotation name="id" unit="deg" x="0" y="0" z="0"/>
+    <!-- 180° rotation around X to flip CZT so sensitive face points -Z -->
+    <rotation name="rotX180" unit="deg" x="180" y="0" z="0"/>
+
+    <!-- ==================== CZT chip dimensions ==================== -->
+    <constant name="cztu_x" value="46"/>
+    <constant name="cztu_y" value="46"/>
+    <constant name="chip_x" value="cztu_x"/>
+    <constant name="chip_y" value="cztu_y"/>
+    <constant name="chip_z" value="8.5"/>
+    <constant name="chip_cw" value="40"/>
+    <constant name="chip_ch" value="5"/>
+    <constant name="chip_bpcbz" value="2.0"/>
+    <constant name="chip_npix" value="16"/>
+
+    <!-- CZT assembly (one 64x64 module = 4x4 chips) -->
+    <constant name="czt_hx" value="chip_x*4"/>    <!-- 184 mm full, 92 mm half -->
+    <constant name="czt_hy" value="chip_y*4"/>
+    <constant name="czt_hz" value="chip_z"/>       <!-- 8.5 mm full (half = 4.25) -->
+
+    <!-- Chip CZT slab position inside its container -->
+    <position name="chip_c_pos" unit="mm" x="0" y="0" z="-chip_z/2+chip_bpcbz+chip_ch/2"/>
+
+    <!-- ==================== Lead plate dimensions ==================== -->
+    <!-- From Settings defaults: PLATE_THICKNESS=10mm, PLATE_GAP=100mm,
+         PLATE_HOLE_DIAMETER=30mm, PLATE_KNIFE_DIAMETER=20mm,
+         PLATE_XY_OVERHANG=150mm -->
+    <constant name="plate_thick" value="10"/>      <!-- mm, full thickness -->
+    <constant name="plate_gap"   value="100"/>     <!-- mm, gap between CZT and plate -->
+    <constant name="hole_r"      value="15"/>      <!-- mm, PLATE_HOLE_DIAMETER/2 -->
+    <constant name="knife_r"     value="10"/>      <!-- mm, PLATE_KNIFE_DIAMETER/2 -->
+    <constant name="overhang"    value="150"/>     <!-- mm -->
+    <constant name="plate_hx"    value="czt_hx/2 + overhang"/>   <!-- 92+150 = 242 mm half-size -->
+    <constant name="plate_hy"    value="czt_hy/2 + overhang"/>
+
+    <!-- Knife-edge cone parameters -->
+    <constant name="quarter_thick" value="plate_thick/4"/>  <!-- 2.5 mm -->
+    <constant name="cone_hz"       value="quarter_thick + 0.1"/>  <!-- 2.6 mm half, so full z=5.2 -->
+    <constant name="eps"           value="0.1"/>  <!-- boolean clearance -->
+
+    <!-- Plate Z position in world (after 180° X rotation):
+         CZT center at Z=0, sensitive face at Z=-4.25,
+         plate at -(czt_hz/2 + plate_thick/2 + plate_gap) -->
+    <constant name="plate_z" value="-(czt_hz/2 + plate_thick/2 + plate_gap)"/>  <!-- -109.25 mm -->
+
+    <!-- ==================== Side wall dimensions ==================== -->
+    <constant name="wall_margin"  value="5"/>      <!-- mm clearance around hole -->
+    <constant name="side_t"       value="plate_hx - (hole_r + wall_margin)"/>  <!-- 242-20 = 222 mm -->
+    <constant name="wall_half_z"  value="(plate_gap + plate_thick)/2"/>        <!-- 55 mm -->
+    <constant name="wall_eps"     value="0.05"/>   <!-- mm separation to avoid coincident surfaces -->
+    <!-- Wall center Z: -(czt_hz/2 + wall_half_z + wall_eps/2) -->
+    <constant name="wall_z"       value="-(czt_hz/2 + wall_half_z + wall_eps/2)"/>  <!-- ~ -59.275 mm -->
+
+    <!-- X walls: half-x = side_t/2, half-y = plate_hy, half-z = wall_half_z -->
+    <!-- Position: x = ±(plate_hx - side_t/2) = ±(242-111) = ±131 -->
+    <constant name="xwall_x_offset" value="plate_hx - side_t/2"/>  <!-- 131 mm -->
+
+    <!-- Y walls: half-x = plate_hx, half-y = side_t/2, half-z = wall_half_z -->
+    <!-- Position: y = ±(plate_hy - side_t/2) = ±131 -->
+    <constant name="ywall_y_offset" value="plate_hy - side_t/2"/>
+
+    <!-- ==================== World dimensions ==================== -->
+    <!-- 10100 mm = ~5.05 m half-size, giving 10.1 m full size -->
+    <constant name="world_half" value="5050"/>
+
+    <!-- ==================== Positions ==================== -->
+    <position name="czt_assembly_pos" unit="mm" x="0" y="0" z="0"/>
+    <position name="plate_pos"        unit="mm" x="0" y="0" z="plate_z"/>
+    <position name="xwall_xp_pos"     unit="mm" x="xwall_x_offset"  y="0" z="wall_z"/>
+    <position name="xwall_xm_pos"     unit="mm" x="-xwall_x_offset" y="0" z="wall_z"/>
+    <!-- Y walls: rotX180 maps local +Y to world -Y, so wall at local +Y goes to world -Y -->
+    <position name="ywall_yp_pos"     unit="mm" x="0" y="-ywall_y_offset" z="wall_z"/>
+    <position name="ywall_ym_pos"     unit="mm" x="0" y="ywall_y_offset"  z="wall_z"/>
+  </define>
+
+  <!-- ==================== Materials ==================== -->
+  <materials>
+    <material name="Vacuum" Z="1.0">
+      <D value="1.0e-25" unit="g/cm3"/>
+      <atom value="1.00794"/>
+    </material>
+
+    <element name="Cadmium"   formula="Cd" Z="48.0"> <atom value="112.411"/> </element>
+    <element name="Zinc"      formula="Zn" Z="30.0"> <atom value="65.38"/>   </element>
+    <element name="Tellurium" formula="Te" Z="52.0"> <atom value="127.6"/>   </element>
+    <material name="CZT">
+      <D value="5.86" unit="g/cm3"/>
+      <fraction n="0.45" ref="Cadmium"/>
+      <fraction n="0.05" ref="Zinc"/>
+      <fraction n="0.50" ref="Tellurium"/>
+    </material>
+
+    <element name="Lead_el" formula="Pb" Z="82.0"> <atom value="207.2"/> </element>
+    <material name="Lead">
+      <D value="11.35" unit="g/cm3"/>
+      <fraction n="1.0" ref="Lead_el"/>
+    </material>
+  </materials>
+
+  <!-- ==================== Solids ==================== -->
+  <solids>
+    <!-- World box (half-sizes, GDML halves internally) -->
+    <box name="world_box" lunit="mm" x="2*world_half" y="2*world_half" z="2*world_half"/>
+
+    <!-- ===== CZT pixel hierarchy ===== -->
+    <box name="chip_pixel"  lunit="mm" x="chip_cw/chip_npix" y="chip_cw/chip_npix" z="chip_ch"/>
+    <box name="chip_pixrow" lunit="mm" x="chip_cw" y="chip_cw/chip_npix" z="chip_ch"/>
+    <box name="chip_c"      lunit="mm" x="chip_cw" y="chip_cw" z="chip_ch"/>
+    <box name="cztc_mv"     lunit="mm" x="chip_x" y="chip_y" z="chip_z"/>
+    <box name="cztc4_mv"    lunit="mm" x="chip_x*4" y="chip_y" z="chip_z"/>
+    <box name="cztc16_mv"   lunit="mm" x="chip_x*4" y="chip_y*4" z="chip_z"/>
+    <!-- CZT assembly container -->
+    <box name="czt_assembly_box" lunit="mm" x="czt_hx" y="czt_hy" z="czt_hz"/>
+
+    <!-- ===== Lead plate with knife-edge hole ===== -->
+    <box name="plate_box" lunit="mm" x="2*plate_hx" y="2*plate_hy" z="plate_thick"/>
+
+    <!-- Top cone: at -hz face rmax=knife_r+eps (center), at +hz face rmax=hole_r+eps (surface) -->
+    <cone name="top_cone" lunit="mm" aunit="deg"
+          rmin1="0" rmax1="knife_r+eps" rmin2="0" rmax2="hole_r+eps"
+          z="2*cone_hz" startphi="0" deltaphi="360"/>
+
+    <!-- Bottom cone: at -hz face rmax=hole_r+eps (surface), at +hz face rmax=knife_r+eps (center) -->
+    <cone name="bot_cone" lunit="mm" aunit="deg"
+          rmin1="0" rmax1="hole_r+eps" rmin2="0" rmax2="knife_r+eps"
+          z="2*cone_hz" startphi="0" deltaphi="360"/>
+
+    <!-- Boolean subtraction: plate - top_cone - bot_cone -->
+    <subtraction name="plate_sub1">
+      <first ref="plate_box"/>
+      <second ref="top_cone"/>
+      <position name="top_cone_pos" unit="mm" x="0" y="0" z="quarter_thick"/>
+    </subtraction>
+    <subtraction name="plate_solid">
+      <first ref="plate_sub1"/>
+      <second ref="bot_cone"/>
+      <position name="bot_cone_pos" unit="mm" x="0" y="0" z="-quarter_thick"/>
+    </subtraction>
+
+    <!-- ===== Side walls ===== -->
+    <box name="xwall_box" lunit="mm" x="side_t" y="2*plate_hy" z="2*wall_half_z"/>
+    <box name="ywall_box" lunit="mm" x="2*plate_hx" y="side_t" z="2*wall_half_z"/>
+  </solids>
+
+  <!-- ==================== Structure ==================== -->
+  <structure>
+    <!-- ===== CZT pixel hierarchy (same as czt_crystals_only_single.gdml) ===== -->
+
+    <!-- Sensitive CZT pixel -->
+    <volume name="chip_pixel_v">
+      <materialref ref="CZT"/>
+      <solidref ref="chip_pixel"/>
+      <auxiliary auxtype="sensitive" auxvalue="czt"/>
+    </volume>
+
+    <!-- 16 pixels along X -->
+    <volume name="chip_pixrow_v">
+      <materialref ref="Vacuum"/>
+      <solidref ref="chip_pixrow"/>
+      <replicavol number="16">
+        <volumeref ref="chip_pixel_v"/>
+        <replicate_along_axis>
+          <direction x="1"/>
+          <width value="chip_cw/chip_npix" unit="mm"/>
+          <offset value="-chip_cw/2.0 + chip_cw/chip_npix/2.0" unit="mm"/>
+        </replicate_along_axis>
+      </replicavol>
+    </volume>
+
+    <!-- 16 rows along Y -->
+    <volume name="chip_c_v">
+      <materialref ref="Vacuum"/>
+      <solidref ref="chip_c"/>
+      <replicavol number="16">
+        <volumeref ref="chip_pixrow_v"/>
+        <replicate_along_axis>
+          <direction y="1"/>
+          <width value="chip_cw/chip_npix" unit="mm"/>
+          <offset value="-chip_cw/2.0 + chip_cw/chip_npix/2.0" unit="mm"/>
+        </replicate_along_axis>
+      </replicavol>
+    </volume>
+
+    <!-- Single chip container -->
+    <volume name="cztc">
+      <materialref ref="Vacuum"/>
+      <solidref ref="cztc_mv"/>
+      <physvol>
+        <volumeref ref="chip_c_v"/>
+        <positionref ref="chip_c_pos"/>
+        <rotationref ref="id"/>
+      </physvol>
+    </volume>
+
+    <!-- 4 chips in X -->
+    <volume name="cztc4">
+      <materialref ref="Vacuum"/>
+      <solidref ref="cztc4_mv"/>
+      <replicavol number="4">
+        <volumeref ref="cztc"/>
+        <replicate_along_axis>
+          <direction x="1"/>
+          <width value="chip_x" unit="mm"/>
+          <offset value="-1.5*chip_x" unit="mm"/>
+        </replicate_along_axis>
+      </replicavol>
+    </volume>
+
+    <!-- 4x4 chips: one 64x64 module -->
+    <volume name="cztc16">
+      <materialref ref="Vacuum"/>
+      <solidref ref="cztc16_mv"/>
+      <replicavol number="4">
+        <volumeref ref="cztc4"/>
+        <replicate_along_axis>
+          <direction y="1"/>
+          <width value="chip_y" unit="mm"/>
+          <offset value="-1.5*chip_y" unit="mm"/>
+        </replicate_along_axis>
+      </replicavol>
+    </volume>
+
+    <!-- CZT assembly container (equivalent to old "czt" world from the single GDML) -->
+    <volume name="czt_assembly_lv">
+      <materialref ref="Vacuum"/>
+      <solidref ref="czt_assembly_box"/>
+      <physvol>
+        <volumeref ref="cztc16"/>
+        <position name="cztc16_at_center" unit="mm" x="0" y="0" z="0"/>
+        <rotationref ref="id"/>
+      </physvol>
+    </volume>
+
+    <!-- ===== Lead plate with knife-edge ===== -->
+    <volume name="PbPlate_lv">
+      <materialref ref="Lead"/>
+      <solidref ref="plate_solid"/>
+    </volume>
+
+    <!-- ===== Side walls ===== -->
+    <volume name="PbPlate_xwall_lv">
+      <materialref ref="Lead"/>
+      <solidref ref="xwall_box"/>
+    </volume>
+
+    <volume name="PbPlate_ywall_lv">
+      <materialref ref="Lead"/>
+      <solidref ref="ywall_box"/>
+    </volume>
+
+    <!-- ===== World volume ===== -->
+    <volume name="World">
+      <materialref ref="Vacuum"/>
+      <solidref ref="world_box"/>
+
+      <!-- CZT assembly at origin, rotated 180° around X so sensitive face points -Z -->
+      <physvol name="CZT_assembly">
+        <volumeref ref="czt_assembly_lv"/>
+        <positionref ref="czt_assembly_pos"/>
+        <rotationref ref="rotX180"/>
+      </physvol>
+
+      <!-- Lead plate with knife-edge aperture -->
+      <physvol name="PbPlate_pV">
+        <volumeref ref="PbPlate_lv"/>
+        <positionref ref="plate_pos"/>
+        <rotationref ref="id"/>
+      </physvol>
+
+      <!-- +X side wall -->
+      <physvol name="PbPlate_xp_pV">
+        <volumeref ref="PbPlate_xwall_lv"/>
+        <positionref ref="xwall_xp_pos"/>
+        <rotationref ref="id"/>
+      </physvol>
+
+      <!-- -X side wall -->
+      <physvol name="PbPlate_xm_pV">
+        <volumeref ref="PbPlate_xwall_lv"/>
+        <positionref ref="xwall_xm_pos"/>
+        <rotationref ref="id"/>
+      </physvol>
+
+      <!-- +Y side wall (world -Y due to rotX180 mapping) -->
+      <physvol name="PbPlate_yp_pV">
+        <volumeref ref="PbPlate_ywall_lv"/>
+        <positionref ref="ywall_yp_pos"/>
+        <rotationref ref="id"/>
+      </physvol>
+
+      <!-- -Y side wall (world +Y) -->
+      <physvol name="PbPlate_ym_pV">
+        <volumeref ref="PbPlate_ywall_lv"/>
+        <positionref ref="ywall_ym_pos"/>
+        <rotationref ref="id"/>
+      </physvol>
+    </volume>
+  </structure>
+
+  <setup name="Default" version="1.0">
+    <world ref="World"/>
+  </setup>
+
+</gdml>
