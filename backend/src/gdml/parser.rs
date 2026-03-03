@@ -58,7 +58,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"constant" if section == Section::Define => {
                         parse_constant(e, &mut defines);
                     }
-                    b"quantity" if section == Section::Define || section == Section::MaterialsDefine => {
+                    b"quantity"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
                         parse_quantity(e, &mut defines);
                     }
                     b"variable" if section == Section::Define => {
@@ -98,7 +100,8 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"subtraction" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
-                        let bs = read_boolean_solid_body(&mut reader, name, BooleanOp::Subtraction)?;
+                        let bs =
+                            read_boolean_solid_body(&mut reader, name, BooleanOp::Subtraction)?;
                         solids.solids.push(Solid::Boolean(bs));
                     }
                     b"union" if section == Section::Solids => {
@@ -108,7 +111,8 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"intersection" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
-                        let bs = read_boolean_solid_body(&mut reader, name, BooleanOp::Intersection)?;
+                        let bs =
+                            read_boolean_solid_body(&mut reader, name, BooleanOp::Intersection)?;
                         solids.solids.push(Solid::Boolean(bs));
                     }
                     b"volume" if section == Section::Structure => {
@@ -119,7 +123,11 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let name = get_attr(e, "name").unwrap_or_default();
                         let version = get_attr(e, "version").unwrap_or_else(|| "1.0".to_string());
                         let world_ref = read_setup_body(&mut reader)?;
-                        setup = Some(SetupSection { name, version, world_ref });
+                        setup = Some(SetupSection {
+                            name,
+                            version,
+                            world_ref,
+                        });
                     }
                     _ => {}
                 }
@@ -131,7 +139,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"constant" if section == Section::Define => {
                         parse_constant(e, &mut defines);
                     }
-                    b"quantity" if section == Section::Define || section == Section::MaterialsDefine => {
+                    b"quantity"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
                         parse_quantity(e, &mut defines);
                     }
                     b"variable" if section == Section::Define => {
@@ -147,7 +157,12 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let name = get_attr(e, "name").unwrap_or_default();
                         let formula = get_attr(e, "formula");
                         let z = get_attr(e, "Z");
-                        materials.elements.push(Element { name, formula, z, atom_value: None });
+                        materials.elements.push(Element {
+                            name,
+                            formula,
+                            z,
+                            atom_value: None,
+                        });
                     }
                     b"box" if section == Section::Solids => {
                         parse_box_solid(e, &mut solids);
@@ -165,7 +180,11 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let name = get_attr(e, "name").unwrap_or_default();
                         let version = get_attr(e, "version").unwrap_or_else(|| "1.0".to_string());
                         let world_ref = get_attr(e, "world").unwrap_or_default();
-                        setup = Some(SetupSection { name, version, world_ref });
+                        setup = Some(SetupSection {
+                            name,
+                            version,
+                            world_ref,
+                        });
                     }
                     _ => {}
                 }
@@ -187,7 +206,13 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                 }
             }
             Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML parse error at pos {}: {}", reader.buffer_position(), e)),
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "XML parse error at pos {}: {}",
+                    reader.buffer_position(),
+                    e
+                ))
+            }
             _ => {}
         }
     }
@@ -567,10 +592,7 @@ fn read_volume_body(
     Ok(())
 }
 
-fn read_physvol_body(
-    reader: &mut Reader<&[u8]>,
-    name: Option<String>,
-) -> Result<PhysVol> {
+fn read_physvol_body(reader: &mut Reader<&[u8]>, name: Option<String>) -> Result<PhysVol> {
     let mut volume_ref = String::new();
     let mut file_ref = None;
     let mut position = None;
@@ -589,7 +611,10 @@ fn read_physvol_body(
                     b"file" => {
                         let fname = get_attr(inner, "name").unwrap_or_default();
                         let volname = get_attr(inner, "volname");
-                        file_ref = Some(FileRef { name: fname, volname });
+                        file_ref = Some(FileRef {
+                            name: fname,
+                            volname,
+                        });
                     }
                     b"position" => {
                         position = Some(PlacementPos::Inline(Position {
@@ -632,7 +657,10 @@ fn read_physvol_body(
                     b"file" => {
                         let fname = get_attr(inner, "name").unwrap_or_default();
                         let volname = get_attr(inner, "volname");
-                        file_ref = Some(FileRef { name: fname, volname });
+                        file_ref = Some(FileRef {
+                            name: fname,
+                            volname,
+                        });
                         reader.read_to_end(inner.to_end().name())?;
                     }
                     b"position" => {
@@ -885,10 +913,7 @@ fn read_boolean_solid_body(
 
 // ─── Replicavol parser ──────────────────────────────────────────────────────
 
-fn read_replicavol_body(
-    reader: &mut Reader<&[u8]>,
-    number: String,
-) -> Result<ReplicaVol> {
+fn read_replicavol_body(reader: &mut Reader<&[u8]>, number: String) -> Result<ReplicaVol> {
     let mut volume_ref = String::new();
     let mut direction = [None, None, None];
     let mut width = String::new();

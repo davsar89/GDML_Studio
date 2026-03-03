@@ -18,15 +18,30 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/nist/materials", get(handlers::get_nist_materials))
         .route("/api/nist/material", get(handlers::get_nist_material))
         // Material CRUD
-        .route("/api/document/materials/update", put(handlers::update_material))
+        .route(
+            "/api/document/materials/update",
+            put(handlers::update_material),
+        )
         .route("/api/document/materials/add", post(handlers::add_material))
-        .route("/api/document/materials/delete", post(handlers::delete_material))
+        .route(
+            "/api/document/materials/delete",
+            post(handlers::delete_material),
+        )
         // Element CRUD
-        .route("/api/document/elements/update", put(handlers::update_element))
+        .route(
+            "/api/document/elements/update",
+            put(handlers::update_element),
+        )
         .route("/api/document/elements/add", post(handlers::add_element))
-        .route("/api/document/elements/delete", post(handlers::delete_element))
+        .route(
+            "/api/document/elements/delete",
+            post(handlers::delete_element),
+        )
         // Volume material ref
-        .route("/api/document/structure/material-ref", put(handlers::update_volume_material_ref))
+        .route(
+            "/api/document/structure/material-ref",
+            put(handlers::update_volume_material_ref),
+        )
         // Export
         .route("/api/document/export", post(handlers::export_gdml))
         .with_state(state)

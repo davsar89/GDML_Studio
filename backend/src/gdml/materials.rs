@@ -77,7 +77,10 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     // <gdml> root with namespace
     let mut gdml = BytesStart::new("gdml");
     gdml.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
-    gdml.push_attribute(("xsi:noNamespaceSchemaLocation", "http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd"));
+    gdml.push_attribute((
+        "xsi:noNamespaceSchemaLocation",
+        "http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd",
+    ));
     writer.write_event(Event::Start(gdml))?;
 
     write_defines(&mut writer, &doc.defines)?;
@@ -171,7 +174,10 @@ fn write_defines(writer: &mut Writer<Cursor<Vec<u8>>>, defines: &DefineSection) 
     Ok(())
 }
 
-fn write_materials(writer: &mut Writer<Cursor<Vec<u8>>>, materials: &MaterialSection) -> Result<()> {
+fn write_materials(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    materials: &MaterialSection,
+) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("materials")))?;
 
     for el in &materials.elements {
@@ -464,7 +470,10 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
     Ok(())
 }
 
-fn write_structure(writer: &mut Writer<Cursor<Vec<u8>>>, structure: &StructureSection) -> Result<()> {
+fn write_structure(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    structure: &StructureSection,
+) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("structure")))?;
 
     for vol in &structure.volumes {

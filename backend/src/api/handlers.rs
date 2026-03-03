@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::response::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use super::errors::ApiError;
 use crate::config;
@@ -76,12 +76,30 @@ fn merge_child_into_main(
         .collect();
 
     // Merge defines (constants, quantities, variables, expressions, positions, rotations)
-    main_doc.defines.constants.extend(child_doc.defines.constants.clone());
-    main_doc.defines.quantities.extend(child_doc.defines.quantities.clone());
-    main_doc.defines.variables.extend(child_doc.defines.variables.clone());
-    main_doc.defines.expressions.extend(child_doc.defines.expressions.clone());
-    main_doc.defines.positions.extend(child_doc.defines.positions.clone());
-    main_doc.defines.rotations.extend(child_doc.defines.rotations.clone());
+    main_doc
+        .defines
+        .constants
+        .extend(child_doc.defines.constants.clone());
+    main_doc
+        .defines
+        .quantities
+        .extend(child_doc.defines.quantities.clone());
+    main_doc
+        .defines
+        .variables
+        .extend(child_doc.defines.variables.clone());
+    main_doc
+        .defines
+        .expressions
+        .extend(child_doc.defines.expressions.clone());
+    main_doc
+        .defines
+        .positions
+        .extend(child_doc.defines.positions.clone());
+    main_doc
+        .defines
+        .rotations
+        .extend(child_doc.defines.rotations.clone());
 
     // Merge elements (skip duplicates)
     for elem in &child_doc.materials.elements {
@@ -115,7 +133,7 @@ fn merge_child_into_main(
     for vol in &mut main_doc.structure.volumes {
         for pv in &mut vol.physvols {
             if let Some(ref fref) = pv.file_ref {
-                if fref.name == file_ref_name {
+                if fref.name == file_ref_name && &fref.volname == volname {
                     pv.volume_ref = child_world.clone();
                     pv.file_ref = None;
                 }
@@ -135,6 +153,53 @@ fn collect_file_refs(doc: &GdmlDocument) -> Vec<(String, Option<String>)> {
         }
     }
     refs
+}
+
+/// Resolve all file references recursively in breadth-first order.
+/// Newly discovered file_ref nodes from merged children are also processed.
+fn resolve_all_file_refs(
+    main_doc: &mut GdmlDocument,
+    child_docs: &HashMap<String, GdmlDocument>,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let mut pending = VecDeque::new();
+    let mut queued: HashSet<(String, Option<String>)> = HashSet::new();
+    let mut processed: HashSet<(String, Option<String>)> = HashSet::new();
+
+    for fref in collect_file_refs(main_doc) {
+        if queued.insert(fref.clone()) {
+            pending.push_back(fref);
+        }
+    }
+
+    while let Some((ref_name, volname)) = pending.pop_front() {
+        let key = (ref_name.clone(), volname.clone());
+        queued.remove(&key);
+        if !processed.insert(key.clone()) {
+            continue;
+        }
+
+        if let Some(child_doc) = child_docs.get(&ref_name) {
+            merge_child_into_main(main_doc, child_doc, &ref_name, &volname, &mut warnings);
+        } else {
+            warnings.push(format!(
+                "Referenced file '{}' was not provided in the upload",
+                ref_name
+            ));
+        }
+
+        // A merge may introduce more unresolved file_ref nodes.
+        for discovered in collect_file_refs(main_doc) {
+            if processed.contains(&discovered) {
+                continue;
+            }
+            if queued.insert(discovered.clone()) {
+                pending.push_back(discovered);
+            }
+        }
+    }
+
+    warnings
 }
 
 pub async fn upload_file(
@@ -215,8 +280,9 @@ pub async fn upload_files(
 
     // Parse the main file
     let mut main_doc =
-        parser::parse_gdml_from_bytes(main_content.as_bytes(), req.main_file.clone())
-            .map_err(|e| ApiError::bad_request(&format!("Parse error in {}: {}", req.main_file, e)))?;
+        parser::parse_gdml_from_bytes(main_content.as_bytes(), req.main_file.clone()).map_err(
+            |e| ApiError::bad_request(&format!("Parse error in {}: {}", req.main_file, e)),
+        )?;
 
     // Parse all other files into a lookup map
     let mut child_docs: HashMap<String, GdmlDocument> = HashMap::new();
@@ -236,19 +302,8 @@ pub async fn upload_files(
         }
     }
 
-    // Resolve file references: merge child documents into main
-    let mut merge_warnings = Vec::new();
-    let file_refs = collect_file_refs(&main_doc);
-    for (ref_name, volname) in &file_refs {
-        if let Some(child_doc) = child_docs.get(ref_name) {
-            merge_child_into_main(&mut main_doc, child_doc, ref_name, volname, &mut merge_warnings);
-        } else {
-            merge_warnings.push(format!(
-                "Referenced file '{}' was not provided in the upload",
-                ref_name
-            ));
-        }
-    }
+    // Resolve file references: merge child documents into main (including nested refs)
+    let merge_warnings = resolve_all_file_refs(&mut main_doc, &child_docs);
 
     // Evaluate expressions on the merged document
     let mut engine = EvalEngine::new();
@@ -290,9 +345,7 @@ pub async fn upload_files(
     Ok(Json(summary))
 }
 
-pub async fn get_summary(
-    State(state): State<SharedState>,
-) -> Result<Json<Value>, ApiError> {
+pub async fn get_summary(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
     let loaded = state_r
         .loaded
@@ -316,9 +369,7 @@ pub async fn get_summary(
     })))
 }
 
-pub async fn get_meshes(
-    State(state): State<SharedState>,
-) -> Result<Json<Value>, ApiError> {
+pub async fn get_meshes(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
     let loaded = state_r
         .loaded
@@ -353,9 +404,7 @@ pub async fn get_meshes(
     })))
 }
 
-pub async fn get_defines(
-    State(state): State<SharedState>,
-) -> Result<Json<Value>, ApiError> {
+pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
     let loaded = state_r
         .loaded
@@ -416,9 +465,7 @@ pub async fn get_defines(
     Ok(Json(json!({ "defines": defines })))
 }
 
-pub async fn get_materials(
-    State(state): State<SharedState>,
-) -> Result<Json<Value>, ApiError> {
+pub async fn get_materials(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
     let loaded = state_r
         .loaded
@@ -431,9 +478,7 @@ pub async fn get_materials(
     })))
 }
 
-pub async fn get_solids(
-    State(state): State<SharedState>,
-) -> Result<Json<Value>, ApiError> {
+pub async fn get_solids(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
     let loaded = state_r
         .loaded
@@ -445,9 +490,7 @@ pub async fn get_solids(
     })))
 }
 
-pub async fn get_structure(
-    State(state): State<SharedState>,
-) -> Result<Json<Value>, ApiError> {
+pub async fn get_structure(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
     let loaded = state_r
         .loaded
@@ -492,10 +535,21 @@ fn build_scene_graph(doc: &GdmlDocument, engine: &EvalEngine) -> SceneNode {
     let mut visited = HashSet::new();
 
     if let Some(world_vol) = vol_map.get(world_ref.as_str()) {
-        build_volume_node(world_vol, &vol_map, &density_map, engine, [0.0; 3], [0.0; 3], true, &mut visited)
+        build_volume_node(
+            world_vol,
+            &vol_map,
+            &density_map,
+            engine,
+            [0.0; 3],
+            [0.0; 3],
+            true,
+            &mut visited,
+            format!("/{}", world_vol.name),
+        )
     } else {
         SceneNode {
             name: "World".to_string(),
+            instance_id: "/World".to_string(),
             volume_name: world_ref.clone(),
             solid_name: String::new(),
             material_name: String::new(),
@@ -518,6 +572,7 @@ fn build_volume_node(
     rotation: [f64; 3],
     is_world: bool,
     visited: &mut HashSet<String>,
+    instance_id: String,
 ) -> SceneNode {
     visited.insert(vol.name.clone());
 
@@ -532,7 +587,8 @@ fn build_volume_node(
     let mut children: Vec<SceneNode> = vol
         .physvols
         .iter()
-        .filter_map(|pv| {
+        .enumerate()
+        .filter_map(|(idx, pv)| {
             if visited.contains(&pv.volume_ref) {
                 tracing::warn!(
                     "Cycle detected in scene graph: volume '{}' references already-visited '{}'",
@@ -546,8 +602,27 @@ fn build_volume_node(
 
             let pos = resolve_placement_pos(&pv.position, engine);
             let rot = resolve_placement_rot(&pv.rotation, engine);
+            let child_instance_id = match pv.name.as_deref() {
+                Some(name) if !name.is_empty() => {
+                    format!(
+                        "{}/physvol[{}]({}):{}",
+                        instance_id, idx, name, pv.volume_ref
+                    )
+                }
+                _ => format!("{}/physvol[{}]:{}", instance_id, idx, pv.volume_ref),
+            };
 
-            Some(build_volume_node(child_vol, vol_map, density_map, engine, pos, rot, false, visited))
+            Some(build_volume_node(
+                child_vol,
+                vol_map,
+                density_map,
+                engine,
+                pos,
+                rot,
+                false,
+                visited,
+                child_instance_id,
+            ))
         })
         .collect();
 
@@ -564,9 +639,21 @@ fn build_volume_node(
             let offset_mm = crate::gdml::units::length_to_mm(offset_val, offset_unit);
 
             // Determine axis index: x=0, y=1, z=2
-            let axis = if replica.direction[0].as_deref().map(|v| engine.resolve_value(v)).unwrap_or(0.0).abs() > 0.5 {
+            let axis = if replica.direction[0]
+                .as_deref()
+                .map(|v| engine.resolve_value(v))
+                .unwrap_or(0.0)
+                .abs()
+                > 0.5
+            {
                 0
-            } else if replica.direction[1].as_deref().map(|v| engine.resolve_value(v)).unwrap_or(0.0).abs() > 0.5 {
+            } else if replica.direction[1]
+                .as_deref()
+                .map(|v| engine.resolve_value(v))
+                .unwrap_or(0.0)
+                .abs()
+                > 0.5
+            {
                 1
             } else {
                 2
@@ -575,9 +662,18 @@ fn build_volume_node(
             for n in 0..number {
                 let mut pos = [0.0_f64; 3];
                 pos[axis] = offset_mm + (n as f64) * width_mm;
+                let replica_instance_id =
+                    format!("{}/replica[{}]:{}", instance_id, n, replica.volume_ref);
                 let child_node = build_volume_node(
-                    child_vol, vol_map, density_map, engine,
-                    pos, [0.0; 3], false, visited,
+                    child_vol,
+                    vol_map,
+                    density_map,
+                    engine,
+                    pos,
+                    [0.0; 3],
+                    false,
+                    visited,
+                    replica_instance_id,
                 );
                 children.push(child_node);
             }
@@ -588,6 +684,7 @@ fn build_volume_node(
 
     SceneNode {
         name: vol.name.clone(),
+        instance_id,
         volume_name: vol.name.clone(),
         solid_name: vol.solid_ref.clone(),
         material_name: vol.material_ref.clone(),
@@ -603,21 +700,9 @@ fn build_volume_node(
 fn resolve_placement_pos(pos: &Option<PlacementPos>, engine: &EvalEngine) -> [f64; 3] {
     match pos {
         Some(PlacementPos::Inline(p)) => {
-            let x = p
-                .x
-                .as_ref()
-                .map(|v| engine.resolve_value(v))
-                .unwrap_or(0.0);
-            let y = p
-                .y
-                .as_ref()
-                .map(|v| engine.resolve_value(v))
-                .unwrap_or(0.0);
-            let z = p
-                .z
-                .as_ref()
-                .map(|v| engine.resolve_value(v))
-                .unwrap_or(0.0);
+            let x = p.x.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
+            let y = p.y.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
+            let z = p.z.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
             let unit = p.unit.as_deref().unwrap_or("mm");
             [
                 crate::gdml::units::length_to_mm(x, unit),
@@ -637,21 +722,9 @@ fn resolve_placement_pos(pos: &Option<PlacementPos>, engine: &EvalEngine) -> [f6
 fn resolve_placement_rot(rot: &Option<PlacementRot>, engine: &EvalEngine) -> [f64; 3] {
     match rot {
         Some(PlacementRot::Inline(r)) => {
-            let x = r
-                .x
-                .as_ref()
-                .map(|v| engine.resolve_value(v))
-                .unwrap_or(0.0);
-            let y = r
-                .y
-                .as_ref()
-                .map(|v| engine.resolve_value(v))
-                .unwrap_or(0.0);
-            let z = r
-                .z
-                .as_ref()
-                .map(|v| engine.resolve_value(v))
-                .unwrap_or(0.0);
+            let x = r.x.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
+            let y = r.y.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
+            let z = r.z.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
             let unit = r.unit.as_deref().unwrap_or("rad");
             [
                 crate::gdml::units::angle_to_rad(x, unit),
@@ -676,9 +749,7 @@ pub struct NistSearchQuery {
     pub category: Option<String>,
 }
 
-pub async fn get_nist_materials(
-    Query(query): Query<NistSearchQuery>,
-) -> Json<Value> {
+pub async fn get_nist_materials(Query(query): Query<NistSearchQuery>) -> Json<Value> {
     let results = nist::search_nist_materials(
         query.search.as_deref().unwrap_or(""),
         query.category.as_deref(),
@@ -701,6 +772,89 @@ pub async fn get_nist_material(
 
 // ─── Material CRUD ──────────────────────────────────────────────────────────
 
+fn ensure_material_name_available(
+    doc: &GdmlDocument,
+    candidate: &str,
+    excluding_material: Option<&str>,
+) -> Result<(), ApiError> {
+    let material_conflict = doc
+        .materials
+        .materials
+        .iter()
+        .any(|m| m.name == candidate && Some(m.name.as_str()) != excluding_material);
+    if material_conflict {
+        return Err(ApiError::bad_request(&format!(
+            "Material '{}' already exists",
+            candidate
+        )));
+    }
+
+    let element_conflict = doc.materials.elements.iter().any(|e| e.name == candidate);
+    if element_conflict {
+        return Err(ApiError::bad_request(&format!(
+            "Name '{}' is already used by an element",
+            candidate
+        )));
+    }
+
+    Ok(())
+}
+
+fn ensure_element_name_available(
+    doc: &GdmlDocument,
+    candidate: &str,
+    excluding_element: Option<&str>,
+) -> Result<(), ApiError> {
+    let element_conflict = doc
+        .materials
+        .elements
+        .iter()
+        .any(|e| e.name == candidate && Some(e.name.as_str()) != excluding_element);
+    if element_conflict {
+        return Err(ApiError::bad_request(&format!(
+            "Element '{}' already exists",
+            candidate
+        )));
+    }
+
+    let material_conflict = doc.materials.materials.iter().any(|m| m.name == candidate);
+    if material_conflict {
+        return Err(ApiError::bad_request(&format!(
+            "Name '{}' is already used by a material",
+            candidate
+        )));
+    }
+
+    Ok(())
+}
+
+fn cascade_component_ref_rename(materials: &mut [Material], old_name: &str, new_name: &str) {
+    if old_name == new_name {
+        return;
+    }
+    for mat in materials {
+        for component in &mut mat.components {
+            match component {
+                MaterialComponent::Fraction { ref_name, .. }
+                | MaterialComponent::Composite { ref_name, .. } => {
+                    if ref_name == old_name {
+                        *ref_name = new_name.to_string();
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn is_name_referenced_in_material_components(materials: &[Material], name: &str) -> bool {
+    materials.iter().any(|m| {
+        m.components.iter().any(|c| match c {
+            MaterialComponent::Fraction { ref_name, .. }
+            | MaterialComponent::Composite { ref_name, .. } => ref_name == name,
+        })
+    })
+}
+
 #[derive(Deserialize)]
 pub struct UpdateMaterialRequest {
     pub name: String,
@@ -717,24 +871,34 @@ pub async fn update_material(
         .as_mut()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
-    let mat = loaded
+    let old_name = req.name.clone();
+    let new_name = req.material.name.clone();
+    ensure_material_name_available(&loaded.document, &new_name, Some(old_name.as_str()))?;
+
+    let mat_idx = loaded
         .document
         .materials
         .materials
-        .iter_mut()
-        .find(|m| m.name == req.name)
+        .iter()
+        .position(|m| m.name == old_name)
         .ok_or_else(|| ApiError::not_found(&format!("Material '{}' not found", req.name)))?;
 
-    let new_name = req.material.name.clone();
-    *mat = req.material;
+    loaded.document.materials.materials[mat_idx] = req.material;
 
-    // Cascade rename to volumes
-    if req.name != new_name {
+    if old_name != new_name {
+        // Cascade rename to volumes
         for vol in &mut loaded.document.structure.volumes {
-            if vol.material_ref == req.name {
+            if vol.material_ref == old_name {
                 vol.material_ref = new_name.clone();
             }
         }
+
+        // Cascade rename to material component references.
+        cascade_component_ref_rename(
+            &mut loaded.document.materials.materials,
+            old_name.as_str(),
+            new_name.as_str(),
+        );
     }
 
     Ok(Json(json!({ "ok": true })))
@@ -755,18 +919,7 @@ pub async fn add_material(
         .as_mut()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
-    let exists = loaded
-        .document
-        .materials
-        .materials
-        .iter()
-        .any(|m| m.name == req.material.name);
-    if exists {
-        return Err(ApiError::bad_request(&format!(
-            "Material '{}' already exists",
-            req.material.name
-        )));
-    }
+    ensure_material_name_available(&loaded.document, &req.material.name, None)?;
 
     loaded.document.materials.materials.push(req.material);
     Ok(Json(json!({ "ok": true })))
@@ -787,17 +940,30 @@ pub async fn delete_material(
         .as_mut()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
-    // Check if material is in use by any volume
-    let in_use = loaded
+    // Check if material is in use by any volume.
+    let in_use_by_volume = loaded
         .document
         .structure
         .volumes
         .iter()
         .any(|v| v.material_ref == req.name);
-    if in_use {
+
+    // Check if material is in use by any material component.
+    let in_use_by_component =
+        is_name_referenced_in_material_components(&loaded.document.materials.materials, &req.name);
+
+    if in_use_by_volume || in_use_by_component {
+        let mut contexts = Vec::new();
+        if in_use_by_volume {
+            contexts.push("one or more volumes");
+        }
+        if in_use_by_component {
+            contexts.push("one or more material components");
+        }
         return Err(ApiError::bad_request(&format!(
-            "Material '{}' is still referenced by one or more volumes",
-            req.name
+            "Material '{}' is still referenced by {}",
+            req.name,
+            contexts.join(" and ")
         )));
     }
 
@@ -835,15 +1001,28 @@ pub async fn update_element(
         .as_mut()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
-    let el = loaded
+    let old_name = req.name.clone();
+    let new_name = req.element.name.clone();
+    ensure_element_name_available(&loaded.document, &new_name, Some(old_name.as_str()))?;
+
+    let el_idx = loaded
         .document
         .materials
         .elements
-        .iter_mut()
-        .find(|e| e.name == req.name)
+        .iter()
+        .position(|e| e.name == old_name)
         .ok_or_else(|| ApiError::not_found(&format!("Element '{}' not found", req.name)))?;
 
-    *el = req.element;
+    loaded.document.materials.elements[el_idx] = req.element;
+
+    if old_name != new_name {
+        cascade_component_ref_rename(
+            &mut loaded.document.materials.materials,
+            old_name.as_str(),
+            new_name.as_str(),
+        );
+    }
+
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -862,18 +1041,7 @@ pub async fn add_element(
         .as_mut()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
-    let exists = loaded
-        .document
-        .materials
-        .elements
-        .iter()
-        .any(|e| e.name == req.element.name);
-    if exists {
-        return Err(ApiError::bad_request(&format!(
-            "Element '{}' already exists",
-            req.element.name
-        )));
-    }
+    ensure_element_name_available(&loaded.document, &req.element.name, None)?;
 
     loaded.document.materials.elements.push(req.element);
     Ok(Json(json!({ "ok": true })))
@@ -948,9 +1116,7 @@ pub async fn update_volume_material_ref(
         .volumes
         .iter_mut()
         .find(|v| v.name == req.volume_name)
-        .ok_or_else(|| {
-            ApiError::not_found(&format!("Volume '{}' not found", req.volume_name))
-        })?;
+        .ok_or_else(|| ApiError::not_found(&format!("Volume '{}' not found", req.volume_name)))?;
 
     vol.material_ref = req.material_ref;
     Ok(Json(json!({ "ok": true })))
@@ -958,9 +1124,7 @@ pub async fn update_volume_material_ref(
 
 // ─── Export ─────────────────────────────────────────────────────────────────
 
-pub async fn export_gdml(
-    State(state): State<SharedState>,
-) -> Result<Json<Value>, ApiError> {
+pub async fn export_gdml(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
     let loaded = state_r
         .loaded
@@ -974,4 +1138,267 @@ pub async fn export_gdml(
         "gdml": xml,
         "filename": loaded.document.filename,
     })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::State;
+    use axum::http::StatusCode;
+    use std::collections::HashMap;
+
+    fn base_doc(filename: &str, world_ref: &str) -> GdmlDocument {
+        GdmlDocument {
+            filename: filename.to_string(),
+            defines: DefineSection::default(),
+            materials: MaterialSection::default(),
+            solids: SolidSection::default(),
+            structure: StructureSection::default(),
+            setup: SetupSection {
+                name: "Default".to_string(),
+                version: "1.0".to_string(),
+                world_ref: world_ref.to_string(),
+            },
+        }
+    }
+
+    fn material(name: &str) -> Material {
+        Material {
+            name: name.to_string(),
+            formula: None,
+            z: None,
+            density: None,
+            density_ref: None,
+            temperature: None,
+            pressure: None,
+            atom_value: None,
+            components: Vec::new(),
+        }
+    }
+
+    fn volume(name: &str, material_ref: &str) -> Volume {
+        Volume {
+            name: name.to_string(),
+            material_ref: material_ref.to_string(),
+            solid_ref: "Solid".to_string(),
+            physvols: Vec::new(),
+            auxiliaries: Vec::new(),
+            replica: None,
+        }
+    }
+
+    fn file_ref_physvol(file: &str, volname: Option<&str>) -> PhysVol {
+        PhysVol {
+            name: None,
+            volume_ref: String::new(),
+            file_ref: Some(FileRef {
+                name: file.to_string(),
+                volname: volname.map(|s| s.to_string()),
+            }),
+            position: None,
+            rotation: None,
+        }
+    }
+
+    #[test]
+    fn resolves_nested_file_refs_recursively() {
+        let mut main = base_doc("main.gdml", "MainWorld");
+        let mut main_world = volume("MainWorld", "Vacuum");
+        main_world
+            .physvols
+            .push(file_ref_physvol("child.gdml", None));
+        main.structure.volumes.push(main_world);
+
+        let mut child = base_doc("child.gdml", "ChildWorld");
+        let mut child_world = volume("ChildWorld", "Vacuum");
+        child_world
+            .physvols
+            .push(file_ref_physvol("grand.gdml", None));
+        child.structure.volumes.push(child_world);
+
+        let mut grand = base_doc("grand.gdml", "GrandWorld");
+        grand.structure.volumes.push(volume("GrandWorld", "Vacuum"));
+
+        let mut child_docs = HashMap::new();
+        child_docs.insert("child.gdml".to_string(), child);
+        child_docs.insert("grand.gdml".to_string(), grand);
+
+        let warnings = resolve_all_file_refs(&mut main, &child_docs);
+        assert!(warnings.is_empty());
+        assert!(collect_file_refs(&main).is_empty());
+
+        let main_world = main
+            .structure
+            .volumes
+            .iter()
+            .find(|v| v.name == "MainWorld")
+            .unwrap();
+        assert_eq!(main_world.physvols[0].volume_ref, "ChildWorld");
+        assert!(main_world.physvols[0].file_ref.is_none());
+
+        let child_world = main
+            .structure
+            .volumes
+            .iter()
+            .find(|v| v.name == "ChildWorld")
+            .unwrap();
+        assert_eq!(child_world.physvols[0].volume_ref, "GrandWorld");
+        assert!(child_world.physvols[0].file_ref.is_none());
+    }
+
+    #[tokio::test]
+    async fn material_rename_cascades_to_components_and_volumes() {
+        let state = crate::state::app_state::create_shared_state();
+        let mut doc = base_doc("test.gdml", "World");
+        let mut world = volume("World", "Steel");
+        world.physvols.push(PhysVol {
+            name: Some("pv_leaf".to_string()),
+            volume_ref: "Leaf".to_string(),
+            file_ref: None,
+            position: None,
+            rotation: None,
+        });
+        doc.structure.volumes.push(world);
+        doc.structure.volumes.push(volume("Leaf", "Steel"));
+
+        let steel = material("Steel");
+        let mut alloy = material("Alloy");
+        alloy.components.push(MaterialComponent::Composite {
+            n: "1".to_string(),
+            ref_name: "Steel".to_string(),
+        });
+        doc.materials.materials.push(steel);
+        doc.materials.materials.push(alloy);
+
+        {
+            let mut w = state.write().await;
+            w.loaded = Some(LoadedDocument {
+                document: doc,
+                engine: EvalEngine::new(),
+                meshes: HashMap::new(),
+                warnings: Vec::new(),
+                file_path: "test.gdml".to_string(),
+            });
+        }
+
+        let req = UpdateMaterialRequest {
+            name: "Steel".to_string(),
+            material: material("SteelRenamed"),
+        };
+        let res = update_material(State(state.clone()), Json(req)).await;
+        assert!(res.is_ok(), "update_material should succeed");
+
+        let r = state.read().await;
+        let loaded = r.loaded.as_ref().unwrap();
+        assert!(loaded
+            .document
+            .structure
+            .volumes
+            .iter()
+            .all(|v| v.material_ref != "Steel"));
+        assert!(loaded
+            .document
+            .structure
+            .volumes
+            .iter()
+            .any(|v| v.material_ref == "SteelRenamed"));
+        assert!(loaded.document.materials.materials.iter().any(|m| {
+            m.components.iter().any(|c| match c {
+                MaterialComponent::Fraction { ref_name, .. }
+                | MaterialComponent::Composite { ref_name, .. } => ref_name == "SteelRenamed",
+            })
+        }));
+    }
+
+    #[tokio::test]
+    async fn material_rename_rejects_name_collisions() {
+        let state = crate::state::app_state::create_shared_state();
+        let mut doc = base_doc("test.gdml", "World");
+        doc.structure.volumes.push(volume("World", "A"));
+        doc.materials.materials.push(material("A"));
+        doc.materials.materials.push(material("B"));
+
+        {
+            let mut w = state.write().await;
+            w.loaded = Some(LoadedDocument {
+                document: doc,
+                engine: EvalEngine::new(),
+                meshes: HashMap::new(),
+                warnings: Vec::new(),
+                file_path: "test.gdml".to_string(),
+            });
+        }
+
+        let req = UpdateMaterialRequest {
+            name: "A".to_string(),
+            material: material("B"),
+        };
+        let err = update_material(State(state.clone()), Json(req))
+            .await
+            .unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn deleting_material_referenced_by_components_is_blocked() {
+        let state = crate::state::app_state::create_shared_state();
+        let mut doc = base_doc("test.gdml", "World");
+        doc.structure.volumes.push(volume("World", "Alloy"));
+        doc.materials.materials.push(material("Steel"));
+        let mut alloy = material("Alloy");
+        alloy.components.push(MaterialComponent::Fraction {
+            n: "1.0".to_string(),
+            ref_name: "Steel".to_string(),
+        });
+        doc.materials.materials.push(alloy);
+
+        {
+            let mut w = state.write().await;
+            w.loaded = Some(LoadedDocument {
+                document: doc,
+                engine: EvalEngine::new(),
+                meshes: HashMap::new(),
+                warnings: Vec::new(),
+                file_path: "test.gdml".to_string(),
+            });
+        }
+
+        let err = delete_material(
+            State(state.clone()),
+            Json(DeleteMaterialRequest {
+                name: "Steel".to_string(),
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn repeated_logical_volume_instances_have_unique_instance_ids() {
+        let mut doc = base_doc("test.gdml", "World");
+        let mut world = volume("World", "Vacuum");
+        world.physvols.push(PhysVol {
+            name: Some("pv_0".to_string()),
+            volume_ref: "Leaf".to_string(),
+            file_ref: None,
+            position: None,
+            rotation: None,
+        });
+        world.physvols.push(PhysVol {
+            name: Some("pv_1".to_string()),
+            volume_ref: "Leaf".to_string(),
+            file_ref: None,
+            position: None,
+            rotation: None,
+        });
+        doc.structure.volumes.push(world);
+        doc.structure.volumes.push(volume("Leaf", "Vacuum"));
+
+        let engine = EvalEngine::new();
+        let graph = build_scene_graph(&doc, &engine);
+        assert_eq!(graph.children.len(), 2);
+        assert_eq!(graph.children[0].volume_name, graph.children[1].volume_name);
+        assert_ne!(graph.children[0].instance_id, graph.children[1].instance_id);
+    }
 }

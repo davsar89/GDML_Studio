@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
@@ -18,11 +18,7 @@ pub fn tessellate_all_solids(
     let mut warnings = Vec::new();
 
     // Build a name -> Solid lookup for boolean solid resolution
-    let solid_map: HashMap<&str, &Solid> = solids
-        .solids
-        .iter()
-        .map(|s| (s.name(), s))
-        .collect();
+    let solid_map: HashMap<&str, &Solid> = solids.solids.iter().map(|s| (s.name(), s)).collect();
 
     // Phase 1: Tessellate all primitive solids
     for solid in &solids.solids {
@@ -45,7 +41,15 @@ pub fn tessellate_all_solids(
     // Phase 2: Resolve boolean solids (may reference other booleans)
     for solid in &solids.solids {
         if let Solid::Boolean(bs) = solid {
-            match tessellate_boolean_solid(bs, &solid_map, &mut meshes, engine, segments) {
+            let mut resolving = HashSet::new();
+            match tessellate_boolean_solid(
+                bs,
+                &solid_map,
+                &mut meshes,
+                engine,
+                segments,
+                &mut resolving,
+            ) {
                 Ok(mesh) => {
                     meshes.insert(bs.name.clone(), mesh);
                 }
@@ -77,27 +81,60 @@ fn tessellate_boolean_solid(
     meshes: &mut HashMap<String, TriangleMesh>,
     engine: &EvalEngine,
     segments: u32,
+    resolving: &mut HashSet<String>,
 ) -> Result<TriangleMesh> {
-    // Resolve first operand (may itself be a boolean)
-    let first_mesh = resolve_operand(&bs.first_ref, solid_map, meshes, engine, segments)?;
+    if let Some(mesh) = meshes.get(&bs.name) {
+        return Ok(mesh.clone());
+    }
 
-    // Resolve second operand
-    let second_mesh = resolve_operand(&bs.second_ref, solid_map, meshes, engine, segments)?;
+    if !resolving.insert(bs.name.clone()) {
+        return Err(anyhow::anyhow!(
+            "Cyclic boolean solid dependency detected at '{}'",
+            bs.name
+        ));
+    }
 
-    // Apply first solid transform if specified
-    let first_mesh = apply_placement_transform(&first_mesh, &bs.first_position, &bs.first_rotation, engine);
+    let result = (|| -> Result<TriangleMesh> {
+        // Resolve first operand (may itself be a boolean)
+        let first_mesh = resolve_operand(
+            &bs.first_ref,
+            solid_map,
+            meshes,
+            engine,
+            segments,
+            resolving,
+        )?;
 
-    // Apply second solid transform (position/rotation of second relative to first)
-    let second_mesh = apply_placement_transform(&second_mesh, &bs.position, &bs.rotation, engine);
+        // Resolve second operand
+        let second_mesh = resolve_operand(
+            &bs.second_ref,
+            solid_map,
+            meshes,
+            engine,
+            segments,
+            resolving,
+        )?;
 
-    // Perform CSG operation
-    let result = match bs.operation {
-        BooleanOp::Subtraction => csg::subtract(&first_mesh, &second_mesh),
-        BooleanOp::Union => csg::union(&first_mesh, &second_mesh),
-        BooleanOp::Intersection => csg::intersect(&first_mesh, &second_mesh),
-    };
+        // Apply first solid transform if specified
+        let first_mesh =
+            apply_placement_transform(&first_mesh, &bs.first_position, &bs.first_rotation, engine);
 
-    Ok(result)
+        // Apply second solid transform (position/rotation of second relative to first)
+        let second_mesh =
+            apply_placement_transform(&second_mesh, &bs.position, &bs.rotation, engine);
+
+        // Perform CSG operation
+        let result = match bs.operation {
+            BooleanOp::Subtraction => csg::subtract(&first_mesh, &second_mesh),
+            BooleanOp::Union => csg::union(&first_mesh, &second_mesh),
+            BooleanOp::Intersection => csg::intersect(&first_mesh, &second_mesh),
+        };
+
+        Ok(result)
+    })();
+
+    resolving.remove(&bs.name);
+    result
 }
 
 fn resolve_operand(
@@ -106,6 +143,7 @@ fn resolve_operand(
     meshes: &mut HashMap<String, TriangleMesh>,
     engine: &EvalEngine,
     segments: u32,
+    resolving: &mut HashSet<String>,
 ) -> Result<TriangleMesh> {
     // Check if already tessellated
     if let Some(mesh) = meshes.get(name) {
@@ -119,7 +157,8 @@ fn resolve_operand(
 
     match solid {
         Solid::Boolean(bs) => {
-            let mesh = tessellate_boolean_solid(bs, solid_map, meshes, engine, segments)?;
+            let mesh =
+                tessellate_boolean_solid(bs, solid_map, meshes, engine, segments, resolving)?;
             meshes.insert(name.to_string(), mesh.clone());
             Ok(mesh)
         }
@@ -199,12 +238,12 @@ fn resolve_opt(engine: &EvalEngine, expr: &Option<String>) -> f64 {
 }
 
 /// Resolve a length expression, applying lunit conversion only for literal values.
-/// If the expression resolves to a known variable (already converted to mm by the engine),
+/// If the expression references any symbols that are already length values in mm,
 /// skip the lunit conversion to avoid double-converting.
 fn resolve_with_lunit(engine: &EvalEngine, expr: &str, lunit: &str) -> f64 {
     let val = engine.resolve_value(expr);
-    if engine.context.get(expr.trim()).is_some() {
-        val // already in mm from engine
+    if engine.expression_uses_length_symbols(expr) {
+        val
     } else {
         units::length_to_mm(val, lunit)
     }
@@ -225,7 +264,11 @@ fn tessellate_box_solid(s: &BoxSolid, engine: &EvalEngine) -> Result<TriangleMes
     Ok(box_mesh::tessellate_box(x, y, z))
 }
 
-fn tessellate_tube_solid(s: &TubeSolid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
+fn tessellate_tube_solid(
+    s: &TubeSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
@@ -241,7 +284,11 @@ fn tessellate_tube_solid(s: &TubeSolid, engine: &EvalEngine, segments: u32) -> R
     ))
 }
 
-fn tessellate_cone_solid(s: &ConeSolid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
+fn tessellate_cone_solid(
+    s: &ConeSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let rmin1 = resolve_opt_with_lunit(engine, &s.rmin1, lunit);
@@ -259,7 +306,11 @@ fn tessellate_cone_solid(s: &ConeSolid, engine: &EvalEngine, segments: u32) -> R
     ))
 }
 
-fn tessellate_sphere_solid(s: &SphereSolid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
+fn tessellate_sphere_solid(
+    s: &SphereSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
@@ -277,4 +328,71 @@ fn tessellate_sphere_solid(s: &SphereSolid, engine: &EvalEngine, segments: u32) 
     Ok(sphere_mesh::tessellate_sphere(
         rmin, rmax, startphi, deltaphi, starttheta, deltatheta, segments,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gdml::model::{DefineSection, Quantity};
+
+    #[test]
+    fn resolve_with_lunit_does_not_double_convert_length_expressions() {
+        let mut engine = EvalEngine::new();
+        let mut defines = DefineSection::default();
+        defines.quantities.push(Quantity {
+            name: "A".to_string(),
+            r#type: Some("length".to_string()),
+            value: "2".to_string(),
+            unit: Some("cm".to_string()),
+        });
+        defines.quantities.push(Quantity {
+            name: "B".to_string(),
+            r#type: Some("length".to_string()),
+            value: "3".to_string(),
+            unit: Some("cm".to_string()),
+        });
+        engine.evaluate_all(&defines).unwrap();
+
+        // A and B are already converted to mm in the eval engine.
+        let expr_val = resolve_with_lunit(&engine, "A + B", "cm");
+        assert!((expr_val - 50.0).abs() < 1e-9);
+
+        // Literal values still respect the solid's lunit.
+        let literal_val = resolve_with_lunit(&engine, "2.0", "cm");
+        assert!((literal_val - 20.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn boolean_cycle_is_reported_as_warning_instead_of_recursing_forever() {
+        let solids = SolidSection {
+            solids: vec![
+                Solid::Boolean(BooleanSolid {
+                    name: "A".to_string(),
+                    operation: BooleanOp::Union,
+                    first_ref: "B".to_string(),
+                    second_ref: "B".to_string(),
+                    position: None,
+                    rotation: None,
+                    first_position: None,
+                    first_rotation: None,
+                }),
+                Solid::Boolean(BooleanSolid {
+                    name: "B".to_string(),
+                    operation: BooleanOp::Union,
+                    first_ref: "A".to_string(),
+                    second_ref: "A".to_string(),
+                    position: None,
+                    rotation: None,
+                    first_position: None,
+                    first_rotation: None,
+                }),
+            ],
+        };
+
+        let engine = EvalEngine::new();
+        let (_meshes, warnings) = tessellate_all_solids(&solids, &engine, 24).unwrap();
+        assert!(warnings
+            .iter()
+            .any(|w| w.contains("Cyclic boolean solid dependency detected")));
+    }
 }

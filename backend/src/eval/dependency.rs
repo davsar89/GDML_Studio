@@ -1,5 +1,5 @@
+use anyhow::{anyhow, Result};
 use std::collections::{HashMap, HashSet, VecDeque};
-use anyhow::{Result, anyhow};
 
 #[derive(Debug, Clone)]
 pub struct DefineEntry {
@@ -101,14 +101,33 @@ pub fn extract_identifiers(expr: &str) -> Vec<String> {
 fn is_builtin_function(name: &str) -> bool {
     matches!(
         name,
-        "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "atan2"
-            | "sinh" | "cosh" | "tanh"
-            | "sqrt" | "cbrt" | "abs"
-            | "ln" | "log" | "log2" | "log10"
-            | "exp" | "exp2"
-            | "floor" | "ceil" | "round"
-            | "min" | "max"
+        "sin"
+            | "cos"
+            | "tan"
+            | "asin"
+            | "acos"
+            | "atan"
+            | "atan2"
+            | "sinh"
+            | "cosh"
+            | "tanh"
+            | "sqrt"
+            | "cbrt"
+            | "abs"
+            | "ln"
+            | "log"
+            | "log2"
+            | "log10"
+            | "exp"
+            | "exp2"
+            | "floor"
+            | "ceil"
+            | "round"
+            | "min"
+            | "max"
             | "pow"
-            | "if" | "true" | "false"
+            | "if"
+            | "true"
+            | "false"
     )
 }

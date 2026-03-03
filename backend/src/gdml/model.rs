@@ -298,6 +298,7 @@ pub struct MeshData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SceneNode {
     pub name: String,
+    pub instance_id: String,
     pub volume_name: String,
     pub solid_name: String,
     pub material_name: String,

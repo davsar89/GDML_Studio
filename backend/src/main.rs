@@ -42,7 +42,9 @@ async fn main() {
             .fallback_service(ServeDir::new(frontend_dir))
             .layer(cors)
     } else {
-        tracing::info!("No frontend/dist found, serving API only (use Vite dev server for frontend)");
+        tracing::info!(
+            "No frontend/dist found, serving API only (use Vite dev server for frontend)"
+        );
         api_router.layer(cors)
     };
 

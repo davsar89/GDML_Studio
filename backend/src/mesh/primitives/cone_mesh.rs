@@ -159,17 +159,39 @@ pub fn tessellate_cone(
     if !full_circle {
         // Start phi face
         add_cone_wedge_face(
-            &mut positions, &mut normals, &mut indices,
-            startphi, rmin1, rmax1, rmin2, rmax2, hz, has_hole, true,
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            startphi,
+            rmin1,
+            rmax1,
+            rmin2,
+            rmax2,
+            hz,
+            has_hole,
+            true,
         );
         // End phi face
         add_cone_wedge_face(
-            &mut positions, &mut normals, &mut indices,
-            startphi + deltaphi, rmin1, rmax1, rmin2, rmax2, hz, has_hole, false,
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            startphi + deltaphi,
+            rmin1,
+            rmax1,
+            rmin2,
+            rmax2,
+            hz,
+            has_hole,
+            false,
         );
     }
 
-    TriangleMesh { positions, normals, indices }
+    TriangleMesh {
+        positions,
+        normals,
+        indices,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

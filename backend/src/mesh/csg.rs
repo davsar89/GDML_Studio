@@ -11,6 +11,9 @@ struct Plane {
 
 impl Plane {
     fn from_points(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<Self> {
+        if !is_finite3(a) || !is_finite3(b) || !is_finite3(c) {
+            return None;
+        }
         let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
         let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
         let n = [
@@ -19,11 +22,14 @@ impl Plane {
             ab[0] * ac[1] - ab[1] * ac[0],
         ];
         let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-        if len < 1e-12 {
+        if !len.is_finite() || len < 1e-12 {
             return None;
         }
         let normal = [n[0] / len, n[1] / len, n[2] / len];
         let w = dot(normal, a);
+        if !w.is_finite() {
+            return None;
+        }
         Some(Plane { normal, w })
     }
 
@@ -129,7 +135,14 @@ impl BspNode {
         let mut back_list = Vec::new();
 
         for poly in polygons {
-            split_polygon(plane, &poly, &mut coplanar_front, &mut coplanar_back, &mut front_list, &mut back_list);
+            split_polygon(
+                plane,
+                &poly,
+                &mut coplanar_front,
+                &mut coplanar_back,
+                &mut front_list,
+                &mut back_list,
+            );
         }
 
         self.polygons.extend(coplanar_front);
@@ -173,7 +186,14 @@ impl BspNode {
         let mut coplanar_back = Vec::new();
 
         for poly in polygons {
-            split_polygon(plane, poly, &mut coplanar_front, &mut coplanar_back, &mut front_list, &mut back_list);
+            split_polygon(
+                plane,
+                poly,
+                &mut coplanar_front,
+                &mut coplanar_back,
+                &mut front_list,
+                &mut back_list,
+            );
         }
 
         // Coplanar polygons: front goes to front, back goes to back
@@ -236,6 +256,9 @@ fn split_polygon(
 
     for v in &polygon.vertices {
         let t = dot(plane.normal, v.pos) - plane.w;
+        if !t.is_finite() {
+            return;
+        }
         let typ = if t < -EPSILON {
             BACK
         } else if t > EPSILON {
@@ -281,14 +304,26 @@ fn split_polygon(
                     b.push(vi.clone());
                 }
                 if (ti | tj) == SPANNING {
-                    let t = (plane.w - dot(plane.normal, vi.pos))
-                        / dot(plane.normal, [
+                    let denom = dot(
+                        plane.normal,
+                        [
                             vj.pos[0] - vi.pos[0],
                             vj.pos[1] - vi.pos[1],
                             vj.pos[2] - vi.pos[2],
-                        ]);
+                        ],
+                    );
+                    if !denom.is_finite() || denom.abs() <= EPSILON {
+                        continue;
+                    }
+                    let t = (plane.w - dot(plane.normal, vi.pos)) / denom;
+                    if !t.is_finite() {
+                        continue;
+                    }
                     let t = t.clamp(0.0, 1.0);
                     let v = vi.interpolate(vj, t);
+                    if !is_finite3(v.pos) || !is_finite3(v.normal) {
+                        continue;
+                    }
                     f.push(v.clone());
                     b.push(v);
                 }
@@ -318,42 +353,58 @@ fn mesh_to_polygons(mesh: &TriangleMesh) -> Vec<CsgPolygon> {
         let i1 = mesh.indices[tri * 3 + 1] as usize;
         let i2 = mesh.indices[tri * 3 + 2] as usize;
 
+        let p0 = [
+            mesh.positions[i0 * 3] as f64,
+            mesh.positions[i0 * 3 + 1] as f64,
+            mesh.positions[i0 * 3 + 2] as f64,
+        ];
+        let p1 = [
+            mesh.positions[i1 * 3] as f64,
+            mesh.positions[i1 * 3 + 1] as f64,
+            mesh.positions[i1 * 3 + 2] as f64,
+        ];
+        let p2 = [
+            mesh.positions[i2 * 3] as f64,
+            mesh.positions[i2 * 3 + 1] as f64,
+            mesh.positions[i2 * 3 + 2] as f64,
+        ];
+        let n0 = [
+            mesh.normals[i0 * 3] as f64,
+            mesh.normals[i0 * 3 + 1] as f64,
+            mesh.normals[i0 * 3 + 2] as f64,
+        ];
+        let n1 = [
+            mesh.normals[i1 * 3] as f64,
+            mesh.normals[i1 * 3 + 1] as f64,
+            mesh.normals[i1 * 3 + 2] as f64,
+        ];
+        let n2 = [
+            mesh.normals[i2 * 3] as f64,
+            mesh.normals[i2 * 3 + 1] as f64,
+            mesh.normals[i2 * 3 + 2] as f64,
+        ];
+        if !is_finite3(p0)
+            || !is_finite3(p1)
+            || !is_finite3(p2)
+            || !is_finite3(n0)
+            || !is_finite3(n1)
+            || !is_finite3(n2)
+        {
+            continue;
+        }
+
         let vertices = vec![
             Vertex {
-                pos: [
-                    mesh.positions[i0 * 3] as f64,
-                    mesh.positions[i0 * 3 + 1] as f64,
-                    mesh.positions[i0 * 3 + 2] as f64,
-                ],
-                normal: [
-                    mesh.normals[i0 * 3] as f64,
-                    mesh.normals[i0 * 3 + 1] as f64,
-                    mesh.normals[i0 * 3 + 2] as f64,
-                ],
+                pos: p0,
+                normal: n0,
             },
             Vertex {
-                pos: [
-                    mesh.positions[i1 * 3] as f64,
-                    mesh.positions[i1 * 3 + 1] as f64,
-                    mesh.positions[i1 * 3 + 2] as f64,
-                ],
-                normal: [
-                    mesh.normals[i1 * 3] as f64,
-                    mesh.normals[i1 * 3 + 1] as f64,
-                    mesh.normals[i1 * 3 + 2] as f64,
-                ],
+                pos: p1,
+                normal: n1,
             },
             Vertex {
-                pos: [
-                    mesh.positions[i2 * 3] as f64,
-                    mesh.positions[i2 * 3 + 1] as f64,
-                    mesh.positions[i2 * 3 + 2] as f64,
-                ],
-                normal: [
-                    mesh.normals[i2 * 3] as f64,
-                    mesh.normals[i2 * 3 + 1] as f64,
-                    mesh.normals[i2 * 3 + 2] as f64,
-                ],
+                pos: p2,
+                normal: n2,
             },
         ];
 
@@ -371,6 +422,13 @@ fn polygons_to_mesh(polygons: &[CsgPolygon]) -> TriangleMesh {
     let mut indices = Vec::new();
 
     for poly in polygons {
+        if poly
+            .vertices
+            .iter()
+            .any(|v| !is_finite3(v.pos) || !is_finite3(v.normal))
+        {
+            continue;
+        }
         let base = (positions.len() / 3) as u32;
         for v in &poly.vertices {
             positions.push(v.pos[0] as f32);
@@ -406,8 +464,11 @@ pub fn subtract(a: &TriangleMesh, b: &TriangleMesh) -> TriangleMesh {
     let mut bsp_a = BspNode::build(polys_a);
     let mut bsp_b = BspNode::build(polys_b);
 
-    debug!("CSG subtract: A has {} polygons, B has {} polygons",
-        bsp_a.all_polygons().len(), bsp_b.all_polygons().len());
+    debug!(
+        "CSG subtract: A has {} polygons, B has {} polygons",
+        bsp_a.all_polygons().len(),
+        bsp_b.all_polygons().len()
+    );
 
     // A - B = ~(~A | B)
     bsp_a.invert();
@@ -417,8 +478,11 @@ pub fn subtract(a: &TriangleMesh, b: &TriangleMesh) -> TriangleMesh {
     bsp_b.clip_to(&bsp_a);
     bsp_b.invert();
 
-    debug!("CSG subtract: after clipping, A has {} polygons, B has {} polygons",
-        bsp_a.all_polygons().len(), bsp_b.all_polygons().len());
+    debug!(
+        "CSG subtract: after clipping, A has {} polygons, B has {} polygons",
+        bsp_a.all_polygons().len(),
+        bsp_b.all_polygons().len()
+    );
 
     bsp_a.add_polygons(bsp_b.all_polygons());
     bsp_a.invert();
@@ -477,8 +541,10 @@ pub fn intersect(a: &TriangleMesh, b: &TriangleMesh) -> TriangleMesh {
 
 /// Transform a mesh by applying a translation and rotation (Euler angles in radians, XYZ order).
 pub fn transform_mesh(mesh: &TriangleMesh, position: [f64; 3], rotation: [f64; 3]) -> TriangleMesh {
-    let has_rotation = rotation[0].abs() > 1e-12 || rotation[1].abs() > 1e-12 || rotation[2].abs() > 1e-12;
-    let has_translation = position[0].abs() > 1e-12 || position[1].abs() > 1e-12 || position[2].abs() > 1e-12;
+    let has_rotation =
+        rotation[0].abs() > 1e-12 || rotation[1].abs() > 1e-12 || rotation[2].abs() > 1e-12;
+    let has_translation =
+        position[0].abs() > 1e-12 || position[1].abs() > 1e-12 || position[2].abs() > 1e-12;
 
     if !has_rotation && !has_translation {
         return mesh.clone();
@@ -539,6 +605,10 @@ fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
+fn is_finite3(v: [f64; 3]) -> bool {
+    v[0].is_finite() && v[1].is_finite() && v[2].is_finite()
+}
+
 fn lerp3(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
     [
         a[0] + (b[0] - a[0]) * t,
@@ -554,4 +624,38 @@ fn lerp3_normalize(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
         return v;
     }
     [v[0] / len, v[1] / len, v[2] / len]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh::primitives::box_mesh;
+
+    fn mesh_is_finite(mesh: &TriangleMesh) -> bool {
+        mesh.positions.iter().all(|v| v.is_finite()) && mesh.normals.iter().all(|v| v.is_finite())
+    }
+
+    #[test]
+    fn coplanar_identical_boxes_remain_finite() {
+        let a = box_mesh::tessellate_box(10.0, 10.0, 10.0);
+        let b = box_mesh::tessellate_box(10.0, 10.0, 10.0);
+
+        let i = intersect(&a, &b);
+        let s = subtract(&a, &b);
+
+        assert!(mesh_is_finite(&i));
+        assert!(mesh_is_finite(&s));
+    }
+
+    #[test]
+    fn touching_coplanar_faces_remain_finite() {
+        let a = box_mesh::tessellate_box(10.0, 10.0, 10.0);
+        let b = transform_mesh(&a, [10.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
+
+        let i = intersect(&a, &b);
+        let s = subtract(&a, &b);
+
+        assert!(mesh_is_finite(&i));
+        assert!(mesh_is_finite(&s));
+    }
 }

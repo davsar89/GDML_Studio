@@ -3,7 +3,7 @@ use evalexpr::*;
 use std::collections::{HashMap, HashSet};
 
 use super::context::EvalContext;
-use super::dependency::{topological_sort, DefineEntry};
+use super::dependency::{extract_identifiers, topological_sort, DefineEntry};
 use crate::gdml::model::{DefineSection, Position, Rotation};
 use crate::gdml::units;
 
@@ -11,6 +11,7 @@ pub struct EvalEngine {
     pub context: EvalContext,
     pub position_values: HashMap<String, [f64; 3]>,
     pub rotation_values: HashMap<String, [f64; 3]>,
+    pub length_symbols: HashSet<String>,
 }
 
 impl EvalEngine {
@@ -19,10 +20,17 @@ impl EvalEngine {
             context: EvalContext::new(),
             position_values: HashMap::new(),
             rotation_values: HashMap::new(),
+            length_symbols: HashSet::new(),
         }
     }
 
     pub fn evaluate_all(&mut self, defines: &DefineSection) -> Result<()> {
+        // Rebuild derived state from scratch for the current document.
+        self.context = EvalContext::new();
+        self.position_values.clear();
+        self.rotation_values.clear();
+        self.length_symbols.clear();
+
         // Collect all define entries for dependency analysis
         let mut entries: Vec<DefineEntry> = Vec::new();
 
@@ -55,8 +63,8 @@ impl EvalEngine {
         let known: HashSet<String> = self.context.values.keys().cloned().collect();
 
         // Topological sort
-        let order = topological_sort(&entries, &known)
-            .context("Failed to resolve define dependencies")?;
+        let order =
+            topological_sort(&entries, &known).context("Failed to resolve define dependencies")?;
 
         // Build unit map for quantities
         let quantity_units: HashMap<String, String> = defines
@@ -64,13 +72,26 @@ impl EvalEngine {
             .iter()
             .filter_map(|q| q.unit.as_ref().map(|u| (q.name.clone(), u.clone())))
             .collect();
+        let length_quantity_names: HashSet<&str> = defines
+            .quantities
+            .iter()
+            .filter(|q| q.r#type.as_deref() == Some("length"))
+            .map(|q| q.name.as_str())
+            .collect();
 
         // Evaluate in order
         for idx in order {
             let entry = &entries[idx];
-            let value = self
-                .eval_expr(&entry.expression)
-                .with_context(|| format!("Failed to evaluate '{}' = '{}'", entry.name, entry.expression))?;
+            let refs = extract_identifiers(&entry.expression);
+            let is_length_symbol = length_quantity_names.contains(entry.name.as_str())
+                || refs.iter().any(|name| self.length_symbols.contains(name));
+
+            let value = self.eval_expr(&entry.expression).with_context(|| {
+                format!(
+                    "Failed to evaluate '{}' = '{}'",
+                    entry.name, entry.expression
+                )
+            })?;
 
             // Apply unit conversion for quantities
             let final_value = if let Some(unit) = quantity_units.get(&entry.name) {
@@ -89,6 +110,9 @@ impl EvalEngine {
             };
 
             self.context.set(&entry.name, final_value);
+            if is_length_symbol {
+                self.length_symbols.insert(entry.name.clone());
+            }
         }
 
         // Evaluate positions
@@ -209,6 +233,16 @@ impl EvalEngine {
                 0.0
             }
         }
+    }
+
+    pub fn expression_uses_length_symbols(&self, expr: &str) -> bool {
+        let trimmed = expr.trim();
+        if self.length_symbols.contains(trimmed) {
+            return true;
+        }
+        extract_identifiers(trimmed)
+            .iter()
+            .any(|name| self.length_symbols.contains(name))
     }
 
     pub fn resolve_position(&self, pos: &PlacementPosRef) -> [f64; 3] {

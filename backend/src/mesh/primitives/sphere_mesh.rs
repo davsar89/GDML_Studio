@@ -26,31 +26,63 @@ pub fn tessellate_sphere(
 
     // Outer surface
     add_sphere_surface(
-        &mut positions, &mut normals, &mut indices,
-        rmax, startphi, deltaphi, starttheta, deltatheta,
-        phi_seg, theta_seg, false,
+        &mut positions,
+        &mut normals,
+        &mut indices,
+        rmax,
+        startphi,
+        deltaphi,
+        starttheta,
+        deltatheta,
+        phi_seg,
+        theta_seg,
+        false,
     );
 
     // Inner surface (if hollow)
     if has_hole {
         add_sphere_surface(
-            &mut positions, &mut normals, &mut indices,
-            rmin, startphi, deltaphi, starttheta, deltatheta,
-            phi_seg, theta_seg, true,
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            rmin,
+            startphi,
+            deltaphi,
+            starttheta,
+            deltatheta,
+            phi_seg,
+            theta_seg,
+            true,
         );
     }
 
     // Phi-cut wedge faces (when not a full circle in phi)
     if !full_phi {
         add_phi_wedge_face(
-            &mut positions, &mut normals, &mut indices,
-            startphi, rmin, rmax, starttheta, deltatheta,
-            theta_seg, has_hole, true,
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            startphi,
+            rmin,
+            rmax,
+            starttheta,
+            deltatheta,
+            theta_seg,
+            has_hole,
+            true,
         );
         add_phi_wedge_face(
-            &mut positions, &mut normals, &mut indices,
-            startphi + deltaphi, rmin, rmax, starttheta, deltatheta,
-            theta_seg, has_hole, false,
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            startphi + deltaphi,
+            rmin,
+            rmax,
+            starttheta,
+            deltatheta,
+            theta_seg,
+            has_hole,
+            false,
         );
     }
 
@@ -61,21 +93,41 @@ pub fn tessellate_sphere(
 
         if theta_start_cut {
             add_theta_cap(
-                &mut positions, &mut normals, &mut indices,
-                starttheta, startphi, deltaphi,
-                rmin, rmax, phi_seg, has_hole, true,
+                &mut positions,
+                &mut normals,
+                &mut indices,
+                starttheta,
+                startphi,
+                deltaphi,
+                rmin,
+                rmax,
+                phi_seg,
+                has_hole,
+                true,
             );
         }
         if theta_end_cut {
             add_theta_cap(
-                &mut positions, &mut normals, &mut indices,
-                starttheta + deltatheta, startphi, deltaphi,
-                rmin, rmax, phi_seg, has_hole, false,
+                &mut positions,
+                &mut normals,
+                &mut indices,
+                starttheta + deltatheta,
+                startphi,
+                deltaphi,
+                rmin,
+                rmax,
+                phi_seg,
+                has_hole,
+                false,
             );
         }
     }
 
-    TriangleMesh { positions, normals, indices }
+    TriangleMesh {
+        positions,
+        normals,
+        indices,
+    }
 }
 
 fn add_sphere_surface(

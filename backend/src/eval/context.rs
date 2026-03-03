@@ -11,10 +11,8 @@ impl EvalContext {
             values: HashMap::new(),
         };
         ctx.values.insert("pi".to_string(), std::f64::consts::PI);
-        ctx.values
-            .insert("PI".to_string(), std::f64::consts::PI);
-        ctx.values
-            .insert("e".to_string(), std::f64::consts::E);
+        ctx.values.insert("PI".to_string(), std::f64::consts::PI);
+        ctx.values.insert("e".to_string(), std::f64::consts::E);
         ctx.values
             .insert("TWOPI".to_string(), 2.0 * std::f64::consts::PI);
         ctx
