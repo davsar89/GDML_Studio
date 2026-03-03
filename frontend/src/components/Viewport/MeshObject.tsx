@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import type { ThreeEvent } from '@react-three/fiber';
 import type { MeshData } from '../../store/types';
 import { useAppStore } from '../../store';
 import { getOrCreateGeometry, releaseGeometry } from './geometryCache';
@@ -9,12 +10,13 @@ interface Props {
   color: string;
   selected: boolean;
   name: string;
+  instanceId: string;
   solidName: string;
   depth: number;
   maxDepth: number;
 }
 
-export default function MeshObject({ meshData, color, selected, name, solidName, depth, maxDepth }: Props) {
+export default function MeshObject({ meshData, color, selected, name, instanceId, solidName, depth, maxDepth }: Props) {
   const meshRef = useRef<THREE.Mesh>(null);
   const meshOpacity = useAppStore((s) => s.meshOpacity);
   const geometry = getOrCreateGeometry(solidName, meshData);
@@ -39,18 +41,18 @@ export default function MeshObject({ meshData, color, selected, name, solidName,
       ref={meshRef}
       geometry={geometry}
       onClick={handleClick}
-      onContextMenu={(e: any) => {
+      onContextMenu={(e: ThreeEvent<PointerEvent>) => {
         e.stopPropagation();
-        e.nativeEvent?.preventDefault?.();
-        e.nativeEvent?.stopImmediatePropagation?.();
+        e.nativeEvent.preventDefault();
+        e.nativeEvent.stopImmediatePropagation?.();
         const store = useAppStore.getState();
         store.setSelectedVolume(name);
-        const nativeX = e.nativeEvent?.clientX ?? e.clientX ?? 0;
-        const nativeY = e.nativeEvent?.clientY ?? e.clientY ?? 0;
+        const nativeX = e.nativeEvent.clientX;
+        const nativeY = e.nativeEvent.clientY;
         store.openContextMenu(nativeX, nativeY, [
           {
-            label: store.hiddenVolumes.has(name) ? 'Show' : 'Hide',
-            action: () => useAppStore.getState().toggleVolumeVisibility(name),
+            label: store.hiddenInstances.has(instanceId) ? 'Show' : 'Hide',
+            action: () => useAppStore.getState().toggleInstanceVisibility(instanceId),
           },
           {
             label: 'Edit Material',

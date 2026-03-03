@@ -86,10 +86,10 @@ export default function Scene({ node }: { node: SceneNode }) {
 function SceneNodeGroup({ node, depth, maxDepth }: { node: SceneNode; depth: number; maxDepth: number }) {
   const meshes = useAppStore((s) => s.meshes);
   const selectedVolume = useAppStore((s) => s.selectedVolume);
-  const hiddenVolumes = useAppStore((s) => s.hiddenVolumes);
+  const hiddenInstances = useAppStore((s) => s.hiddenInstances);
   const meshData = meshes[node.solid_name];
   const isSelected = selectedVolume === node.volume_name;
-  const isHidden = hiddenVolumes.has(node.volume_name);
+  const isHidden = hiddenInstances.has(node.instance_id);
 
   // GDML applies extrinsic rotations Rx·Ry·Rz → matrix Rz·Ry·Rx → Three.js Euler 'XYZ'
   const euler = useMemo(() => {
@@ -110,13 +110,14 @@ function SceneNodeGroup({ node, depth, maxDepth }: { node: SceneNode; depth: num
           color={color}
           selected={isSelected}
           name={node.volume_name}
+          instanceId={node.instance_id}
           solidName={node.solid_name}
           depth={depth}
           maxDepth={maxDepth}
         />
       )}
       {node.children.map((child, i) => (
-        <SceneNodeGroup key={`${child.volume_name}-${i}`} node={child} depth={depth + 1} maxDepth={maxDepth} />
+        <SceneNodeGroup key={child.instance_id || `${child.volume_name}-${i}`} node={child} depth={depth + 1} maxDepth={maxDepth} />
       ))}
     </group>
   );

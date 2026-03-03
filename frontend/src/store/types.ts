@@ -1,5 +1,6 @@
 export interface SceneNode {
   name: string;
+  instance_id: string;
   volume_name: string;
   solid_name: string;
   material_name: string;

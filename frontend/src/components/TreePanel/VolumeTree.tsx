@@ -14,11 +14,11 @@ export default function VolumeTree() {
 function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
   const selectedVolume = useAppStore((s) => s.selectedVolume);
   const setSelectedVolume = useAppStore((s) => s.setSelectedVolume);
-  const hiddenVolumes = useAppStore((s) => s.hiddenVolumes);
-  const toggleVolumeVisibility = useAppStore((s) => s.toggleVolumeVisibility);
+  const hiddenInstances = useAppStore((s) => s.hiddenInstances);
+  const toggleInstanceVisibility = useAppStore((s) => s.toggleInstanceVisibility);
   const openContextMenu = useAppStore((s) => s.openContextMenu);
   const isSelected = selectedVolume === node.volume_name;
-  const isHidden = hiddenVolumes.has(node.volume_name);
+  const isHidden = hiddenInstances.has(node.instance_id);
 
   return (
     <div>
@@ -27,9 +27,9 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          const hidden = hiddenVolumes.has(node.volume_name);
+          const hidden = hiddenInstances.has(node.instance_id);
           openContextMenu(e.clientX, e.clientY, [
-            { label: hidden ? 'Show' : 'Hide', action: () => toggleVolumeVisibility(node.volume_name) },
+            { label: hidden ? 'Show' : 'Hide', action: () => toggleInstanceVisibility(node.instance_id) },
             { label: 'Change Material', action: () => { setSelectedVolume(node.volume_name); } },
           ]);
         }}
@@ -54,7 +54,7 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
         <span
           onClick={(e) => {
             e.stopPropagation();
-            toggleVolumeVisibility(node.volume_name);
+            toggleInstanceVisibility(node.instance_id);
           }}
           style={{
             cursor: 'pointer',
@@ -73,7 +73,7 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
         </span>
       </div>
       {node.children.map((child, i) => (
-        <VolumeNode key={`${child.volume_name}-${i}`} node={child} depth={depth + 1} />
+        <VolumeNode key={child.instance_id || `${child.volume_name}-${i}`} node={child} depth={depth + 1} />
       ))}
     </div>
   );

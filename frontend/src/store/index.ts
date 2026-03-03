@@ -16,7 +16,7 @@ interface AppState {
   selectedMaterial: string | null;
   activeTreeTab: 'structure' | 'defines' | 'materials';
   meshOpacity: number;
-  hiddenVolumes: Set<string>;
+  hiddenInstances: Set<string>;
   contextMenu: {
     x: number;
     y: number;
@@ -36,7 +36,7 @@ interface AppState {
   setSelectedMaterial: (name: string | null) => void;
   setActiveTreeTab: (tab: 'structure' | 'defines' | 'materials') => void;
   setMeshOpacity: (opacity: number) => void;
-  toggleVolumeVisibility: (volumeName: string) => void;
+  toggleInstanceVisibility: (instanceId: string) => void;
   openContextMenu: (x: number, y: number, items: { label: string; action: () => void }[]) => void;
   closeContextMenu: () => void;
   reset: () => void;
@@ -55,7 +55,7 @@ export const useAppStore = create<AppState>((set) => ({
   selectedMaterial: null,
   activeTreeTab: 'structure',
   meshOpacity: 1.0,
-  hiddenVolumes: new Set<string>(),
+  hiddenInstances: new Set<string>(),
   contextMenu: null,
 
   setLoading: (loading) => set({ loading }),
@@ -79,15 +79,15 @@ export const useAppStore = create<AppState>((set) => ({
   setSelectedMaterial: (name) => set({ selectedMaterial: name }),
   setActiveTreeTab: (tab) => set({ activeTreeTab: tab }),
   setMeshOpacity: (opacity) => set({ meshOpacity: opacity }),
-  toggleVolumeVisibility: (volumeName) =>
+  toggleInstanceVisibility: (instanceId) =>
     set((state) => {
-      const next = new Set(state.hiddenVolumes);
-      if (next.has(volumeName)) {
-        next.delete(volumeName);
+      const next = new Set(state.hiddenInstances);
+      if (next.has(instanceId)) {
+        next.delete(instanceId);
       } else {
-        next.add(volumeName);
+        next.add(instanceId);
       }
-      return { hiddenVolumes: next };
+      return { hiddenInstances: next };
     }),
   openContextMenu: (x, y, items) => set({ contextMenu: { x, y, items } }),
   closeContextMenu: () => set({ contextMenu: null }),
@@ -107,7 +107,7 @@ export const useAppStore = create<AppState>((set) => ({
       selectedMaterial: null,
       activeTreeTab: 'structure',
       meshOpacity: 1.0,
-      hiddenVolumes: new Set<string>(),
+      hiddenInstances: new Set<string>(),
       contextMenu: null,
     });
   },
