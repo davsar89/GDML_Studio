@@ -22,7 +22,7 @@ export default function MaterialsPanel() {
         onSelect={setSelectedMaterial}
       />
       {selectedMaterial && (
-        <MaterialEditor
+      <MaterialEditor
           materialName={selectedMaterial}
           materials={materials}
           elements={elements}
@@ -196,8 +196,17 @@ function MaterialEditor({
           </button>
         )}
       </div>
-      <MaterialFields material={mat} />
-      <ComponentsList material={mat} elements={elements} />
+      <MaterialFields
+        key={[
+          mat.name,
+          mat.density?.value || '',
+          mat.density?.unit || '',
+          mat.formula || '',
+          mat.z || '',
+        ].join('|')}
+        material={mat}
+      />
+      <ComponentsList material={mat} materials={materials} elements={elements} />
       <NistMaterialPicker material={mat} />
     </div>
   );
@@ -209,18 +218,6 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
   const [formula, setFormula] = useState(material.formula || '');
   const [z, setZ] = useState(material.z || '');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    // Cancel pending save when material identity changes (e.g., after rename)
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-    }
-    setDensityVal(material.density?.value || '');
-    setDensityUnit(material.density?.unit || 'g/cm3');
-    setFormula(material.formula || '');
-    setZ(material.z || '');
-  }, [material.name, material.density?.value, material.density?.unit, material.formula, material.z]);
 
   const save = useCallback(async (overrides: Partial<MaterialInfo> = {}) => {
     const updated: MaterialInfo = {
@@ -322,9 +319,11 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
 
 function ComponentsList({
   material,
+  materials,
   elements,
 }: {
   material: MaterialInfo;
+  materials: MaterialInfo[];
   elements: ElementInfo[];
 }) {
   const [addingComp, setAddingComp] = useState(false);
@@ -393,9 +392,20 @@ function ComponentsList({
           </select>
           <select value={compRef} onChange={(e) => setCompRef(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
             <option value="">-- ref --</option>
-            {elements.map((el) => (
-              <option key={el.name} value={el.name}>{el.name}</option>
-            ))}
+            <optgroup label="Elements">
+              {elements.map((el) => (
+                <option key={`element-${el.name}`} value={el.name}>{el.name}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Materials">
+              {materials
+                .filter((candidate) => candidate.name !== material.name)
+                .map((candidate) => (
+                  <option key={`material-${candidate.name}`} value={candidate.name}>
+                    {candidate.name}
+                  </option>
+                ))}
+            </optgroup>
           </select>
           <input
             value={compN}

@@ -69,6 +69,7 @@ export default function Toolbar() {
       const store = useAppStore.getState();
       store.setLoading(true);
       store.setError(null);
+      store.setWarnings([]);
       clearAllGeometries();
 
       try {
@@ -100,6 +101,7 @@ export default function Toolbar() {
         }
 
         store.setSummary(result);
+        store.setWarnings(result.warnings);
 
         const meshData = await api.getMeshes();
         store.setMeshes(meshData.meshes);

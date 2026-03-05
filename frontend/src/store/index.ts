@@ -5,6 +5,7 @@ import { clearAllGeometries } from '../components/Viewport/geometryCache';
 interface AppState {
   loading: boolean;
   error: string | null;
+  warnings: string[];
   summary: DocumentSummary | null;
   meshes: Record<string, MeshData>;
   sceneGraph: SceneNode | null;
@@ -25,6 +26,8 @@ interface AppState {
 
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setWarnings: (warnings: string[]) => void;
+  clearWarnings: () => void;
   setSummary: (summary: DocumentSummary) => void;
   setMeshes: (meshes: Record<string, MeshData>) => void;
   setSceneGraph: (graph: SceneNode) => void;
@@ -44,6 +47,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   loading: false,
   error: null,
+  warnings: [],
   summary: null,
   meshes: {},
   sceneGraph: null,
@@ -60,6 +64,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
+  setWarnings: (warnings) => set({ warnings }),
+  clearWarnings: () => set({ warnings: [] }),
   setSummary: (summary) => set({ summary }),
   setMeshes: (meshes) => set({ meshes }),
   setSceneGraph: (graph) => set({ sceneGraph: graph }),
@@ -96,6 +102,7 @@ export const useAppStore = create<AppState>((set) => ({
     set({
       loading: false,
       error: null,
+      warnings: [],
       summary: null,
       meshes: {},
       sceneGraph: null,

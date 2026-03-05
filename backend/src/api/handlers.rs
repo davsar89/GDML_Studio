@@ -27,6 +27,41 @@ pub struct UploadFilesRequest {
     pub segments: Option<u32>,
 }
 
+fn definitions_equivalent<T: Serialize>(existing: &T, incoming: &T) -> Result<bool, ApiError> {
+    let existing = serde_json::to_value(existing)
+        .map_err(|e| ApiError::internal(&format!("Failed to compare merged definitions: {}", e)))?;
+    let incoming = serde_json::to_value(incoming)
+        .map_err(|e| ApiError::internal(&format!("Failed to compare merged definitions: {}", e)))?;
+    Ok(existing == incoming)
+}
+
+fn merge_named_items<T, F>(
+    target: &mut Vec<T>,
+    incoming: &[T],
+    kind: &str,
+    source_name: &str,
+    get_name: F,
+) -> Result<(), ApiError>
+where
+    T: Clone + Serialize,
+    F: Fn(&T) -> &str + Copy,
+{
+    for item in incoming {
+        let name = get_name(item);
+        if let Some(existing) = target.iter().find(|existing| get_name(existing) == name) {
+            if !definitions_equivalent(existing, item)? {
+                return Err(ApiError::bad_request(&format!(
+                    "Conflicting {} '{}' found while merging '{}'",
+                    kind, name, source_name
+                )));
+            }
+            continue;
+        }
+        target.push(item.clone());
+    }
+    Ok(())
+}
+
 /// Merge a child GdmlDocument into the main document, resolving file_ref physvols.
 fn merge_child_into_main(
     main_doc: &mut GdmlDocument,
@@ -34,7 +69,7 @@ fn merge_child_into_main(
     file_ref_name: &str,
     volname: &Option<String>,
     warnings: &mut Vec<String>,
-) {
+) -> Result<(), ApiError> {
     // Determine the child's target volume (volname or its world_ref)
     let child_world = volname
         .as_deref()
@@ -46,7 +81,7 @@ fn merge_child_into_main(
             "Child file '{}' has no world reference and no volname specified",
             file_ref_name
         ));
-        return;
+        return Ok(());
     }
 
     // Collect existing names to detect duplicates
@@ -76,30 +111,48 @@ fn merge_child_into_main(
         .collect();
 
     // Merge defines (constants, quantities, variables, expressions, positions, rotations)
-    main_doc
-        .defines
-        .constants
-        .extend(child_doc.defines.constants.clone());
-    main_doc
-        .defines
-        .quantities
-        .extend(child_doc.defines.quantities.clone());
-    main_doc
-        .defines
-        .variables
-        .extend(child_doc.defines.variables.clone());
-    main_doc
-        .defines
-        .expressions
-        .extend(child_doc.defines.expressions.clone());
-    main_doc
-        .defines
-        .positions
-        .extend(child_doc.defines.positions.clone());
-    main_doc
-        .defines
-        .rotations
-        .extend(child_doc.defines.rotations.clone());
+    merge_named_items(
+        &mut main_doc.defines.constants,
+        &child_doc.defines.constants,
+        "constant",
+        file_ref_name,
+        |item| item.name.as_str(),
+    )?;
+    merge_named_items(
+        &mut main_doc.defines.quantities,
+        &child_doc.defines.quantities,
+        "quantity",
+        file_ref_name,
+        |item| item.name.as_str(),
+    )?;
+    merge_named_items(
+        &mut main_doc.defines.variables,
+        &child_doc.defines.variables,
+        "variable",
+        file_ref_name,
+        |item| item.name.as_str(),
+    )?;
+    merge_named_items(
+        &mut main_doc.defines.expressions,
+        &child_doc.defines.expressions,
+        "expression",
+        file_ref_name,
+        |item| item.name.as_str(),
+    )?;
+    merge_named_items(
+        &mut main_doc.defines.positions,
+        &child_doc.defines.positions,
+        "position",
+        file_ref_name,
+        |item| item.name.as_str(),
+    )?;
+    merge_named_items(
+        &mut main_doc.defines.rotations,
+        &child_doc.defines.rotations,
+        "rotation",
+        file_ref_name,
+        |item| item.name.as_str(),
+    )?;
 
     // Merge elements (skip duplicates)
     for elem in &child_doc.materials.elements {
@@ -140,6 +193,7 @@ fn merge_child_into_main(
             }
         }
     }
+    Ok(())
 }
 
 /// Collect all file references from a parsed document.
@@ -160,7 +214,7 @@ fn collect_file_refs(doc: &GdmlDocument) -> Vec<(String, Option<String>)> {
 fn resolve_all_file_refs(
     main_doc: &mut GdmlDocument,
     child_docs: &HashMap<String, GdmlDocument>,
-) -> Vec<String> {
+) -> Result<Vec<String>, ApiError> {
     let mut warnings = Vec::new();
     let mut pending = VecDeque::new();
     let mut queued: HashSet<(String, Option<String>)> = HashSet::new();
@@ -180,7 +234,7 @@ fn resolve_all_file_refs(
         }
 
         if let Some(child_doc) = child_docs.get(&ref_name) {
-            merge_child_into_main(main_doc, child_doc, &ref_name, &volname, &mut warnings);
+            merge_child_into_main(main_doc, child_doc, &ref_name, &volname, &mut warnings)?;
         } else {
             warnings.push(format!(
                 "Referenced file '{}' was not provided in the upload",
@@ -199,7 +253,54 @@ fn resolve_all_file_refs(
         }
     }
 
-    warnings
+    Ok(warnings)
+}
+
+fn ensure_material_ref_exists(doc: &GdmlDocument, candidate: &str) -> Result<(), ApiError> {
+    let exists = doc.materials.materials.iter().any(|m| m.name == candidate);
+    if !exists {
+        return Err(ApiError::bad_request(&format!(
+            "Material '{}' does not exist",
+            candidate
+        )));
+    }
+    Ok(())
+}
+
+fn validate_material_components(
+    doc: &GdmlDocument,
+    material: &Material,
+    excluding_material: Option<&str>,
+) -> Result<(), ApiError> {
+    for component in &material.components {
+        let ref_name = match component {
+            MaterialComponent::Fraction { ref_name, .. }
+            | MaterialComponent::Composite { ref_name, .. } => ref_name,
+        };
+
+        if ref_name == &material.name {
+            return Err(ApiError::bad_request(&format!(
+                "Material '{}' cannot reference itself in components",
+                material.name
+            )));
+        }
+
+        let element_exists = doc.materials.elements.iter().any(|e| e.name == *ref_name);
+        let material_exists = doc
+            .materials
+            .materials
+            .iter()
+            .any(|m| m.name == *ref_name && Some(m.name.as_str()) != excluding_material);
+
+        if !element_exists && !material_exists {
+            return Err(ApiError::bad_request(&format!(
+                "Material '{}' references unknown component '{}'",
+                material.name, ref_name
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 pub async fn upload_file(
@@ -303,7 +404,7 @@ pub async fn upload_files(
     }
 
     // Resolve file references: merge child documents into main (including nested refs)
-    let merge_warnings = resolve_all_file_refs(&mut main_doc, &child_docs);
+    let merge_warnings = resolve_all_file_refs(&mut main_doc, &child_docs)?;
 
     // Evaluate expressions on the merged document
     let mut engine = EvalEngine::new();
@@ -874,6 +975,7 @@ pub async fn update_material(
     let old_name = req.name.clone();
     let new_name = req.material.name.clone();
     ensure_material_name_available(&loaded.document, &new_name, Some(old_name.as_str()))?;
+    validate_material_components(&loaded.document, &req.material, Some(old_name.as_str()))?;
 
     let mat_idx = loaded
         .document
@@ -920,6 +1022,7 @@ pub async fn add_material(
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
     ensure_material_name_available(&loaded.document, &req.material.name, None)?;
+    validate_material_components(&loaded.document, &req.material, None)?;
 
     loaded.document.materials.materials.push(req.material);
     Ok(Json(json!({ "ok": true })))
@@ -1110,6 +1213,8 @@ pub async fn update_volume_material_ref(
         .as_mut()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
+    ensure_material_ref_exists(&loaded.document, &req.material_ref)?;
+
     let vol = loaded
         .document
         .structure
@@ -1223,7 +1328,10 @@ mod tests {
         child_docs.insert("child.gdml".to_string(), child);
         child_docs.insert("grand.gdml".to_string(), grand);
 
-        let warnings = resolve_all_file_refs(&mut main, &child_docs);
+        let warnings = match resolve_all_file_refs(&mut main, &child_docs) {
+            Ok(warnings) => warnings,
+            Err(err) => panic!("resolve_all_file_refs should succeed: {}", err.message),
+        };
         assert!(warnings.is_empty());
         assert!(collect_file_refs(&main).is_empty());
 
@@ -1371,6 +1479,166 @@ mod tests {
         )
         .await
         .unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn add_material_rejects_unknown_component_reference() {
+        let state = crate::state::app_state::create_shared_state();
+        let mut doc = base_doc("test.gdml", "World");
+        doc.structure.volumes.push(volume("World", "Air"));
+        doc.materials.materials.push(material("Air"));
+
+        {
+            let mut w = state.write().await;
+            w.loaded = Some(LoadedDocument {
+                document: doc,
+                engine: EvalEngine::new(),
+                meshes: HashMap::new(),
+                warnings: Vec::new(),
+                file_path: "test.gdml".to_string(),
+            });
+        }
+
+        let mut invalid = material("Mixture");
+        invalid.components.push(MaterialComponent::Fraction {
+            n: "1.0".to_string(),
+            ref_name: "MissingRef".to_string(),
+        });
+
+        let err = add_material(
+            State(state.clone()),
+            Json(AddMaterialRequest { material: invalid }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn update_material_rejects_direct_self_reference() {
+        let state = crate::state::app_state::create_shared_state();
+        let mut doc = base_doc("test.gdml", "World");
+        doc.structure.volumes.push(volume("World", "Steel"));
+        doc.materials.materials.push(material("Steel"));
+
+        {
+            let mut w = state.write().await;
+            w.loaded = Some(LoadedDocument {
+                document: doc,
+                engine: EvalEngine::new(),
+                meshes: HashMap::new(),
+                warnings: Vec::new(),
+                file_path: "test.gdml".to_string(),
+            });
+        }
+
+        let mut invalid = material("Steel");
+        invalid.components.push(MaterialComponent::Composite {
+            n: "1".to_string(),
+            ref_name: "Steel".to_string(),
+        });
+
+        let err = update_material(
+            State(state.clone()),
+            Json(UpdateMaterialRequest {
+                name: "Steel".to_string(),
+                material: invalid,
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn update_volume_material_ref_rejects_unknown_material() {
+        let state = crate::state::app_state::create_shared_state();
+        let mut doc = base_doc("test.gdml", "World");
+        doc.structure.volumes.push(volume("World", "Steel"));
+        doc.materials.materials.push(material("Steel"));
+
+        {
+            let mut w = state.write().await;
+            w.loaded = Some(LoadedDocument {
+                document: doc,
+                engine: EvalEngine::new(),
+                meshes: HashMap::new(),
+                warnings: Vec::new(),
+                file_path: "test.gdml".to_string(),
+            });
+        }
+
+        let err = update_volume_material_ref(
+            State(state.clone()),
+            Json(UpdateMaterialRefRequest {
+                volume_name: "World".to_string(),
+                material_ref: "Missing".to_string(),
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn resolve_all_file_refs_deduplicates_identical_define_names() {
+        let mut main = base_doc("main.gdml", "MainWorld");
+        let mut main_world = volume("MainWorld", "Vacuum");
+        main_world
+            .physvols
+            .push(file_ref_physvol("child.gdml", None));
+        main.structure.volumes.push(main_world);
+        main.defines.constants.push(Constant {
+            name: "A".to_string(),
+            value: "1".to_string(),
+        });
+
+        let mut child = base_doc("child.gdml", "ChildWorld");
+        child.structure.volumes.push(volume("ChildWorld", "Vacuum"));
+        child.defines.constants.push(Constant {
+            name: "A".to_string(),
+            value: "1".to_string(),
+        });
+
+        let mut child_docs = HashMap::new();
+        child_docs.insert("child.gdml".to_string(), child);
+
+        let warnings = match resolve_all_file_refs(&mut main, &child_docs) {
+            Ok(warnings) => warnings,
+            Err(err) => panic!("resolve_all_file_refs should succeed: {}", err.message),
+        };
+        assert!(warnings.is_empty());
+        assert_eq!(main.defines.constants.len(), 1);
+    }
+
+    #[test]
+    fn resolve_all_file_refs_rejects_conflicting_define_names() {
+        let mut main = base_doc("main.gdml", "MainWorld");
+        let mut main_world = volume("MainWorld", "Vacuum");
+        main_world
+            .physvols
+            .push(file_ref_physvol("child.gdml", None));
+        main.structure.volumes.push(main_world);
+        main.defines.constants.push(Constant {
+            name: "A".to_string(),
+            value: "1".to_string(),
+        });
+
+        let mut child = base_doc("child.gdml", "ChildWorld");
+        child.structure.volumes.push(volume("ChildWorld", "Vacuum"));
+        child.defines.constants.push(Constant {
+            name: "A".to_string(),
+            value: "2".to_string(),
+        });
+
+        let mut child_docs = HashMap::new();
+        child_docs.insert("child.gdml".to_string(), child);
+
+        let err = match resolve_all_file_refs(&mut main, &child_docs) {
+            Ok(_) => panic!("resolve_all_file_refs should reject conflicting defines"),
+            Err(err) => err,
+        };
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 

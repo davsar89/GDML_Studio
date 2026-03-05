@@ -29,6 +29,7 @@ export interface DocumentSummary {
   volumes_count: number;
   meshes_count: number;
   world_ref: string;
+  warnings: string[];
 }
 
 export interface DefineValue {
