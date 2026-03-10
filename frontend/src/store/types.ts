@@ -106,3 +106,17 @@ export interface NistMaterial {
   formula: string | null;
   components: NistComponent[];
 }
+
+// ─── Measurement types ──────────────────────────────────────────────────────
+
+export interface SnapPoint {
+  position: [number, number, number];
+  type: 'vertex' | 'edge' | 'face';
+}
+
+export interface Measurement {
+  id: string;
+  pointA: SnapPoint;
+  pointB: SnapPoint;
+  distance: number;
+}

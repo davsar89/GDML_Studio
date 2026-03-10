@@ -50,15 +50,14 @@
     <!-- ==================== Shield (frustum) dimensions ==================== -->
     <!-- CONFIGURABLE: adjust these to change the frustum shield shape -->
     <constant name="shield_wall_t"    value="5"/>   <!-- mm, shield wall thickness -->
-    <constant name="shield_clearance" value="3"/>   <!-- mm, gap between shield inner wall and CZT edges -->
+    <constant name="shield_clearance" value="0"/>   <!-- mm, gap between shield inner wall and CZT edges -->
 
     <!-- Derived shield dimensions -->
-    <constant name="shield_top_inner_hxy" value="czt_hx/2 + shield_clearance"/>              <!-- 95 mm -->
+    <constant name="shield_top_inner_hxy" value="czt_hx/2 + shield_clearance"/>              <!-- 92 mm -->
     <constant name="shield_top_outer_hxy" value="shield_top_inner_hxy + shield_wall_t"/>     <!-- 100 mm -->
     <constant name="shield_bot_inner_hxy" value="mask_half_xy - shield_wall_t"/>              <!-- 155 mm -->
     <constant name="shield_bot_outer_hxy" value="mask_half_xy"/>                              <!-- 160 mm -->
-    <constant name="shield_eps"           value="0"/>      <!-- mm, no gap (was 0.05) -->
-    <constant name="shield_half_z"        value="(plate_gap - shield_eps)/2"/>                <!-- 49.975 mm -->
+    <constant name="shield_half_z"        value="plate_gap/2"/>                             <!-- 50 mm -->
 
     <!-- ==================== World dimensions ==================== -->
     <!-- 10100 mm = ~5.05 m half-size, giving 10.1 m full size -->
@@ -68,7 +67,7 @@
     <!-- Plate Z: CZT center at Z=0, sensitive face at Z=-czt_hz/2 (after rotX180),
          mask at -(czt_hz/2 + plate_thick/2 + plate_gap) -->
     <constant name="plate_z"   value="-(czt_hz/2 + plate_thick/2 + plate_gap)"/>   <!-- -109.25 mm -->
-    <constant name="shield_z"  value="-(czt_hz/2 + shield_half_z + shield_eps/2)"/> <!-- ~-54.275 mm -->
+    <constant name="shield_z"  value="-(czt_hz/2 + plate_gap/2)"/>                    <!-- -54.25 mm -->
 
     <position name="czt_assembly_pos" unit="mm" x="0" y="0" z="0"/>
     <position name="plate_pos"        unit="mm" x="0" y="0" z="plate_z"/>

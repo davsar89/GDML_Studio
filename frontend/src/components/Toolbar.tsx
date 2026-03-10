@@ -56,6 +56,8 @@ export default function Toolbar() {
   const summary = useAppStore((s) => s.summary);
   const meshOpacity = useAppStore((s) => s.meshOpacity);
   const setMeshOpacity = useAppStore((s) => s.setMeshOpacity);
+  const measureMode = useAppStore((s) => s.measureMode);
+  const measurements = useAppStore((s) => s.measurements);
 
   const handleOpenFile = () => {
     const input = document.createElement('input');
@@ -174,6 +176,29 @@ export default function Toolbar() {
       <button onClick={handleOpenFile} disabled={loading} style={btnStyle}>
         {loading ? 'Loading...' : 'Open File(s)'}
       </button>
+      <button
+        onClick={() => useAppStore.getState().setMeasureMode(!measureMode)}
+        style={{
+          ...btnStyle,
+          background: measureMode ? '#e94560' : '#0f3460',
+          color: measureMode ? '#fff' : '#e0e0e0',
+        }}
+        title="Measure distance"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: 'middle', marginRight: 4 }}>
+          <path d="M2 22L22 2" />
+          <path d="M6 18l2-2" />
+          <path d="M10 14l2-2" />
+          <path d="M14 10l2-2" />
+          <path d="M18 6l2-2" />
+        </svg>
+        Measure
+      </button>
+      {measurements.length > 0 && (
+        <button onClick={() => useAppStore.getState().clearMeasurements()} style={btnStyle} title="Clear all measurements">
+          Clear (N)
+        </button>
+      )}
       {summary && (
         <>
           <button onClick={handleSave} style={btnStyle}>Save</button>

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SceneNode, MeshData, DocumentSummary, DefineValue, VolumeInfo, MaterialInfo, ElementInfo } from './types';
+import type { SceneNode, MeshData, DocumentSummary, DefineValue, VolumeInfo, MaterialInfo, ElementInfo, SnapPoint, Measurement } from './types';
 import { clearAllGeometries } from '../components/Viewport/geometryCache';
 
 interface AppState {
@@ -24,6 +24,14 @@ interface AppState {
     items: { label: string; action: () => void }[];
   } | null;
 
+  // Measurement state
+  measureMode: boolean;
+  measurements: Measurement[];
+  pendingPoint: SnapPoint | null;
+  hoverSnap: SnapPoint | null;
+  hoverCandidates: SnapPoint[];
+  surfaceCandidates: SnapPoint[];
+
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setWarnings: (warnings: string[]) => void;
@@ -42,6 +50,16 @@ interface AppState {
   toggleInstanceVisibility: (instanceId: string) => void;
   openContextMenu: (x: number, y: number, items: { label: string; action: () => void }[]) => void;
   closeContextMenu: () => void;
+
+  // Measurement actions
+  setMeasureMode: (on: boolean) => void;
+  setHoverSnap: (snap: SnapPoint | null) => void;
+  setHoverCandidates: (candidates: SnapPoint[]) => void;
+  setSurfaceCandidates: (candidates: SnapPoint[]) => void;
+  placeMeasurePoint: (snap: SnapPoint) => void;
+  cancelMeasure: () => void;
+  clearMeasurements: () => void;
+
   reset: () => void;
 }
 export const useAppStore = create<AppState>((set) => ({
@@ -61,6 +79,14 @@ export const useAppStore = create<AppState>((set) => ({
   meshOpacity: 1.0,
   hiddenInstances: new Set<string>(),
   contextMenu: null,
+
+  // Measurement defaults
+  measureMode: false,
+  measurements: [],
+  pendingPoint: null,
+  hoverSnap: null,
+  hoverCandidates: [],
+  surfaceCandidates: [],
 
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
@@ -97,6 +123,37 @@ export const useAppStore = create<AppState>((set) => ({
     }),
   openContextMenu: (x, y, items) => set({ contextMenu: { x, y, items } }),
   closeContextMenu: () => set({ contextMenu: null }),
+
+  // Measurement actions
+  setMeasureMode: (on) =>
+    set(on ? { measureMode: true } : { measureMode: false, pendingPoint: null, hoverSnap: null, hoverCandidates: [], surfaceCandidates: [] }),
+  setHoverSnap: (snap) => set({ hoverSnap: snap }),
+  setHoverCandidates: (candidates) => set({ hoverCandidates: candidates }),
+  setSurfaceCandidates: (candidates) => set({ surfaceCandidates: candidates }),
+  placeMeasurePoint: (snap) =>
+    set((state) => {
+      if (!state.pendingPoint) {
+        return { pendingPoint: snap };
+      }
+      const a = state.pendingPoint.position;
+      const b = snap.position;
+      const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
+      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const measurement: Measurement = {
+        id: `m_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        pointA: state.pendingPoint,
+        pointB: snap,
+        distance,
+      };
+      return { measurements: [...state.measurements, measurement], pendingPoint: null, surfaceCandidates: [] };
+    }),
+  cancelMeasure: () =>
+    set((state) => {
+      if (state.pendingPoint) return { pendingPoint: null, surfaceCandidates: [] };
+      return { measureMode: false, pendingPoint: null, hoverSnap: null, surfaceCandidates: [] };
+    }),
+  clearMeasurements: () => set({ measurements: [], pendingPoint: null, surfaceCandidates: [] }),
+
   reset: () => {
     clearAllGeometries();
     set({
@@ -116,6 +173,12 @@ export const useAppStore = create<AppState>((set) => ({
       meshOpacity: 1.0,
       hiddenInstances: new Set<string>(),
       contextMenu: null,
+      measureMode: false,
+      measurements: [],
+      pendingPoint: null,
+      hoverSnap: null,
+      hoverCandidates: [],
+      surfaceCandidates: [],
     });
   },
 }));

@@ -3,6 +3,8 @@ import * as THREE from 'three';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import Scene from './Scene';
+import MeasureInteraction from './MeasureInteraction';
+import MeasureOverlay from './MeasureOverlay';
 import { useAppStore } from '../../store';
 
 /** Computes the bounding sphere of all scene meshes and adjusts camera + controls. */
@@ -49,7 +51,15 @@ function AutoFitCamera({ sceneGraph }: { sceneGraph: unknown }) {
     return () => cancelAnimationFrame(id);
   }, [sceneGraph, camera, scene]);
 
-  return <OrbitControls makeDefault ref={controlsRef as never} />;
+  const measureMode = useAppStore((s) => s.measureMode);
+
+  // In measure mode, free left-click for measurement: left=none, middle=dolly, right=rotate
+  // Always pass explicit config — OrbitControls doesn't reset when prop goes from object to undefined
+  const mouseButtons = measureMode
+    ? { LEFT: undefined as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }
+    : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+
+  return <OrbitControls makeDefault ref={controlsRef as never} mouseButtons={mouseButtons} />;
 }
 
 /** Dynamically sized grid + axes based on loaded meshes. */
@@ -118,6 +128,8 @@ export default function Viewport() {
         {sceneGraph && <Scene node={sceneGraph} />}
         <DynamicGrid />
         <AutoFitCamera sceneGraph={sceneGraph} />
+        <MeasureInteraction />
+        <MeasureOverlay />
         <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
           <GizmoViewport />
         </GizmoHelper>

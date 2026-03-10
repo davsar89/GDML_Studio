@@ -31,6 +31,7 @@ export default function MeshObject({ meshData, color, selected, name, instanceId
   }, [solidName]);
 
   const handleClick = (e: THREE.Event) => {
+    if (useAppStore.getState().measureMode) return;
     // @ts-expect-error: ThreeEvent stopPropagation
     e.stopPropagation?.();
     useAppStore.getState().setSelectedVolume(name);
