@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
-use super::primitives::{box_mesh, cone_mesh, sphere_mesh, tube_mesh};
+use super::primitives::{box_mesh, cone_mesh, sphere_mesh, trd_mesh, tube_mesh};
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
@@ -71,6 +71,7 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::Tube(s) => tessellate_tube_solid(s, engine, segments),
         Solid::Cone(s) => tessellate_cone_solid(s, engine, segments),
         Solid::Sphere(s) => tessellate_sphere_solid(s, engine, segments),
+        Solid::Trd(s) => tessellate_trd_solid(s, engine),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
 }
@@ -328,6 +329,16 @@ fn tessellate_sphere_solid(
     Ok(sphere_mesh::tessellate_sphere(
         rmin, rmax, startphi, deltaphi, starttheta, deltatheta, segments,
     ))
+}
+
+fn tessellate_trd_solid(s: &TrdSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let x1 = resolve_with_lunit(engine, &s.x1, lunit);
+    let y1 = resolve_with_lunit(engine, &s.y1, lunit);
+    let x2 = resolve_with_lunit(engine, &s.x2, lunit);
+    let y2 = resolve_with_lunit(engine, &s.y2, lunit);
+    let z = resolve_with_lunit(engine, &s.z, lunit);
+    Ok(trd_mesh::tessellate_trd(x1, y1, x2, y2, z))
 }
 
 #[cfg(test)]

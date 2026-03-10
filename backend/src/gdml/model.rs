@@ -128,6 +128,7 @@ pub enum Solid {
     Tube(TubeSolid),
     Cone(ConeSolid),
     Sphere(SphereSolid),
+    Trd(TrdSolid),
     Boolean(BooleanSolid),
 }
 
@@ -138,6 +139,7 @@ impl Solid {
             Solid::Tube(s) => &s.name,
             Solid::Cone(s) => &s.name,
             Solid::Sphere(s) => &s.name,
+            Solid::Trd(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -207,6 +209,17 @@ pub struct SphereSolid {
     pub starttheta: Option<String>,
     pub deltatheta: Option<String>,
     pub aunit: Option<String>,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrdSolid {
+    pub name: String,
+    pub x1: String,
+    pub y1: String,
+    pub x2: String,
+    pub y2: String,
+    pub z: String,
     pub lunit: Option<String>,
 }
 

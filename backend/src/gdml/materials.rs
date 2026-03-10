@@ -430,6 +430,19 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::Trd(t) => {
+                let mut elem = BytesStart::new("trd");
+                elem.push_attribute(("name", t.name.as_str()));
+                elem.push_attribute(("x1", t.x1.as_str()));
+                elem.push_attribute(("y1", t.y1.as_str()));
+                elem.push_attribute(("x2", t.x2.as_str()));
+                elem.push_attribute(("y2", t.y2.as_str()));
+                elem.push_attribute(("z", t.z.as_str()));
+                if let Some(ref u) = t.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
             Solid::Boolean(bs) => {
                 let tag_name = match bs.operation {
                     BooleanOp::Subtraction => "subtraction",

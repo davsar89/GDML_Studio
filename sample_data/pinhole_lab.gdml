@@ -5,9 +5,9 @@
       xsi:noNamespaceSchemaLocation="./gdml.xsd">
 
   <!-- ============================================================
-       PINHOLE camera CZT — complete compact/lab geometry
+       PINHOLE camera CZT — compact/lab geometry (preliminary design)
        Contains: world box, CZT 64x64 pixel assembly (rotated 180° X),
-                 lead plate with knife-edge aperture, 4 lead side walls.
+                 mask plate with knife-edge pinhole, frustum shield.
        ============================================================ -->
 
   <define>
@@ -34,56 +34,45 @@
     <!-- Chip CZT slab position inside its container -->
     <position name="chip_c_pos" unit="mm" x="0" y="0" z="-chip_z/2+chip_bpcbz+chip_ch/2"/>
 
-    <!-- ==================== Lead plate dimensions ==================== -->
-    <!-- From Settings defaults: PLATE_THICKNESS=10mm, PLATE_GAP=100mm,
-         PLATE_HOLE_DIAMETER=30mm, PLATE_KNIFE_DIAMETER=20mm,
-         PLATE_XY_OVERHANG=150mm -->
-    <constant name="plate_thick" value="10"/>      <!-- mm, full thickness -->
-    <constant name="plate_gap"   value="100"/>     <!-- mm, gap between CZT and plate -->
-    <constant name="hole_r"      value="15"/>      <!-- mm, PLATE_HOLE_DIAMETER/2 -->
-    <constant name="knife_r"     value="10"/>      <!-- mm, PLATE_KNIFE_DIAMETER/2 -->
-    <constant name="overhang"    value="150"/>     <!-- mm -->
-    <constant name="plate_hx"    value="czt_hx/2 + overhang"/>   <!-- 92+150 = 242 mm half-size -->
-    <constant name="plate_hy"    value="czt_hy/2 + overhang"/>
+    <!-- ==================== Mask plate dimensions ==================== -->
+    <!-- CONFIGURABLE: adjust these to change the mask/pinhole geometry -->
+    <constant name="mask_half_xy"  value="160"/>    <!-- mm, mask plate half-size (full width ≈ 32 cm) -->
+    <constant name="plate_thick"   value="10"/>     <!-- mm, mask plate thickness -->
+    <constant name="plate_gap"     value="100"/>    <!-- mm, distance from CZT bottom face to mask top face -->
+    <constant name="hole_r"        value="10"/>     <!-- mm, pinhole surface radius (diameter = 2 cm) -->
+    <constant name="knife_r"       value="5"/>      <!-- mm, knife-edge radius at center (diameter = 1 cm) -->
 
-    <!-- Knife-edge cone parameters -->
+    <!-- Knife-edge cone parameters (derived) -->
     <constant name="quarter_thick" value="plate_thick/4"/>  <!-- 2.5 mm -->
     <constant name="cone_hz"       value="quarter_thick + 0.1"/>  <!-- 2.6 mm half, so full z=5.2 -->
-    <constant name="eps"           value="0.1"/>  <!-- boolean clearance -->
+    <constant name="bool_eps"      value="0.1"/>  <!-- boolean clearance -->
 
-    <!-- Plate Z position in world (after 180° X rotation):
-         CZT center at Z=0, sensitive face at Z=-4.25,
-         plate at -(czt_hz/2 + plate_thick/2 + plate_gap) -->
-    <constant name="plate_z" value="-(czt_hz/2 + plate_thick/2 + plate_gap)"/>  <!-- -109.25 mm -->
+    <!-- ==================== Shield (frustum) dimensions ==================== -->
+    <!-- CONFIGURABLE: adjust these to change the frustum shield shape -->
+    <constant name="shield_wall_t"    value="5"/>   <!-- mm, shield wall thickness -->
+    <constant name="shield_clearance" value="3"/>   <!-- mm, gap between shield inner wall and CZT edges -->
 
-    <!-- ==================== Side wall dimensions ==================== -->
-    <constant name="wall_margin"  value="5"/>      <!-- mm clearance around hole -->
-    <constant name="side_t"       value="plate_hx - (hole_r + wall_margin)"/>  <!-- 242-20 = 222 mm -->
-    <constant name="wall_half_z"  value="(plate_gap + plate_thick)/2"/>        <!-- 55 mm -->
-    <constant name="wall_eps"     value="0.05"/>   <!-- mm separation to avoid coincident surfaces -->
-    <!-- Wall center Z: -(czt_hz/2 + wall_half_z + wall_eps/2) -->
-    <constant name="wall_z"       value="-(czt_hz/2 + wall_half_z + wall_eps/2)"/>  <!-- ~ -59.275 mm -->
-
-    <!-- X walls: half-x = side_t/2, half-y = plate_hy, half-z = wall_half_z -->
-    <!-- Position: x = ±(plate_hx - side_t/2) = ±(242-111) = ±131 -->
-    <constant name="xwall_x_offset" value="plate_hx - side_t/2"/>  <!-- 131 mm -->
-
-    <!-- Y walls: half-x = plate_hx, half-y = side_t/2, half-z = wall_half_z -->
-    <!-- Position: y = ±(plate_hy - side_t/2) = ±131 -->
-    <constant name="ywall_y_offset" value="plate_hy - side_t/2"/>
+    <!-- Derived shield dimensions -->
+    <constant name="shield_top_inner_hxy" value="czt_hx/2 + shield_clearance"/>              <!-- 95 mm -->
+    <constant name="shield_top_outer_hxy" value="shield_top_inner_hxy + shield_wall_t"/>     <!-- 100 mm -->
+    <constant name="shield_bot_inner_hxy" value="mask_half_xy - shield_wall_t"/>              <!-- 155 mm -->
+    <constant name="shield_bot_outer_hxy" value="mask_half_xy"/>                              <!-- 160 mm -->
+    <constant name="shield_eps"           value="0"/>      <!-- mm, no gap (was 0.05) -->
+    <constant name="shield_half_z"        value="(plate_gap - shield_eps)/2"/>                <!-- 49.975 mm -->
 
     <!-- ==================== World dimensions ==================== -->
     <!-- 10100 mm = ~5.05 m half-size, giving 10.1 m full size -->
     <constant name="world_half" value="5050"/>
 
     <!-- ==================== Positions ==================== -->
+    <!-- Plate Z: CZT center at Z=0, sensitive face at Z=-czt_hz/2 (after rotX180),
+         mask at -(czt_hz/2 + plate_thick/2 + plate_gap) -->
+    <constant name="plate_z"   value="-(czt_hz/2 + plate_thick/2 + plate_gap)"/>   <!-- -109.25 mm -->
+    <constant name="shield_z"  value="-(czt_hz/2 + shield_half_z + shield_eps/2)"/> <!-- ~-54.275 mm -->
+
     <position name="czt_assembly_pos" unit="mm" x="0" y="0" z="0"/>
     <position name="plate_pos"        unit="mm" x="0" y="0" z="plate_z"/>
-    <position name="xwall_xp_pos"     unit="mm" x="xwall_x_offset"  y="0" z="wall_z"/>
-    <position name="xwall_xm_pos"     unit="mm" x="-xwall_x_offset" y="0" z="wall_z"/>
-    <!-- Y walls: rotX180 maps local +Y to world -Y, so wall at local +Y goes to world -Y -->
-    <position name="ywall_yp_pos"     unit="mm" x="0" y="-ywall_y_offset" z="wall_z"/>
-    <position name="ywall_ym_pos"     unit="mm" x="0" y="ywall_y_offset"  z="wall_z"/>
+    <position name="shield_pos"       unit="mm" x="0" y="0" z="shield_z"/>
   </define>
 
   <!-- ==================== Materials ==================== -->
@@ -108,6 +97,19 @@
       <D value="11.35" unit="g/cm3"/>
       <fraction n="1.0" ref="Lead_el"/>
     </material>
+
+    <!-- Additional mask/shield materials (available for easy switching) -->
+    <element name="Tungsten_el" formula="W"  Z="74.0"> <atom value="183.84"/>  </element>
+    <material name="Tungsten">
+      <D value="19.3" unit="g/cm3"/>
+      <fraction n="1.0" ref="Tungsten_el"/>
+    </material>
+
+    <element name="Tantalum_el" formula="Ta" Z="73.0"> <atom value="180.948"/> </element>
+    <material name="Tantalum">
+      <D value="16.65" unit="g/cm3"/>
+      <fraction n="1.0" ref="Tantalum_el"/>
+    </material>
   </materials>
 
   <!-- ==================== Solids ==================== -->
@@ -125,17 +127,17 @@
     <!-- CZT assembly container -->
     <box name="czt_assembly_box" lunit="mm" x="czt_hx" y="czt_hy" z="czt_hz"/>
 
-    <!-- ===== Lead plate with knife-edge hole ===== -->
-    <box name="plate_box" lunit="mm" x="2*plate_hx" y="2*plate_hy" z="plate_thick"/>
+    <!-- ===== Mask plate with knife-edge pinhole ===== -->
+    <box name="plate_box" lunit="mm" x="2*mask_half_xy" y="2*mask_half_xy" z="plate_thick"/>
 
     <!-- Top cone: at -hz face rmax=knife_r+eps (center), at +hz face rmax=hole_r+eps (surface) -->
     <cone name="top_cone" lunit="mm" aunit="deg"
-          rmin1="0" rmax1="knife_r+eps" rmin2="0" rmax2="hole_r+eps"
+          rmin1="0" rmax1="knife_r+bool_eps" rmin2="0" rmax2="hole_r+bool_eps"
           z="2*cone_hz" startphi="0" deltaphi="360"/>
 
     <!-- Bottom cone: at -hz face rmax=hole_r+eps (surface), at +hz face rmax=knife_r+eps (center) -->
     <cone name="bot_cone" lunit="mm" aunit="deg"
-          rmin1="0" rmax1="hole_r+eps" rmin2="0" rmax2="knife_r+eps"
+          rmin1="0" rmax1="hole_r+bool_eps" rmin2="0" rmax2="knife_r+bool_eps"
           z="2*cone_hz" startphi="0" deltaphi="360"/>
 
     <!-- Boolean subtraction: plate - top_cone - bot_cone -->
@@ -150,14 +152,28 @@
       <position name="bot_cone_pos" unit="mm" x="0" y="0" z="-quarter_thick"/>
     </subtraction>
 
-    <!-- ===== Side walls ===== -->
-    <box name="xwall_box" lunit="mm" x="side_t" y="2*plate_hy" z="2*wall_half_z"/>
-    <box name="ywall_box" lunit="mm" x="2*plate_hx" y="side_t" z="2*wall_half_z"/>
+    <!-- ===== Frustum shield (rectangular truncated pyramid) ===== -->
+    <!-- Wider at -z (mask end), narrower at +z (CZT end) -->
+    <trd name="shield_outer_trd" lunit="mm"
+         x1="2*shield_bot_outer_hxy" y1="2*shield_bot_outer_hxy"
+         x2="2*shield_top_outer_hxy" y2="2*shield_top_outer_hxy"
+         z="2*shield_half_z"/>
+
+    <!-- Inner frustum (slightly taller for clean boolean subtraction) -->
+    <trd name="shield_inner_trd" lunit="mm"
+         x1="2*shield_bot_inner_hxy" y1="2*shield_bot_inner_hxy"
+         x2="2*shield_top_inner_hxy" y2="2*shield_top_inner_hxy"
+         z="2*shield_half_z + 0.2"/>
+
+    <subtraction name="shield_solid">
+      <first ref="shield_outer_trd"/>
+      <second ref="shield_inner_trd"/>
+    </subtraction>
   </solids>
 
   <!-- ==================== Structure ==================== -->
   <structure>
-    <!-- ===== CZT pixel hierarchy (same as czt_crystals_only_single.gdml) ===== -->
+    <!-- ===== CZT pixel hierarchy ===== -->
 
     <!-- Sensitive CZT pixel -->
     <volume name="chip_pixel_v">
@@ -233,7 +249,7 @@
       </replicavol>
     </volume>
 
-    <!-- CZT assembly container (equivalent to old "czt" world from the single GDML) -->
+    <!-- CZT assembly container -->
     <volume name="czt_assembly_lv">
       <materialref ref="Vacuum"/>
       <solidref ref="czt_assembly_box"/>
@@ -244,21 +260,18 @@
       </physvol>
     </volume>
 
-    <!-- ===== Lead plate with knife-edge ===== -->
-    <volume name="PbPlate_lv">
+    <!-- ===== Mask plate with knife-edge pinhole ===== -->
+    <!-- To change mask material: replace "Lead" below with "Tungsten" or "Tantalum" -->
+    <volume name="Mask_lv">
       <materialref ref="Lead"/>
       <solidref ref="plate_solid"/>
     </volume>
 
-    <!-- ===== Side walls ===== -->
-    <volume name="PbPlate_xwall_lv">
+    <!-- ===== Frustum shield ===== -->
+    <!-- To change shield material: replace "Lead" below with "Tungsten" or "Tantalum" -->
+    <volume name="Shield_lv">
       <materialref ref="Lead"/>
-      <solidref ref="xwall_box"/>
-    </volume>
-
-    <volume name="PbPlate_ywall_lv">
-      <materialref ref="Lead"/>
-      <solidref ref="ywall_box"/>
+      <solidref ref="shield_solid"/>
     </volume>
 
     <!-- ===== World volume ===== -->
@@ -273,38 +286,17 @@
         <rotationref ref="rotX180"/>
       </physvol>
 
-      <!-- Lead plate with knife-edge aperture -->
-      <physvol name="PbPlate_pV">
-        <volumeref ref="PbPlate_lv"/>
+      <!-- Mask plate with knife-edge pinhole -->
+      <physvol name="Mask_pV">
+        <volumeref ref="Mask_lv"/>
         <positionref ref="plate_pos"/>
         <rotationref ref="id"/>
       </physvol>
 
-      <!-- +X side wall -->
-      <physvol name="PbPlate_xp_pV">
-        <volumeref ref="PbPlate_xwall_lv"/>
-        <positionref ref="xwall_xp_pos"/>
-        <rotationref ref="id"/>
-      </physvol>
-
-      <!-- -X side wall -->
-      <physvol name="PbPlate_xm_pV">
-        <volumeref ref="PbPlate_xwall_lv"/>
-        <positionref ref="xwall_xm_pos"/>
-        <rotationref ref="id"/>
-      </physvol>
-
-      <!-- +Y side wall (world -Y due to rotX180 mapping) -->
-      <physvol name="PbPlate_yp_pV">
-        <volumeref ref="PbPlate_ywall_lv"/>
-        <positionref ref="ywall_yp_pos"/>
-        <rotationref ref="id"/>
-      </physvol>
-
-      <!-- -Y side wall (world +Y) -->
-      <physvol name="PbPlate_ym_pV">
-        <volumeref ref="PbPlate_ywall_lv"/>
-        <positionref ref="ywall_ym_pos"/>
+      <!-- Frustum shield (rectangular truncated pyramid) -->
+      <physvol name="Shield_pV">
+        <volumeref ref="Shield_lv"/>
+        <positionref ref="shield_pos"/>
         <rotationref ref="id"/>
       </physvol>
     </volume>

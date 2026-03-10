@@ -98,6 +98,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"sphere" if section == Section::Solids => {
                         parse_sphere_solid(e, &mut solids);
                     }
+                    b"trd" if section == Section::Solids => {
+                        parse_trd_solid(e, &mut solids);
+                    }
                     b"subtraction" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
                         let bs =
@@ -175,6 +178,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"sphere" if section == Section::Solids => {
                         parse_sphere_solid(e, &mut solids);
+                    }
+                    b"trd" if section == Section::Solids => {
+                        parse_trd_solid(e, &mut solids);
                     }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -507,6 +513,18 @@ fn parse_sphere_solid(e: &BytesStart, solids: &mut SolidSection) {
         starttheta: get_attr(e, "starttheta"),
         deltatheta: get_attr(e, "deltatheta"),
         aunit: get_attr(e, "aunit"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
+
+fn parse_trd_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::Trd(TrdSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        x1: get_attr_or(e, "x1", "0"),
+        y1: get_attr_or(e, "y1", "0"),
+        x2: get_attr_or(e, "x2", "0"),
+        y2: get_attr_or(e, "y2", "0"),
+        z: get_attr_or(e, "z", "0"),
         lunit: get_attr(e, "lunit"),
     }));
 }
