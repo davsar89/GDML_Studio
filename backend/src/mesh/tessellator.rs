@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
-use super::primitives::{box_mesh, cone_mesh, polycone_mesh, sphere_mesh, trd_mesh, tube_mesh, xtru_mesh};
+use super::primitives::{box_mesh, cone_mesh, polycone_mesh, sphere_mesh, torus_mesh, trd_mesh, tube_mesh, xtru_mesh};
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
@@ -75,6 +75,7 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::Polycone(s) => tessellate_polycone_solid(s, engine, segments),
         Solid::Xtru(s) => tessellate_xtru_solid(s, engine),
         Solid::Orb(s) => tessellate_orb_solid(s, engine, segments),
+        Solid::Torus(s) => tessellate_torus_solid(s, engine, segments),
         Solid::Tessellated(s) => tessellate_tessellated_solid(s, engine),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
@@ -446,6 +447,26 @@ fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Re
         normals,
         indices,
     })
+}
+
+fn tessellate_torus_solid(
+    s: &TorusSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
+    let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
+    let rtor = resolve_with_lunit(engine, &s.rtor, lunit);
+    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let deltaphi = match &s.deltaphi {
+        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        None => 2.0 * PI,
+    };
+    Ok(torus_mesh::tessellate_torus(
+        rmin, rmax, rtor, startphi, deltaphi, segments,
+    ))
 }
 
 fn tessellate_orb_solid(s: &OrbSolid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {

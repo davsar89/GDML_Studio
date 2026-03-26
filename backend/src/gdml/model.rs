@@ -132,6 +132,7 @@ pub enum Solid {
     Polycone(PolyconeSolid),
     Xtru(XtruSolid),
     Orb(OrbSolid),
+    Torus(TorusSolid),
     Tessellated(TessellatedSolid),
     Boolean(BooleanSolid),
 }
@@ -147,6 +148,7 @@ impl Solid {
             Solid::Polycone(s) => &s.name,
             Solid::Xtru(s) => &s.name,
             Solid::Orb(s) => &s.name,
+            Solid::Torus(s) => &s.name,
             Solid::Tessellated(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
@@ -275,6 +277,18 @@ pub struct XtruSolid {
 pub struct OrbSolid {
     pub name: String,
     pub r: String,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorusSolid {
+    pub name: String,
+    pub rmin: Option<String>,
+    pub rmax: String,
+    pub rtor: String,
+    pub startphi: Option<String>,
+    pub deltaphi: Option<String>,
+    pub aunit: Option<String>,
     pub lunit: Option<String>,
 }
 

@@ -218,6 +218,26 @@ fn test_pod_asm_tessellated_pipeline() {
 }
 
 #[test]
+fn test_solids_gdml_pipeline() {
+    let path = project_root().join("sample_data/solids.gdml");
+    assert!(path.exists(), "GDML file not found: {}", path.display());
+
+    let result = run_pipeline(&path);
+
+    println!("solids.gdml (Geant4 reference):");
+    println!("  solids:     {}", result.num_solids);
+    println!("  volumes:    {}", result.num_volumes);
+    println!("  meshes:     {}", result.num_meshes);
+    println!("  triangles:  {}", result.total_triangles);
+
+    // This file has many solid types; some are not yet supported.
+    // Just verify that supported solids produce meshes and no panics.
+    assert!(result.num_solids > 0, "Expected at least one solid");
+    assert!(result.num_meshes > 0, "Expected at least one mesh");
+    assert!(result.total_triangles > 0, "Expected at least one triangle");
+}
+
+#[test]
 fn test_all_features_pipeline() {
     let path = project_root().join("sample_data/test_all_features.gdml");
     assert!(path.exists(), "GDML file not found: {}", path.display());
@@ -321,6 +341,7 @@ fn test_mesh_geometry_validity() {
         "sample_data/test_all_features.gdml",
         "sample_data/pod_asm.gdml",
         "sample_data/pod_asm_tessellated.gdml",
+        "sample_data/solids.gdml",
     ];
 
     for file in &files {

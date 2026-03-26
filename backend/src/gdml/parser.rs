@@ -104,6 +104,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"orb" if section == Section::Solids => {
                         parse_orb_solid(e, &mut solids);
                     }
+                    b"torus" if section == Section::Solids => {
+                        parse_torus_solid(e, &mut solids);
+                    }
                     b"polycone" if section == Section::Solids => {
                         let attrs = extract_polycone_attrs(e);
                         let solid = read_polycone_body(&mut reader, attrs)?;
@@ -202,6 +205,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"orb" if section == Section::Solids => {
                         parse_orb_solid(e, &mut solids);
+                    }
+                    b"torus" if section == Section::Solids => {
+                        parse_torus_solid(e, &mut solids);
                     }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -546,6 +552,19 @@ fn parse_trd_solid(e: &BytesStart, solids: &mut SolidSection) {
         x2: get_attr_or(e, "x2", "0"),
         y2: get_attr_or(e, "y2", "0"),
         z: get_attr_or(e, "z", "0"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
+
+fn parse_torus_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::Torus(TorusSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        rmin: get_attr(e, "rmin"),
+        rmax: get_attr_or(e, "rmax", "0"),
+        rtor: get_attr_or(e, "rtor", "0"),
+        startphi: get_attr(e, "startphi"),
+        deltaphi: get_attr(e, "deltaphi"),
+        aunit: get_attr(e, "aunit"),
         lunit: get_attr(e, "lunit"),
     }));
 }

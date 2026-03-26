@@ -545,6 +545,28 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::Torus(t) => {
+                let mut elem = BytesStart::new("torus");
+                elem.push_attribute(("name", t.name.as_str()));
+                if let Some(ref v) = t.rmin {
+                    elem.push_attribute(("rmin", v.as_str()));
+                }
+                elem.push_attribute(("rmax", t.rmax.as_str()));
+                elem.push_attribute(("rtor", t.rtor.as_str()));
+                if let Some(ref v) = t.startphi {
+                    elem.push_attribute(("startphi", v.as_str()));
+                }
+                if let Some(ref v) = t.deltaphi {
+                    elem.push_attribute(("deltaphi", v.as_str()));
+                }
+                if let Some(ref u) = t.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = t.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
             Solid::Boolean(bs) => {
                 let tag_name = match bs.operation {
                     BooleanOp::Subtraction => "subtraction",
