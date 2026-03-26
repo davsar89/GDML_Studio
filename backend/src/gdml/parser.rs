@@ -107,6 +107,18 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"torus" if section == Section::Solids => {
                         parse_torus_solid(e, &mut solids);
                     }
+                    b"trap" if section == Section::Solids => {
+                        parse_trap_solid(e, &mut solids);
+                    }
+                    b"para" if section == Section::Solids => {
+                        parse_para_solid(e, &mut solids);
+                    }
+                    b"cutTube" if section == Section::Solids => {
+                        parse_cut_tube_solid(e, &mut solids);
+                    }
+                    b"ellipsoid" if section == Section::Solids => {
+                        parse_ellipsoid_solid(e, &mut solids);
+                    }
                     b"polycone" if section == Section::Solids => {
                         let attrs = extract_polycone_attrs(e);
                         let solid = read_polycone_body(&mut reader, attrs)?;
@@ -121,6 +133,10 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let name = get_attr(e, "name").unwrap_or_default();
                         let solid = read_tessellated_body(&mut reader, name)?;
                         solids.solids.push(Solid::Tessellated(solid));
+                    }
+                    b"polyhedra" if section == Section::Solids => {
+                        let solid = read_polyhedra_body(&mut reader, e)?;
+                        solids.solids.push(Solid::Polyhedra(solid));
                     }
                     b"subtraction" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -208,6 +224,18 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"torus" if section == Section::Solids => {
                         parse_torus_solid(e, &mut solids);
+                    }
+                    b"trap" if section == Section::Solids => {
+                        parse_trap_solid(e, &mut solids);
+                    }
+                    b"para" if section == Section::Solids => {
+                        parse_para_solid(e, &mut solids);
+                    }
+                    b"cutTube" if section == Section::Solids => {
+                        parse_cut_tube_solid(e, &mut solids);
+                    }
+                    b"ellipsoid" if section == Section::Solids => {
+                        parse_ellipsoid_solid(e, &mut solids);
                     }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -556,6 +584,58 @@ fn parse_trd_solid(e: &BytesStart, solids: &mut SolidSection) {
     }));
 }
 
+fn parse_cut_tube_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::CutTube(CutTubeSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        rmin: get_attr(e, "rmin"),
+        rmax: get_attr_or(e, "rmax", "0"),
+        z: get_attr_or(e, "z", "0"),
+        startphi: get_attr(e, "startphi"),
+        deltaphi: get_attr(e, "deltaphi"),
+        low_x: get_attr(e, "lowX"),
+        low_y: get_attr(e, "lowY"),
+        low_z: get_attr(e, "lowZ"),
+        high_x: get_attr(e, "highX"),
+        high_y: get_attr(e, "highY"),
+        high_z: get_attr(e, "highZ"),
+        aunit: get_attr(e, "aunit"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
+
+fn parse_para_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::Para(ParaSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        x: get_attr_or(e, "x", "0"),
+        y: get_attr_or(e, "y", "0"),
+        z: get_attr_or(e, "z", "0"),
+        alpha: get_attr(e, "alpha"),
+        theta: get_attr(e, "theta"),
+        phi: get_attr(e, "phi"),
+        aunit: get_attr(e, "aunit"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
+
+fn parse_trap_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::Trap(TrapSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        z: get_attr_or(e, "z", "0"),
+        theta: get_attr(e, "theta"),
+        phi: get_attr(e, "phi"),
+        y1: get_attr_or(e, "y1", "0"),
+        x1: get_attr_or(e, "x1", "0"),
+        x2: get_attr_or(e, "x2", "0"),
+        alpha1: get_attr(e, "alpha1"),
+        y2: get_attr_or(e, "y2", "0"),
+        x3: get_attr_or(e, "x3", "0"),
+        x4: get_attr_or(e, "x4", "0"),
+        alpha2: get_attr(e, "alpha2"),
+        aunit: get_attr(e, "aunit"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
+
 fn parse_torus_solid(e: &BytesStart, solids: &mut SolidSection) {
     solids.solids.push(Solid::Torus(TorusSolid {
         name: get_attr(e, "name").unwrap_or_default(),
@@ -573,6 +653,18 @@ fn parse_orb_solid(e: &BytesStart, solids: &mut SolidSection) {
     solids.solids.push(Solid::Orb(OrbSolid {
         name: get_attr(e, "name").unwrap_or_default(),
         r: get_attr_or(e, "r", "0"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
+
+fn parse_ellipsoid_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::Ellipsoid(EllipsoidSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        ax: get_attr_or(e, "ax", "0"),
+        by: get_attr_or(e, "by", "0"),
+        cz: get_attr_or(e, "cz", "0"),
+        zcut1: get_attr(e, "zcut1"),
+        zcut2: get_attr(e, "zcut2"),
         lunit: get_attr(e, "lunit"),
     }));
 }
@@ -633,6 +725,56 @@ fn read_polycone_body(
         deltaphi: attrs.deltaphi,
         aunit: attrs.aunit,
         lunit: attrs.lunit,
+        zplanes,
+    })
+}
+
+// ─── Polyhedra parser ────────────────────────────────────────────────────────
+
+fn read_polyhedra_body(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+) -> Result<PolyhedraSolid> {
+    let name = get_attr(e, "name").unwrap_or_default();
+    let numsides = get_attr_or(e, "numsides", "6");
+    let startphi = get_attr(e, "startphi");
+    let deltaphi = get_attr(e, "deltaphi");
+    let aunit = get_attr(e, "aunit");
+    let lunit = get_attr(e, "lunit");
+
+    let mut zplanes = Vec::new();
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref inner)) => {
+                if inner.local_name().as_ref() == b"zplane" {
+                    zplanes.push(ZPlane {
+                        rmin: get_attr(inner, "rmin"),
+                        rmax: get_attr_or(inner, "rmax", "0"),
+                        z: get_attr_or(inner, "z", "0"),
+                    });
+                }
+            }
+            Ok(Event::End(ref inner)) => {
+                if inner.local_name().as_ref() == b"polyhedra" {
+                    break;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(anyhow::anyhow!("XML error in polyhedra: {}", e)),
+            _ => {}
+        }
+    }
+
+    Ok(PolyhedraSolid {
+        name,
+        startphi,
+        deltaphi,
+        numsides,
+        aunit,
+        lunit,
         zplanes,
     })
 }

@@ -15,13 +15,13 @@ Reference: `backend/reference/geant4/G4GDMLReadSolids.cc`
 ## Tier 1 - Very Common
 1. [x] **Orb** - Full solid sphere (r only)
 2. [x] **Torus** - Ring/donut (rmin, rmax, rtor, startphi, deltaphi)
-3. [ ] **Trap** - General trapezoid (z, theta, phi, y1, x1, x2, alpha1, y2, x3, x4, alpha2)
-4. [ ] **Para** - Parallelepiped (x, y, z, alpha, theta, phi)
-5. [ ] **CutTube** - Tube cut at angles (tube params + low/high normal vectors)
-6. [ ] **Polyhedra** - Polygonal solid (startphi, deltaphi, numsides + zplanes)
+3. [x] **Trap** - General trapezoid (z, theta, phi, y1, x1, x2, alpha1, y2, x3, x4, alpha2)
+4. [x] **Para** - Parallelepiped (x, y, z, alpha, theta, phi)
+5. [x] **CutTube** - Tube cut at angles (tube params + low/high normal vectors)
+6. [x] **Polyhedra** - Polygonal solid (startphi, deltaphi, numsides + zplanes)
 
 ## Tier 2 - Common
-7. [ ] **Ellipsoid** - Ellipsoid with z-cuts (ax, ay, az, zcut1, zcut2)
+7. [x] **Ellipsoid** - Ellipsoid with z-cuts (ax, ay, az, zcut1, zcut2)
 8. [ ] **Eltube** - Elliptical tube (dx, dy, dz)
 9. [ ] **Tet** - Tetrahedron (4 vertex positions)
 10. [ ] **GenericPolycone** - Polycone from (r,z) pairs

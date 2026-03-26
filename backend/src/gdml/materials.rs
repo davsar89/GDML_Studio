@@ -545,6 +545,144 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::Ellipsoid(e) => {
+                let mut elem = BytesStart::new("ellipsoid");
+                elem.push_attribute(("name", e.name.as_str()));
+                elem.push_attribute(("ax", e.ax.as_str()));
+                elem.push_attribute(("by", e.by.as_str()));
+                elem.push_attribute(("cz", e.cz.as_str()));
+                if let Some(ref v) = e.zcut1 {
+                    elem.push_attribute(("zcut1", v.as_str()));
+                }
+                if let Some(ref v) = e.zcut2 {
+                    elem.push_attribute(("zcut2", v.as_str()));
+                }
+                if let Some(ref u) = e.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
+            Solid::Polyhedra(ph) => {
+                let mut elem = BytesStart::new("polyhedra");
+                elem.push_attribute(("name", ph.name.as_str()));
+                if let Some(ref v) = ph.startphi {
+                    elem.push_attribute(("startphi", v.as_str()));
+                }
+                if let Some(ref v) = ph.deltaphi {
+                    elem.push_attribute(("deltaphi", v.as_str()));
+                }
+                elem.push_attribute(("numsides", ph.numsides.as_str()));
+                if let Some(ref u) = ph.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = ph.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Start(elem))?;
+                for zp in &ph.zplanes {
+                    let mut zelem = BytesStart::new("zplane");
+                    zelem.push_attribute(("z", zp.z.as_str()));
+                    if let Some(ref v) = zp.rmin {
+                        zelem.push_attribute(("rmin", v.as_str()));
+                    }
+                    zelem.push_attribute(("rmax", zp.rmax.as_str()));
+                    writer.write_event(Event::Empty(zelem))?;
+                }
+                writer.write_event(Event::End(BytesEnd::new("polyhedra")))?;
+            }
+            Solid::CutTube(ct) => {
+                let mut elem = BytesStart::new("cutTube");
+                elem.push_attribute(("name", ct.name.as_str()));
+                if let Some(ref v) = ct.rmin {
+                    elem.push_attribute(("rmin", v.as_str()));
+                }
+                elem.push_attribute(("rmax", ct.rmax.as_str()));
+                elem.push_attribute(("z", ct.z.as_str()));
+                if let Some(ref v) = ct.startphi {
+                    elem.push_attribute(("startphi", v.as_str()));
+                }
+                if let Some(ref v) = ct.deltaphi {
+                    elem.push_attribute(("deltaphi", v.as_str()));
+                }
+                if let Some(ref v) = ct.low_x {
+                    elem.push_attribute(("lowX", v.as_str()));
+                }
+                if let Some(ref v) = ct.low_y {
+                    elem.push_attribute(("lowY", v.as_str()));
+                }
+                if let Some(ref v) = ct.low_z {
+                    elem.push_attribute(("lowZ", v.as_str()));
+                }
+                if let Some(ref v) = ct.high_x {
+                    elem.push_attribute(("highX", v.as_str()));
+                }
+                if let Some(ref v) = ct.high_y {
+                    elem.push_attribute(("highY", v.as_str()));
+                }
+                if let Some(ref v) = ct.high_z {
+                    elem.push_attribute(("highZ", v.as_str()));
+                }
+                if let Some(ref u) = ct.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = ct.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
+            Solid::Para(p) => {
+                let mut elem = BytesStart::new("para");
+                elem.push_attribute(("name", p.name.as_str()));
+                elem.push_attribute(("x", p.x.as_str()));
+                elem.push_attribute(("y", p.y.as_str()));
+                elem.push_attribute(("z", p.z.as_str()));
+                if let Some(ref v) = p.alpha {
+                    elem.push_attribute(("alpha", v.as_str()));
+                }
+                if let Some(ref v) = p.theta {
+                    elem.push_attribute(("theta", v.as_str()));
+                }
+                if let Some(ref v) = p.phi {
+                    elem.push_attribute(("phi", v.as_str()));
+                }
+                if let Some(ref u) = p.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = p.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
+            Solid::Trap(t) => {
+                let mut elem = BytesStart::new("trap");
+                elem.push_attribute(("name", t.name.as_str()));
+                elem.push_attribute(("z", t.z.as_str()));
+                if let Some(ref v) = t.theta {
+                    elem.push_attribute(("theta", v.as_str()));
+                }
+                if let Some(ref v) = t.phi {
+                    elem.push_attribute(("phi", v.as_str()));
+                }
+                elem.push_attribute(("y1", t.y1.as_str()));
+                elem.push_attribute(("x1", t.x1.as_str()));
+                elem.push_attribute(("x2", t.x2.as_str()));
+                if let Some(ref v) = t.alpha1 {
+                    elem.push_attribute(("alpha1", v.as_str()));
+                }
+                elem.push_attribute(("y2", t.y2.as_str()));
+                elem.push_attribute(("x3", t.x3.as_str()));
+                elem.push_attribute(("x4", t.x4.as_str()));
+                if let Some(ref v) = t.alpha2 {
+                    elem.push_attribute(("alpha2", v.as_str()));
+                }
+                if let Some(ref u) = t.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = t.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
             Solid::Torus(t) => {
                 let mut elem = BytesStart::new("torus");
                 elem.push_attribute(("name", t.name.as_str()));

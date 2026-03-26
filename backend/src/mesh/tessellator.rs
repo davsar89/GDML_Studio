@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
-use super::primitives::{box_mesh, cone_mesh, polycone_mesh, sphere_mesh, torus_mesh, trd_mesh, tube_mesh, xtru_mesh};
+use super::primitives::{box_mesh, cone_mesh, cut_tube_mesh, ellipsoid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, xtru_mesh};
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
@@ -76,7 +76,12 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::Xtru(s) => tessellate_xtru_solid(s, engine),
         Solid::Orb(s) => tessellate_orb_solid(s, engine, segments),
         Solid::Torus(s) => tessellate_torus_solid(s, engine, segments),
+        Solid::Trap(s) => tessellate_trap_solid(s, engine),
+        Solid::Para(s) => tessellate_para_solid(s, engine),
+        Solid::CutTube(s) => tessellate_cut_tube_solid(s, engine, segments),
+        Solid::Polyhedra(s) => tessellate_polyhedra_solid(s, engine),
         Solid::Tessellated(s) => tessellate_tessellated_solid(s, engine),
+        Solid::Ellipsoid(s) => tessellate_ellipsoid_solid(s, engine, segments),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
 }
@@ -449,6 +454,102 @@ fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Re
     })
 }
 
+fn tessellate_polyhedra_solid(s: &PolyhedraSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let deltaphi = match &s.deltaphi {
+        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        None => 2.0 * PI,
+    };
+    let numsides = resolve(engine, &s.numsides) as u32;
+
+    let planes: Vec<(f64, f64, f64)> = s
+        .zplanes
+        .iter()
+        .map(|zp| {
+            let z = resolve_with_lunit(engine, &zp.z, lunit);
+            let rmin = resolve_opt_with_lunit(engine, &zp.rmin, lunit);
+            let rmax = resolve_with_lunit(engine, &zp.rmax, lunit);
+            (z, rmin, rmax)
+        })
+        .collect();
+
+    Ok(polyhedra_mesh::tessellate_polyhedra(
+        &planes, startphi, deltaphi, numsides,
+    ))
+}
+
+fn tessellate_cut_tube_solid(
+    s: &CutTubeSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
+    let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
+    let z = resolve_with_lunit(engine, &s.z, lunit);
+    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let deltaphi = match &s.deltaphi {
+        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        None => 2.0 * PI,
+    };
+    let low_norm = [
+        resolve_opt(engine, &s.low_x),
+        resolve_opt(engine, &s.low_y),
+        match &s.low_z {
+            Some(expr) => resolve(engine, expr),
+            None => -1.0,
+        },
+    ];
+    let high_norm = [
+        resolve_opt(engine, &s.high_x),
+        resolve_opt(engine, &s.high_y),
+        match &s.high_z {
+            Some(expr) => resolve(engine, expr),
+            None => 1.0,
+        },
+    ];
+    Ok(cut_tube_mesh::tessellate_cut_tube(
+        rmin, rmax, z, startphi, deltaphi, low_norm, high_norm, segments,
+    ))
+}
+
+fn tessellate_para_solid(s: &ParaSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let x = resolve_with_lunit(engine, &s.x, lunit);
+    let y = resolve_with_lunit(engine, &s.y, lunit);
+    let z = resolve_with_lunit(engine, &s.z, lunit);
+    let alpha = units::angle_to_rad(resolve_opt(engine, &s.alpha), aunit);
+    let theta = units::angle_to_rad(resolve_opt(engine, &s.theta), aunit);
+    let phi = units::angle_to_rad(resolve_opt(engine, &s.phi), aunit);
+    // Para is Trap with uniform x/y dimensions
+    Ok(trap_mesh::tessellate_trap(
+        z, theta, phi, y, x, x, alpha, y, x, x, alpha,
+    ))
+}
+
+fn tessellate_trap_solid(s: &TrapSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let z = resolve_with_lunit(engine, &s.z, lunit);
+    let theta = units::angle_to_rad(resolve_opt(engine, &s.theta), aunit);
+    let phi = units::angle_to_rad(resolve_opt(engine, &s.phi), aunit);
+    let y1 = resolve_with_lunit(engine, &s.y1, lunit);
+    let x1 = resolve_with_lunit(engine, &s.x1, lunit);
+    let x2 = resolve_with_lunit(engine, &s.x2, lunit);
+    let alpha1 = units::angle_to_rad(resolve_opt(engine, &s.alpha1), aunit);
+    let y2 = resolve_with_lunit(engine, &s.y2, lunit);
+    let x3 = resolve_with_lunit(engine, &s.x3, lunit);
+    let x4 = resolve_with_lunit(engine, &s.x4, lunit);
+    let alpha2 = units::angle_to_rad(resolve_opt(engine, &s.alpha2), aunit);
+    Ok(trap_mesh::tessellate_trap(
+        z, theta, phi, y1, x1, x2, alpha1, y2, x3, x4, alpha2,
+    ))
+}
+
 fn tessellate_torus_solid(
     s: &TorusSolid,
     engine: &EvalEngine,
@@ -474,6 +575,29 @@ fn tessellate_orb_solid(s: &OrbSolid, engine: &EvalEngine, segments: u32) -> Res
     let r = resolve_with_lunit(engine, &s.r, lunit);
     Ok(sphere_mesh::tessellate_sphere(
         0.0, r, 0.0, 2.0 * PI, 0.0, PI, segments,
+    ))
+}
+
+fn tessellate_ellipsoid_solid(
+    s: &EllipsoidSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let ax = resolve_with_lunit(engine, &s.ax, lunit);
+    let by = resolve_with_lunit(engine, &s.by, lunit);
+    let cz = resolve_with_lunit(engine, &s.cz, lunit);
+    // When zcut is absent (None), default to full extent (-cz / +cz)
+    let zcut1 = match &s.zcut1 {
+        Some(expr) => resolve_with_lunit(engine, expr, lunit),
+        None => -cz,
+    };
+    let zcut2 = match &s.zcut2 {
+        Some(expr) => resolve_with_lunit(engine, expr, lunit),
+        None => cz,
+    };
+    Ok(ellipsoid_mesh::tessellate_ellipsoid(
+        ax, by, cz, zcut1, zcut2, segments,
     ))
 }
 

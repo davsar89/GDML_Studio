@@ -133,7 +133,12 @@ pub enum Solid {
     Xtru(XtruSolid),
     Orb(OrbSolid),
     Torus(TorusSolid),
+    Trap(TrapSolid),
+    Para(ParaSolid),
+    CutTube(CutTubeSolid),
+    Polyhedra(PolyhedraSolid),
     Tessellated(TessellatedSolid),
+    Ellipsoid(EllipsoidSolid),
     Boolean(BooleanSolid),
 }
 
@@ -149,7 +154,12 @@ impl Solid {
             Solid::Xtru(s) => &s.name,
             Solid::Orb(s) => &s.name,
             Solid::Torus(s) => &s.name,
+            Solid::Trap(s) => &s.name,
+            Solid::Para(s) => &s.name,
+            Solid::CutTube(s) => &s.name,
+            Solid::Polyhedra(s) => &s.name,
             Solid::Tessellated(s) => &s.name,
+            Solid::Ellipsoid(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -281,6 +291,66 @@ pub struct OrbSolid {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolyhedraSolid {
+    pub name: String,
+    pub startphi: Option<String>,
+    pub deltaphi: Option<String>,
+    pub numsides: String,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+    pub zplanes: Vec<ZPlane>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CutTubeSolid {
+    pub name: String,
+    pub rmin: Option<String>,
+    pub rmax: String,
+    pub z: String,
+    pub startphi: Option<String>,
+    pub deltaphi: Option<String>,
+    pub low_x: Option<String>,
+    pub low_y: Option<String>,
+    pub low_z: Option<String>,
+    pub high_x: Option<String>,
+    pub high_y: Option<String>,
+    pub high_z: Option<String>,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParaSolid {
+    pub name: String,
+    pub x: String,
+    pub y: String,
+    pub z: String,
+    pub alpha: Option<String>,
+    pub theta: Option<String>,
+    pub phi: Option<String>,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrapSolid {
+    pub name: String,
+    pub z: String,
+    pub theta: Option<String>,
+    pub phi: Option<String>,
+    pub y1: String,
+    pub x1: String,
+    pub x2: String,
+    pub alpha1: Option<String>,
+    pub y2: String,
+    pub x3: String,
+    pub x4: String,
+    pub alpha2: Option<String>,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorusSolid {
     pub name: String,
     pub rmin: Option<String>,
@@ -313,6 +383,17 @@ pub enum TessellatedFacet {
 pub struct TessellatedSolid {
     pub name: String,
     pub facets: Vec<TessellatedFacet>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EllipsoidSolid {
+    pub name: String,
+    pub ax: String,
+    pub by: String,
+    pub cz: String,
+    pub zcut1: Option<String>,
+    pub zcut2: Option<String>,
+    pub lunit: Option<String>,
 }
 
 // ─── Structure Section ───────────────────────────────────────────────────────
