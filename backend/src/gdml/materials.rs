@@ -443,6 +443,57 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::Polycone(pc) => {
+                let mut elem = BytesStart::new("polycone");
+                elem.push_attribute(("name", pc.name.as_str()));
+                if let Some(ref v) = pc.startphi {
+                    elem.push_attribute(("startphi", v.as_str()));
+                }
+                if let Some(ref v) = pc.deltaphi {
+                    elem.push_attribute(("deltaphi", v.as_str()));
+                }
+                if let Some(ref u) = pc.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = pc.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Start(elem))?;
+                for zp in &pc.zplanes {
+                    let mut zelem = BytesStart::new("zplane");
+                    zelem.push_attribute(("z", zp.z.as_str()));
+                    if let Some(ref v) = zp.rmin {
+                        zelem.push_attribute(("rmin", v.as_str()));
+                    }
+                    zelem.push_attribute(("rmax", zp.rmax.as_str()));
+                    writer.write_event(Event::Empty(zelem))?;
+                }
+                writer.write_event(Event::End(BytesEnd::new("polycone")))?;
+            }
+            Solid::Xtru(x) => {
+                let mut elem = BytesStart::new("xtru");
+                elem.push_attribute(("name", x.name.as_str()));
+                if let Some(ref u) = x.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Start(elem))?;
+                for v in &x.vertices {
+                    let mut velem = BytesStart::new("twoDimVertex");
+                    velem.push_attribute(("x", v.x.as_str()));
+                    velem.push_attribute(("y", v.y.as_str()));
+                    writer.write_event(Event::Empty(velem))?;
+                }
+                for s in &x.sections {
+                    let mut selem = BytesStart::new("section");
+                    selem.push_attribute(("zOrder", s.z_order.as_str()));
+                    selem.push_attribute(("zPosition", s.z_position.as_str()));
+                    selem.push_attribute(("xOffset", s.x_offset.as_str()));
+                    selem.push_attribute(("yOffset", s.y_offset.as_str()));
+                    selem.push_attribute(("scalingFactor", s.scaling_factor.as_str()));
+                    writer.write_event(Event::Empty(selem))?;
+                }
+                writer.write_event(Event::End(BytesEnd::new("xtru")))?;
+            }
             Solid::Boolean(bs) => {
                 let tag_name = match bs.operation {
                     BooleanOp::Subtraction => "subtraction",

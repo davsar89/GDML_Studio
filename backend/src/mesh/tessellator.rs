@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
-use super::primitives::{box_mesh, cone_mesh, sphere_mesh, trd_mesh, tube_mesh};
+use super::primitives::{box_mesh, cone_mesh, polycone_mesh, sphere_mesh, trd_mesh, tube_mesh, xtru_mesh};
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
@@ -72,6 +72,8 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::Cone(s) => tessellate_cone_solid(s, engine, segments),
         Solid::Sphere(s) => tessellate_sphere_solid(s, engine, segments),
         Solid::Trd(s) => tessellate_trd_solid(s, engine),
+        Solid::Polycone(s) => tessellate_polycone_solid(s, engine, segments),
+        Solid::Xtru(s) => tessellate_xtru_solid(s, engine),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
 }
@@ -339,6 +341,63 @@ fn tessellate_trd_solid(s: &TrdSolid, engine: &EvalEngine) -> Result<TriangleMes
     let y2 = resolve_with_lunit(engine, &s.y2, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
     Ok(trd_mesh::tessellate_trd(x1, y1, x2, y2, z))
+}
+
+fn tessellate_polycone_solid(
+    s: &PolyconeSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let deltaphi = match &s.deltaphi {
+        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        None => 2.0 * PI,
+    };
+
+    let planes: Vec<(f64, f64, f64)> = s
+        .zplanes
+        .iter()
+        .map(|zp| {
+            let z = resolve_with_lunit(engine, &zp.z, lunit);
+            let rmin = resolve_opt_with_lunit(engine, &zp.rmin, lunit);
+            let rmax = resolve_with_lunit(engine, &zp.rmax, lunit);
+            (z, rmin, rmax)
+        })
+        .collect();
+
+    Ok(polycone_mesh::tessellate_polycone(
+        &planes, startphi, deltaphi, segments,
+    ))
+}
+
+fn tessellate_xtru_solid(s: &XtruSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+
+    let vertices: Vec<(f64, f64)> = s
+        .vertices
+        .iter()
+        .map(|v| {
+            let x = resolve_with_lunit(engine, &v.x, lunit);
+            let y = resolve_with_lunit(engine, &v.y, lunit);
+            (x, y)
+        })
+        .collect();
+
+    let sections: Vec<(f64, f64, f64, f64)> = s
+        .sections
+        .iter()
+        .map(|sec| {
+            let z = resolve_with_lunit(engine, &sec.z_position, lunit);
+            let xoff = resolve_with_lunit(engine, &sec.x_offset, lunit);
+            let yoff = resolve_with_lunit(engine, &sec.y_offset, lunit);
+            let scale = resolve(engine, &sec.scaling_factor);
+            (z, xoff, yoff, scale)
+        })
+        .collect();
+
+    Ok(xtru_mesh::tessellate_xtru(&vertices, &sections))
 }
 
 #[cfg(test)]

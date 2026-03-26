@@ -129,6 +129,8 @@ pub enum Solid {
     Cone(ConeSolid),
     Sphere(SphereSolid),
     Trd(TrdSolid),
+    Polycone(PolyconeSolid),
+    Xtru(XtruSolid),
     Boolean(BooleanSolid),
 }
 
@@ -140,6 +142,8 @@ impl Solid {
             Solid::Cone(s) => &s.name,
             Solid::Sphere(s) => &s.name,
             Solid::Trd(s) => &s.name,
+            Solid::Polycone(s) => &s.name,
+            Solid::Xtru(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -221,6 +225,46 @@ pub struct TrdSolid {
     pub y2: String,
     pub z: String,
     pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZPlane {
+    pub rmin: Option<String>,
+    pub rmax: String,
+    pub z: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PolyconeSolid {
+    pub name: String,
+    pub startphi: Option<String>,
+    pub deltaphi: Option<String>,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+    pub zplanes: Vec<ZPlane>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwoDimVertex {
+    pub x: String,
+    pub y: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XtruSection {
+    pub z_order: String,
+    pub z_position: String,
+    pub x_offset: String,
+    pub y_offset: String,
+    pub scaling_factor: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct XtruSolid {
+    pub name: String,
+    pub lunit: Option<String>,
+    pub vertices: Vec<TwoDimVertex>,
+    pub sections: Vec<XtruSection>,
 }
 
 // ─── Structure Section ───────────────────────────────────────────────────────

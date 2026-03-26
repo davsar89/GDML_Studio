@@ -89,7 +89,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"box" if section == Section::Solids => {
                         parse_box_solid(e, &mut solids);
                     }
-                    b"tube" if section == Section::Solids => {
+                    b"tube" | b"tubs" if section == Section::Solids => {
                         parse_tube_solid(e, &mut solids);
                     }
                     b"cone" if section == Section::Solids => {
@@ -100,6 +100,16 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"trd" if section == Section::Solids => {
                         parse_trd_solid(e, &mut solids);
+                    }
+                    b"polycone" if section == Section::Solids => {
+                        let attrs = extract_polycone_attrs(e);
+                        let solid = read_polycone_body(&mut reader, attrs)?;
+                        solids.solids.push(Solid::Polycone(solid));
+                    }
+                    b"xtru" if section == Section::Solids => {
+                        let attrs = extract_xtru_attrs(e);
+                        let solid = read_xtru_body(&mut reader, attrs)?;
+                        solids.solids.push(Solid::Xtru(solid));
                     }
                     b"subtraction" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -170,7 +180,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"box" if section == Section::Solids => {
                         parse_box_solid(e, &mut solids);
                     }
-                    b"tube" if section == Section::Solids => {
+                    b"tube" | b"tubs" if section == Section::Solids => {
                         parse_tube_solid(e, &mut solids);
                     }
                     b"cone" if section == Section::Solids => {
@@ -527,6 +537,131 @@ fn parse_trd_solid(e: &BytesStart, solids: &mut SolidSection) {
         z: get_attr_or(e, "z", "0"),
         lunit: get_attr(e, "lunit"),
     }));
+}
+
+// ─── Polycone parser ─────────────────────────────────────────────────────────
+
+struct PolyconeAttrs {
+    name: String,
+    startphi: Option<String>,
+    deltaphi: Option<String>,
+    aunit: Option<String>,
+    lunit: Option<String>,
+}
+
+fn extract_polycone_attrs(e: &BytesStart) -> PolyconeAttrs {
+    PolyconeAttrs {
+        name: get_attr(e, "name").unwrap_or_default(),
+        startphi: get_attr(e, "startphi"),
+        deltaphi: get_attr(e, "deltaphi"),
+        aunit: get_attr(e, "aunit"),
+        lunit: get_attr(e, "lunit"),
+    }
+}
+
+fn read_polycone_body(
+    reader: &mut Reader<&[u8]>,
+    attrs: PolyconeAttrs,
+) -> Result<PolyconeSolid> {
+    let mut zplanes = Vec::new();
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref inner)) => {
+                if inner.local_name().as_ref() == b"zplane" {
+                    zplanes.push(ZPlane {
+                        rmin: get_attr(inner, "rmin"),
+                        rmax: get_attr_or(inner, "rmax", "0"),
+                        z: get_attr_or(inner, "z", "0"),
+                    });
+                }
+            }
+            Ok(Event::End(ref inner)) => {
+                if inner.local_name().as_ref() == b"polycone" {
+                    break;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(anyhow::anyhow!("XML error in polycone: {}", e)),
+            _ => {}
+        }
+    }
+
+    Ok(PolyconeSolid {
+        name: attrs.name,
+        startphi: attrs.startphi,
+        deltaphi: attrs.deltaphi,
+        aunit: attrs.aunit,
+        lunit: attrs.lunit,
+        zplanes,
+    })
+}
+
+// ─── Xtru parser ─────────────────────────────────────────────────────────────
+
+struct XtruAttrs {
+    name: String,
+    lunit: Option<String>,
+}
+
+fn extract_xtru_attrs(e: &BytesStart) -> XtruAttrs {
+    XtruAttrs {
+        name: get_attr(e, "name").unwrap_or_default(),
+        lunit: get_attr(e, "lunit"),
+    }
+}
+
+fn read_xtru_body(reader: &mut Reader<&[u8]>, attrs: XtruAttrs) -> Result<XtruSolid> {
+    let mut vertices = Vec::new();
+    let mut sections = Vec::new();
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"twoDimVertex" => {
+                        vertices.push(TwoDimVertex {
+                            x: get_attr_or(inner, "x", "0"),
+                            y: get_attr_or(inner, "y", "0"),
+                        });
+                    }
+                    b"section" => {
+                        sections.push(XtruSection {
+                            z_order: get_attr_or(inner, "zOrder", "0"),
+                            z_position: get_attr_or(inner, "zPosition", "0"),
+                            x_offset: get_attr_or(inner, "xOffset", "0"),
+                            y_offset: get_attr_or(inner, "yOffset", "0"),
+                            scaling_factor: get_attr_or(inner, "scalingFactor", "1"),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref inner)) => {
+                if inner.local_name().as_ref() == b"xtru" {
+                    break;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(anyhow::anyhow!("XML error in xtru: {}", e)),
+            _ => {}
+        }
+    }
+
+    // Sort sections by zOrder for correct ordering
+    sections.sort_by_key(|s| s.z_order.parse::<i64>().unwrap_or(0));
+
+    Ok(XtruSolid {
+        name: attrs.name,
+        lunit: attrs.lunit,
+        vertices,
+        sections,
+    })
 }
 
 // ─── Structure parser ────────────────────────────────────────────────────────

@@ -1,0 +1,201 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<gdml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd">
+  <define />
+  <materials>
+    <element name="H" Z="1" formula="H">
+      <atom value="1.008" />
+    </element>
+    <element name="Al" Z="13" formula="Al">
+      <atom value="26.9815" />
+    </element>
+    <material name="Vacuum" state="gas">
+      <D value="1e-25" unit="g/cm3" />
+      <fraction n="1.0" ref="H" />
+    </material>
+    <material name="Aluminium" state="solid">
+      <D value="2.699" unit="g/cm3" />
+      <fraction n="1.0" ref="Al" />
+    </material>
+  </materials>
+  <solids>
+    <box name="World_sol" x="6000" y="6000" z="6000" lunit="mm" />
+    <tube name="POD_CYL_sol" rmin="448.5" rmax="450" z="600" deltaphi="360" aunit="deg" lunit="mm" />
+    <polycone name="POD_CONE_sol" startphi="0" deltaphi="360" aunit="deg" lunit="mm">
+      <zplane z="0" rmin="448.5" rmax="450" />
+      <zplane z="581.15" rmin="448.31" rmax="449.78" />
+      <zplane z="626.28" rmin="449.35" rmax="450.84" />
+      <zplane z="709.15" rmin="443.48" rmax="445.4" />
+      <zplane z="818.4" rmin="418.8" rmax="421.83" />
+      <zplane z="915.31" rmin="381.26" rmax="385.63" />
+      <zplane z="1000.99" rmin="332.06" rmax="337.93" />
+      <zplane z="1075.39" rmin="271.2" rmax="278.69" />
+      <zplane z="1137.32" rmin="197.43" rmax="206.67" />
+      <zplane z="1176.17" rmin="122.72" rmax="133.59" />
+      <zplane z="1195.65" rmin="50.79" rmax="63.26" />
+      <zplane z="1199.18" rmin="9.12" rmax="22.57" />
+      <zplane z="1200" rmin="0" rmax="0.1" />
+    </polycone>
+    <xtru name="RIB_sol" lunit="mm">
+      <twoDimVertex x="0" y="32" />
+      <twoDimVertex x="25" y="32" />
+      <twoDimVertex x="25" y="28" />
+      <twoDimVertex x="4" y="28" />
+      <twoDimVertex x="4" y="-28" />
+      <twoDimVertex x="25" y="-28" />
+      <twoDimVertex x="25" y="-32" />
+      <twoDimVertex x="0" y="-32" />
+      <section zOrder="0" zPosition="0" xOffset="0" yOffset="0" scalingFactor="1" />
+      <section zOrder="1" zPosition="1670" xOffset="0" yOffset="0" scalingFactor="1" />
+    </xtru>
+    <xtru name="RAIL_sol" lunit="mm">
+      <twoDimVertex x="341.8864" y="34.1376" />
+      <twoDimVertex x="227.5864" y="34.1376" />
+      <twoDimVertex x="227.5864" y="27.7876" />
+      <twoDimVertex x="320.4464" y="27.7876" />
+      <twoDimVertex x="320.4464" y="-27.7876" />
+      <twoDimVertex x="227.5864" y="-27.7876" />
+      <twoDimVertex x="227.5864" y="-34.1376" />
+      <twoDimVertex x="341.8864" y="-34.1376" />
+      <section zOrder="0" zPosition="-667.13" xOffset="0" yOffset="0" scalingFactor="1" />
+      <section zOrder="1" zPosition="667.13" xOffset="0" yOffset="0" scalingFactor="1" />
+    </xtru>
+    <tubs name="RACK_sol" rmin="0" rmax="394.5" z="25" startphi="-27.5" deltaphi="55" aunit="deg" lunit="mm" />
+    <tubs name="WEDGE_B1_sol" rmin="0" rmax="394.5" z="25" startphi="152.5" deltaphi="55" aunit="deg" lunit="mm" />
+    <tubs name="WEDGE_B2_sol" rmin="354" rmax="394.5" z="21" startphi="153.8" deltaphi="52.4" aunit="deg" lunit="mm" />
+  </solids>
+  <structure>
+    <volume name="POD_CYL_lv">
+      <materialref ref="Aluminium" />
+      <solidref ref="POD_CYL_sol" />
+    </volume>
+    <volume name="POD_CONE_lv">
+      <materialref ref="Aluminium" />
+      <solidref ref="POD_CONE_sol" />
+    </volume>
+    <volume name="RIB_lv">
+      <materialref ref="Aluminium" />
+      <solidref ref="RIB_sol" />
+    </volume>
+    <volume name="RAIL_lv">
+      <materialref ref="Aluminium" />
+      <solidref ref="RAIL_sol" />
+    </volume>
+    <volume name="RACK_lv">
+      <materialref ref="Aluminium" />
+      <solidref ref="RACK_sol" />
+    </volume>
+    <volume name="WEDGE_B1_lv">
+      <materialref ref="Aluminium" />
+      <solidref ref="WEDGE_B1_sol" />
+    </volume>
+    <volume name="WEDGE_B2_lv">
+      <materialref ref="Aluminium" />
+      <solidref ref="WEDGE_B2_sol" />
+    </volume>
+    <volume name="World_lv">
+      <materialref ref="Vacuum" />
+      <solidref ref="World_sol" />
+      <physvol name="POD_CYL_pv">
+        <volumeref ref="POD_CYL_lv" />
+        <position name="POD_CYL_pv_pos" x="450" y="450" z="-770" unit="mm" />
+      </physvol>
+      <physvol name="POD_CONE_pv">
+        <volumeref ref="POD_CONE_lv" />
+        <position name="POD_CONE_pv_pos" x="450" y="450" z="-170" unit="mm" />
+        <rotation name="POD_CONE_pv_rot" x="0" y="0" z="180" unit="deg" />
+      </physvol>
+      <physvol name="RIB_01_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_01_pv_pos" x="450" y="450" z="-1345" unit="mm" />
+        <rotation name="RIB_01_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RIB_02_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_02_pv_pos" x="450" y="450" z="-1165" unit="mm" />
+        <rotation name="RIB_02_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RIB_03_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_03_pv_pos" x="450" y="450" z="-985" unit="mm" />
+        <rotation name="RIB_03_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RIB_04_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_04_pv_pos" x="450" y="450" z="-805" unit="mm" />
+        <rotation name="RIB_04_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RIB_05_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_05_pv_pos" x="450" y="450" z="-625" unit="mm" />
+        <rotation name="RIB_05_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RIB_06_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_06_pv_pos" x="450" y="450" z="-445" unit="mm" />
+        <rotation name="RIB_06_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RIB_07_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_07_pv_pos" x="450" y="450" z="-265" unit="mm" />
+        <rotation name="RIB_07_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RIB_08_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_08_pv_pos" x="450" y="450" z="-85" unit="mm" />
+        <rotation name="RIB_08_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RIB_09_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_09_pv_pos" x="450" y="450" z="95" unit="mm" />
+        <rotation name="RIB_09_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RIB_10_pv">
+        <volumeref ref="RIB_lv" />
+        <position name="RIB_10_pv_pos" x="450" y="450" z="275" unit="mm" />
+        <rotation name="RIB_10_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      </physvol>
+      <physvol name="RAIL_1_pv">
+        <volumeref ref="RAIL_lv" />
+        <position name="RAIL_1_pv_pos" x="100" y="450" z="-1370" unit="mm" />
+        <rotation name="RAIL_1_pv_rot" x="90" y="0" z="0" unit="deg" />
+      </physvol>
+      <physvol name="RAIL_2_pv">
+        <volumeref ref="RAIL_lv" />
+        <position name="RAIL_2_pv_pos" x="800" y="450" z="300" unit="mm" />
+        <rotation name="RAIL_2_pv_rot" x="90" y="0" z="180" unit="deg" />
+      </physvol>
+      <physvol name="RACK_pv">
+        <volumeref ref="RACK_lv" />
+        <position name="RACK_pv_pos" x="450" y="429.21" z="-728.27" unit="mm" />
+        <rotation name="RACK_pv_rot" x="-90" y="0" z="0" unit="deg" />
+      </physvol>
+      <physvol name="WEDGE_1_B1_pv">
+        <volumeref ref="WEDGE_B1_lv" />
+        <position name="WEDGE_1_B1_pv_pos" x="450" y="450" z="-1345" unit="mm" />
+      </physvol>
+      <physvol name="WEDGE_1_B2_pv">
+        <volumeref ref="WEDGE_B2_lv" />
+        <position name="WEDGE_1_B2_pv_pos" x="450" y="450" z="-1345" unit="mm" />
+      </physvol>
+      <physvol name="WEDGE_2_B1_pv">
+        <volumeref ref="WEDGE_B1_lv" />
+        <position name="WEDGE_2_B1_pv_pos" x="450" y="450" z="-625" unit="mm" />
+      </physvol>
+      <physvol name="WEDGE_2_B2_pv">
+        <volumeref ref="WEDGE_B2_lv" />
+        <position name="WEDGE_2_B2_pv_pos" x="450" y="450" z="-625" unit="mm" />
+      </physvol>
+      <physvol name="WEDGE_3_B1_pv">
+        <volumeref ref="WEDGE_B1_lv" />
+        <position name="WEDGE_3_B1_pv_pos" x="450" y="450" z="95" unit="mm" />
+      </physvol>
+      <physvol name="WEDGE_3_B2_pv">
+        <volumeref ref="WEDGE_B2_lv" />
+        <position name="WEDGE_3_B2_pv_pos" x="450" y="450" z="95" unit="mm" />
+      </physvol>
+    </volume>
+  </structure>
+  <setup name="Default" version="1.0">
+    <world ref="World_lv" />
+  </setup>
+</gdml>

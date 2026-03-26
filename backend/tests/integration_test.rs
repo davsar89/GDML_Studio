@@ -79,6 +79,29 @@ fn run_pipeline(gdml_path: &Path) -> PipelineResult {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[test]
+fn test_pod_asm_pipeline() {
+    let path = project_root().join("sample_data/pod_asm.gdml");
+    assert!(path.exists(), "GDML file not found: {}", path.display());
+
+    let result = run_pipeline(&path);
+
+    println!("pod_asm.gdml:");
+    println!("  solids:     {}", result.num_solids);
+    println!("  volumes:    {}", result.num_volumes);
+    println!("  meshes:     {}", result.num_meshes);
+    println!("  triangles:  {}", result.total_triangles);
+
+    // 8 solids: box, tube, polycone, 2x xtru, 3x tubs
+    assert_eq!(result.num_solids, 8, "Expected 8 solids (box + tube + polycone + 2 xtru + 3 tubs)");
+    assert_eq!(result.num_volumes, 8, "Expected 8 volumes");
+    assert_eq!(
+        result.num_meshes, result.num_solids,
+        "Every solid should be tessellated into a mesh"
+    );
+    assert!(result.total_triangles > 0, "Expected at least one triangle");
+}
+
+#[test]
 fn test_bgo_det_model_pipeline() {
     let path = project_root().join("sample_data/BgoDetModel_v2_00.gdml");
     assert!(path.exists(), "GDML file not found: {}", path.display());
@@ -272,6 +295,7 @@ fn test_mesh_geometry_validity() {
         "sample_data/fermi_simple_elements_satellite.gdml",
         "sample_data/NaiDetModelWithMLI_v2_00.gdml",
         "sample_data/test_all_features.gdml",
+        "sample_data/pod_asm.gdml",
     ];
 
     for file in &files {
