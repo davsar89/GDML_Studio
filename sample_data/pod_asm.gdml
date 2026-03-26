@@ -22,20 +22,20 @@
     <tube name="POD_CYL_sol" rmin="448.5" rmax="450" z="600" deltaphi="360" aunit="deg" lunit="mm" />
     <polycone name="POD_CONE_sol" startphi="0" deltaphi="360" aunit="deg" lunit="mm">
       <zplane z="0" rmin="448.5" rmax="450" />
-      <zplane z="581.15" rmin="448.31" rmax="449.78" />
-      <zplane z="626.28" rmin="449.35" rmax="450.84" />
-      <zplane z="709.15" rmin="443.48" rmax="445.4" />
-      <zplane z="818.4" rmin="418.8" rmax="421.83" />
-      <zplane z="915.31" rmin="381.26" rmax="385.63" />
-      <zplane z="1000.99" rmin="332.06" rmax="337.93" />
-      <zplane z="1075.39" rmin="271.2" rmax="278.69" />
-      <zplane z="1137.32" rmin="197.43" rmax="206.67" />
-      <zplane z="1176.17" rmin="122.72" rmax="133.59" />
-      <zplane z="1195.65" rmin="50.79" rmax="63.26" />
-      <zplane z="1199.18" rmin="9.12" rmax="22.57" />
+      <zplane z="581.15" rmin="448.5" rmax="450" />
+      <zplane z="626.28" rmin="448.05" rmax="449.57" />
+      <zplane z="709.15" rmin="440.9" rmax="442.49" />
+      <zplane z="818.4" rmin="417.44" rmax="419.13" />
+      <zplane z="915.31" rmin="381.05" rmax="382.85" />
+      <zplane z="1000.99" rmin="332.79" rmax="334.74" />
+      <zplane z="1075.39" rmin="272.32" rmax="274.55" />
+      <zplane z="1137.32" rmin="197.42" rmax="200.24" />
+      <zplane z="1176.17" rmin="121.28" rmax="125.56" />
+      <zplane z="1195.65" rmin="43.66" rmax="54.08" />
+      <zplane z="1199.18" rmin="0" rmax="23.5" />
       <zplane z="1200" rmin="0" rmax="0.1" />
     </polycone>
-    <tube name="RIB_OF_sol" rmin="446.5" rmax="448.5" z="25" deltaphi="360" aunit="deg" lunit="mm" />
+    <tube name="RIB_OF_sol" rmin="446.5" rmax="448.3" z="25" deltaphi="360" aunit="deg" lunit="mm" />
     <tube name="RIB_IF_sol" rmin="394.5" rmax="396.5" z="25" deltaphi="360" aunit="deg" lunit="mm" />
     <tube name="RIB_WB_sol" rmin="396.5" rmax="446.5" z="2" deltaphi="360" aunit="deg" lunit="mm" />
     <xtru name="RAIL_sol" lunit="mm">
@@ -50,8 +50,32 @@
       <section zOrder="0" zPosition="0" xOffset="0" yOffset="0" scalingFactor="1" />
       <section zOrder="1" zPosition="1670" xOffset="0" yOffset="0" scalingFactor="1" />
     </xtru>
-    <tube name="RACK_sol" rmin="350" rmax="394.5" z="25" startphi="-27.5" deltaphi="55" aunit="deg" lunit="mm" />
-    <tube name="WEDGE_sol" rmin="354" rmax="394.5" z="25" startphi="152.5" deltaphi="55" aunit="deg" lunit="mm" />
+    <xtru name="ARC_POS_sol" lunit="mm">
+      <twoDimVertex x="349.9258" y="-182.1598" />
+      <twoDimVertex x="369.2149" y="-138.9626" />
+      <twoDimVertex x="383.1944" y="-93.7671" />
+      <twoDimVertex x="391.6634" y="-47.2231" />
+      <twoDimVertex x="394.5" y="0" />
+      <twoDimVertex x="391.6634" y="47.2231" />
+      <twoDimVertex x="383.1944" y="93.7671" />
+      <twoDimVertex x="369.2149" y="138.9626" />
+      <twoDimVertex x="349.9258" y="182.1598" />
+      <section zOrder="0" zPosition="0" xOffset="0" yOffset="0" scalingFactor="1" />
+      <section zOrder="1" zPosition="50" xOffset="0" yOffset="0" scalingFactor="1" />
+    </xtru>
+    <xtru name="ARC_NEG_sol" lunit="mm">
+      <twoDimVertex x="-349.9258" y="182.1598" />
+      <twoDimVertex x="-369.2149" y="138.9626" />
+      <twoDimVertex x="-383.1944" y="93.7671" />
+      <twoDimVertex x="-391.6634" y="47.2231" />
+      <twoDimVertex x="-394.5" y="0" />
+      <twoDimVertex x="-391.6634" y="-47.2231" />
+      <twoDimVertex x="-383.1944" y="-93.7671" />
+      <twoDimVertex x="-369.2149" y="-138.9626" />
+      <twoDimVertex x="-349.9258" y="-182.1598" />
+      <section zOrder="0" zPosition="0" xOffset="0" yOffset="0" scalingFactor="1" />
+      <section zOrder="1" zPosition="50" xOffset="0" yOffset="0" scalingFactor="1" />
+    </xtru>
   </solids>
   <structure>
     <volume name="POD_CYL_lv">
@@ -78,13 +102,13 @@
       <materialref ref="Aluminium" />
       <solidref ref="RAIL_sol" />
     </volume>
-    <volume name="RACK_lv">
+    <volume name="ARC_POS_lv">
       <materialref ref="Aluminium" />
-      <solidref ref="RACK_sol" />
+      <solidref ref="ARC_POS_sol" />
     </volume>
-    <volume name="WEDGE_lv">
+    <volume name="ARC_NEG_lv">
       <materialref ref="Aluminium" />
-      <solidref ref="WEDGE_sol" />
+      <solidref ref="ARC_NEG_sol" />
     </volume>
     <volume name="World_lv">
       <materialref ref="Vacuum" />
@@ -228,21 +252,33 @@
         <rotation name="RAIL_2_pv_rot" x="180" y="0" z="180" unit="deg" />
       </physvol>
       <physvol name="RACK_pv">
-        <volumeref ref="RACK_lv" />
-        <position name="RACK_pv_pos" x="450" y="429.21" z="-728.27" unit="mm" />
+        <volumeref ref="ARC_POS_lv" />
+        <position name="RACK_pv_pos" x="450" y="454.21" z="-728.27" unit="mm" />
         <rotation name="RACK_pv_rot" x="-90" y="0" z="0" unit="deg" />
       </physvol>
-      <physvol name="WEDGE_1_pv">
-        <volumeref ref="WEDGE_lv" />
-        <position name="WEDGE_1_pv_pos" x="450" y="450" z="-1345" unit="mm" />
+      <physvol name="WEDGE_1_POS_pv">
+        <volumeref ref="ARC_POS_lv" />
+        <position name="WEDGE_1_POS_pv_pos" x="450" y="450" z="-1370" unit="mm" />
       </physvol>
-      <physvol name="WEDGE_2_pv">
-        <volumeref ref="WEDGE_lv" />
-        <position name="WEDGE_2_pv_pos" x="450" y="450" z="-625" unit="mm" />
+      <physvol name="WEDGE_1_NEG_pv">
+        <volumeref ref="ARC_NEG_lv" />
+        <position name="WEDGE_1_NEG_pv_pos" x="450" y="450" z="-1370" unit="mm" />
       </physvol>
-      <physvol name="WEDGE_3_pv">
-        <volumeref ref="WEDGE_lv" />
-        <position name="WEDGE_3_pv_pos" x="450" y="450" z="95" unit="mm" />
+      <physvol name="WEDGE_2_POS_pv">
+        <volumeref ref="ARC_POS_lv" />
+        <position name="WEDGE_2_POS_pv_pos" x="450" y="450" z="-650" unit="mm" />
+      </physvol>
+      <physvol name="WEDGE_2_NEG_pv">
+        <volumeref ref="ARC_NEG_lv" />
+        <position name="WEDGE_2_NEG_pv_pos" x="450" y="450" z="-650" unit="mm" />
+      </physvol>
+      <physvol name="WEDGE_3_POS_pv">
+        <volumeref ref="ARC_POS_lv" />
+        <position name="WEDGE_3_POS_pv_pos" x="450" y="450" z="70" unit="mm" />
+      </physvol>
+      <physvol name="WEDGE_3_NEG_pv">
+        <volumeref ref="ARC_NEG_lv" />
+        <position name="WEDGE_3_NEG_pv_pos" x="450" y="450" z="70" unit="mm" />
       </physvol>
     </volume>
   </structure>
