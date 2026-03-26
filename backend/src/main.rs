@@ -51,13 +51,6 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], config::port()));
     tracing::info!("GDML Studio backend starting on http://{}", addr);
 
-    // Try to open browser
-    let url = format!("http://{}", addr);
-    tokio::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        let _ = open::that(&url);
-    });
-
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
