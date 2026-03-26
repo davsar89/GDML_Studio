@@ -35,7 +35,10 @@
       <zplane z="1199.18" rmin="9.12" rmax="22.57" />
       <zplane z="1200" rmin="0" rmax="0.1" />
     </polycone>
-    <xtru name="RIB_sol" lunit="mm">
+    <tube name="RIB_OF_sol" rmin="446.5" rmax="448.5" z="25" deltaphi="360" aunit="deg" lunit="mm" />
+    <tube name="RIB_IF_sol" rmin="394.5" rmax="396.5" z="25" deltaphi="360" aunit="deg" lunit="mm" />
+    <tube name="RIB_WB_sol" rmin="396.5" rmax="446.5" z="2" deltaphi="360" aunit="deg" lunit="mm" />
+    <xtru name="RAIL_sol" lunit="mm">
       <twoDimVertex x="0" y="32" />
       <twoDimVertex x="25" y="32" />
       <twoDimVertex x="25" y="28" />
@@ -47,21 +50,8 @@
       <section zOrder="0" zPosition="0" xOffset="0" yOffset="0" scalingFactor="1" />
       <section zOrder="1" zPosition="1670" xOffset="0" yOffset="0" scalingFactor="1" />
     </xtru>
-    <xtru name="RAIL_sol" lunit="mm">
-      <twoDimVertex x="341.8864" y="34.1376" />
-      <twoDimVertex x="227.5864" y="34.1376" />
-      <twoDimVertex x="227.5864" y="27.7876" />
-      <twoDimVertex x="320.4464" y="27.7876" />
-      <twoDimVertex x="320.4464" y="-27.7876" />
-      <twoDimVertex x="227.5864" y="-27.7876" />
-      <twoDimVertex x="227.5864" y="-34.1376" />
-      <twoDimVertex x="341.8864" y="-34.1376" />
-      <section zOrder="0" zPosition="-667.13" xOffset="0" yOffset="0" scalingFactor="1" />
-      <section zOrder="1" zPosition="667.13" xOffset="0" yOffset="0" scalingFactor="1" />
-    </xtru>
-    <tubs name="RACK_sol" rmin="0" rmax="394.5" z="25" startphi="-27.5" deltaphi="55" aunit="deg" lunit="mm" />
-    <tubs name="WEDGE_B1_sol" rmin="0" rmax="394.5" z="25" startphi="152.5" deltaphi="55" aunit="deg" lunit="mm" />
-    <tubs name="WEDGE_B2_sol" rmin="354" rmax="394.5" z="21" startphi="153.8" deltaphi="52.4" aunit="deg" lunit="mm" />
+    <tube name="RACK_sol" rmin="350" rmax="394.5" z="25" startphi="-27.5" deltaphi="55" aunit="deg" lunit="mm" />
+    <tube name="WEDGE_sol" rmin="354" rmax="394.5" z="25" startphi="152.5" deltaphi="55" aunit="deg" lunit="mm" />
   </solids>
   <structure>
     <volume name="POD_CYL_lv">
@@ -72,9 +62,17 @@
       <materialref ref="Aluminium" />
       <solidref ref="POD_CONE_sol" />
     </volume>
-    <volume name="RIB_lv">
+    <volume name="RIB_OF_lv">
       <materialref ref="Aluminium" />
-      <solidref ref="RIB_sol" />
+      <solidref ref="RIB_OF_sol" />
+    </volume>
+    <volume name="RIB_IF_lv">
+      <materialref ref="Aluminium" />
+      <solidref ref="RIB_IF_sol" />
+    </volume>
+    <volume name="RIB_WB_lv">
+      <materialref ref="Aluminium" />
+      <solidref ref="RIB_WB_sol" />
     </volume>
     <volume name="RAIL_lv">
       <materialref ref="Aluminium" />
@@ -84,13 +82,9 @@
       <materialref ref="Aluminium" />
       <solidref ref="RACK_sol" />
     </volume>
-    <volume name="WEDGE_B1_lv">
+    <volume name="WEDGE_lv">
       <materialref ref="Aluminium" />
-      <solidref ref="WEDGE_B1_sol" />
-    </volume>
-    <volume name="WEDGE_B2_lv">
-      <materialref ref="Aluminium" />
-      <solidref ref="WEDGE_B2_sol" />
+      <solidref ref="WEDGE_sol" />
     </volume>
     <volume name="World_lv">
       <materialref ref="Vacuum" />
@@ -104,94 +98,151 @@
         <position name="POD_CONE_pv_pos" x="450" y="450" z="-170" unit="mm" />
         <rotation name="POD_CONE_pv_rot" x="0" y="0" z="180" unit="deg" />
       </physvol>
-      <physvol name="RIB_01_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_01_pv_pos" x="450" y="450" z="-1345" unit="mm" />
-        <rotation name="RIB_01_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_01_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_01_OF_pv_pos" x="450" y="450" z="-1345" unit="mm" />
       </physvol>
-      <physvol name="RIB_02_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_02_pv_pos" x="450" y="450" z="-1165" unit="mm" />
-        <rotation name="RIB_02_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_01_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_01_IF_pv_pos" x="450" y="450" z="-1345" unit="mm" />
       </physvol>
-      <physvol name="RIB_03_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_03_pv_pos" x="450" y="450" z="-985" unit="mm" />
-        <rotation name="RIB_03_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_01_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_01_WB_pv_pos" x="450" y="450" z="-1345" unit="mm" />
       </physvol>
-      <physvol name="RIB_04_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_04_pv_pos" x="450" y="450" z="-805" unit="mm" />
-        <rotation name="RIB_04_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_02_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_02_OF_pv_pos" x="450" y="450" z="-1165" unit="mm" />
       </physvol>
-      <physvol name="RIB_05_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_05_pv_pos" x="450" y="450" z="-625" unit="mm" />
-        <rotation name="RIB_05_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_02_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_02_IF_pv_pos" x="450" y="450" z="-1165" unit="mm" />
       </physvol>
-      <physvol name="RIB_06_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_06_pv_pos" x="450" y="450" z="-445" unit="mm" />
-        <rotation name="RIB_06_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_02_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_02_WB_pv_pos" x="450" y="450" z="-1165" unit="mm" />
       </physvol>
-      <physvol name="RIB_07_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_07_pv_pos" x="450" y="450" z="-265" unit="mm" />
-        <rotation name="RIB_07_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_03_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_03_OF_pv_pos" x="450" y="450" z="-985" unit="mm" />
       </physvol>
-      <physvol name="RIB_08_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_08_pv_pos" x="450" y="450" z="-85" unit="mm" />
-        <rotation name="RIB_08_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_03_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_03_IF_pv_pos" x="450" y="450" z="-985" unit="mm" />
       </physvol>
-      <physvol name="RIB_09_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_09_pv_pos" x="450" y="450" z="95" unit="mm" />
-        <rotation name="RIB_09_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_03_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_03_WB_pv_pos" x="450" y="450" z="-985" unit="mm" />
       </physvol>
-      <physvol name="RIB_10_pv">
-        <volumeref ref="RIB_lv" />
-        <position name="RIB_10_pv_pos" x="450" y="450" z="275" unit="mm" />
-        <rotation name="RIB_10_pv_rot" x="90" y="0" z="-90" unit="deg" />
+      <physvol name="RIB_04_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_04_OF_pv_pos" x="450" y="450" z="-805" unit="mm" />
+      </physvol>
+      <physvol name="RIB_04_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_04_IF_pv_pos" x="450" y="450" z="-805" unit="mm" />
+      </physvol>
+      <physvol name="RIB_04_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_04_WB_pv_pos" x="450" y="450" z="-805" unit="mm" />
+      </physvol>
+      <physvol name="RIB_05_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_05_OF_pv_pos" x="450" y="450" z="-625" unit="mm" />
+      </physvol>
+      <physvol name="RIB_05_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_05_IF_pv_pos" x="450" y="450" z="-625" unit="mm" />
+      </physvol>
+      <physvol name="RIB_05_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_05_WB_pv_pos" x="450" y="450" z="-625" unit="mm" />
+      </physvol>
+      <physvol name="RIB_06_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_06_OF_pv_pos" x="450" y="450" z="-445" unit="mm" />
+      </physvol>
+      <physvol name="RIB_06_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_06_IF_pv_pos" x="450" y="450" z="-445" unit="mm" />
+      </physvol>
+      <physvol name="RIB_06_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_06_WB_pv_pos" x="450" y="450" z="-445" unit="mm" />
+      </physvol>
+      <physvol name="RIB_07_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_07_OF_pv_pos" x="450" y="450" z="-265" unit="mm" />
+      </physvol>
+      <physvol name="RIB_07_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_07_IF_pv_pos" x="450" y="450" z="-265" unit="mm" />
+      </physvol>
+      <physvol name="RIB_07_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_07_WB_pv_pos" x="450" y="450" z="-265" unit="mm" />
+      </physvol>
+      <physvol name="RIB_08_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_08_OF_pv_pos" x="450" y="450" z="-85" unit="mm" />
+      </physvol>
+      <physvol name="RIB_08_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_08_IF_pv_pos" x="450" y="450" z="-85" unit="mm" />
+      </physvol>
+      <physvol name="RIB_08_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_08_WB_pv_pos" x="450" y="450" z="-85" unit="mm" />
+      </physvol>
+      <physvol name="RIB_09_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_09_OF_pv_pos" x="450" y="450" z="95" unit="mm" />
+      </physvol>
+      <physvol name="RIB_09_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_09_IF_pv_pos" x="450" y="450" z="95" unit="mm" />
+      </physvol>
+      <physvol name="RIB_09_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_09_WB_pv_pos" x="450" y="450" z="95" unit="mm" />
+      </physvol>
+      <physvol name="RIB_10_OF_pv">
+        <volumeref ref="RIB_OF_lv" />
+        <position name="RIB_10_OF_pv_pos" x="450" y="450" z="275" unit="mm" />
+      </physvol>
+      <physvol name="RIB_10_IF_pv">
+        <volumeref ref="RIB_IF_lv" />
+        <position name="RIB_10_IF_pv_pos" x="450" y="450" z="275" unit="mm" />
+      </physvol>
+      <physvol name="RIB_10_WB_pv">
+        <volumeref ref="RIB_WB_lv" />
+        <position name="RIB_10_WB_pv_pos" x="450" y="450" z="275" unit="mm" />
       </physvol>
       <physvol name="RAIL_1_pv">
         <volumeref ref="RAIL_lv" />
         <position name="RAIL_1_pv_pos" x="100" y="450" z="-1370" unit="mm" />
-        <rotation name="RAIL_1_pv_rot" x="90" y="0" z="0" unit="deg" />
       </physvol>
       <physvol name="RAIL_2_pv">
         <volumeref ref="RAIL_lv" />
         <position name="RAIL_2_pv_pos" x="800" y="450" z="300" unit="mm" />
-        <rotation name="RAIL_2_pv_rot" x="90" y="0" z="180" unit="deg" />
+        <rotation name="RAIL_2_pv_rot" x="180" y="0" z="180" unit="deg" />
       </physvol>
       <physvol name="RACK_pv">
         <volumeref ref="RACK_lv" />
         <position name="RACK_pv_pos" x="450" y="429.21" z="-728.27" unit="mm" />
         <rotation name="RACK_pv_rot" x="-90" y="0" z="0" unit="deg" />
       </physvol>
-      <physvol name="WEDGE_1_B1_pv">
-        <volumeref ref="WEDGE_B1_lv" />
-        <position name="WEDGE_1_B1_pv_pos" x="450" y="450" z="-1345" unit="mm" />
+      <physvol name="WEDGE_1_pv">
+        <volumeref ref="WEDGE_lv" />
+        <position name="WEDGE_1_pv_pos" x="450" y="450" z="-1345" unit="mm" />
       </physvol>
-      <physvol name="WEDGE_1_B2_pv">
-        <volumeref ref="WEDGE_B2_lv" />
-        <position name="WEDGE_1_B2_pv_pos" x="450" y="450" z="-1345" unit="mm" />
+      <physvol name="WEDGE_2_pv">
+        <volumeref ref="WEDGE_lv" />
+        <position name="WEDGE_2_pv_pos" x="450" y="450" z="-625" unit="mm" />
       </physvol>
-      <physvol name="WEDGE_2_B1_pv">
-        <volumeref ref="WEDGE_B1_lv" />
-        <position name="WEDGE_2_B1_pv_pos" x="450" y="450" z="-625" unit="mm" />
-      </physvol>
-      <physvol name="WEDGE_2_B2_pv">
-        <volumeref ref="WEDGE_B2_lv" />
-        <position name="WEDGE_2_B2_pv_pos" x="450" y="450" z="-625" unit="mm" />
-      </physvol>
-      <physvol name="WEDGE_3_B1_pv">
-        <volumeref ref="WEDGE_B1_lv" />
-        <position name="WEDGE_3_B1_pv_pos" x="450" y="450" z="95" unit="mm" />
-      </physvol>
-      <physvol name="WEDGE_3_B2_pv">
-        <volumeref ref="WEDGE_B2_lv" />
-        <position name="WEDGE_3_B2_pv_pos" x="450" y="450" z="95" unit="mm" />
+      <physvol name="WEDGE_3_pv">
+        <volumeref ref="WEDGE_lv" />
+        <position name="WEDGE_3_pv_pos" x="450" y="450" z="95" unit="mm" />
       </physvol>
     </volume>
   </structure>

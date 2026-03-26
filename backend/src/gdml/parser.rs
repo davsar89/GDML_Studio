@@ -89,7 +89,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"box" if section == Section::Solids => {
                         parse_box_solid(e, &mut solids);
                     }
-                    b"tube" | b"tubs" if section == Section::Solids => {
+                    b"tube" if section == Section::Solids => {
                         parse_tube_solid(e, &mut solids);
                     }
                     b"cone" if section == Section::Solids => {
@@ -180,7 +180,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"box" if section == Section::Solids => {
                         parse_box_solid(e, &mut solids);
                     }
-                    b"tube" | b"tubs" if section == Section::Solids => {
+                    b"tube" if section == Section::Solids => {
                         parse_tube_solid(e, &mut solids);
                     }
                     b"cone" if section == Section::Solids => {

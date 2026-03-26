@@ -91,9 +91,9 @@ fn test_pod_asm_pipeline() {
     println!("  meshes:     {}", result.num_meshes);
     println!("  triangles:  {}", result.total_triangles);
 
-    // 8 solids: box, tube, polycone, 2x xtru, 3x tubs
-    assert_eq!(result.num_solids, 8, "Expected 8 solids (box + tube + polycone + 2 xtru + 3 tubs)");
-    assert_eq!(result.num_volumes, 8, "Expected 8 volumes");
+    // 9 solids: box, 5 tubes, polycone, xtru, 2 tube sectors (RACK + WEDGE)
+    assert_eq!(result.num_solids, 9, "Expected 9 solids");
+    assert_eq!(result.num_volumes, 9, "Expected 9 volumes");
     assert_eq!(
         result.num_meshes, result.num_solids,
         "Every solid should be tessellated into a mesh"
