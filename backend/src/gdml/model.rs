@@ -131,6 +131,8 @@ pub enum Solid {
     Trd(TrdSolid),
     Polycone(PolyconeSolid),
     Xtru(XtruSolid),
+    Orb(OrbSolid),
+    Tessellated(TessellatedSolid),
     Boolean(BooleanSolid),
 }
 
@@ -144,6 +146,8 @@ impl Solid {
             Solid::Trd(s) => &s.name,
             Solid::Polycone(s) => &s.name,
             Solid::Xtru(s) => &s.name,
+            Solid::Orb(s) => &s.name,
+            Solid::Tessellated(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -265,6 +269,36 @@ pub struct XtruSolid {
     pub lunit: Option<String>,
     pub vertices: Vec<TwoDimVertex>,
     pub sections: Vec<XtruSection>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrbSolid {
+    pub name: String,
+    pub r: String,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TessellatedFacet {
+    Triangular {
+        vertex1: String,
+        vertex2: String,
+        vertex3: String,
+        r#type: Option<String>,
+    },
+    Quadrangular {
+        vertex1: String,
+        vertex2: String,
+        vertex3: String,
+        vertex4: String,
+        r#type: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TessellatedSolid {
+    pub name: String,
+    pub facets: Vec<TessellatedFacet>,
 }
 
 // ─── Structure Section ───────────────────────────────────────────────────────

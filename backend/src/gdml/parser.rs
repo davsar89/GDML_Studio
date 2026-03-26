@@ -101,6 +101,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"trd" if section == Section::Solids => {
                         parse_trd_solid(e, &mut solids);
                     }
+                    b"orb" if section == Section::Solids => {
+                        parse_orb_solid(e, &mut solids);
+                    }
                     b"polycone" if section == Section::Solids => {
                         let attrs = extract_polycone_attrs(e);
                         let solid = read_polycone_body(&mut reader, attrs)?;
@@ -110,6 +113,11 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let attrs = extract_xtru_attrs(e);
                         let solid = read_xtru_body(&mut reader, attrs)?;
                         solids.solids.push(Solid::Xtru(solid));
+                    }
+                    b"tessellated" if section == Section::Solids => {
+                        let name = get_attr(e, "name").unwrap_or_default();
+                        let solid = read_tessellated_body(&mut reader, name)?;
+                        solids.solids.push(Solid::Tessellated(solid));
                     }
                     b"subtraction" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -191,6 +199,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"trd" if section == Section::Solids => {
                         parse_trd_solid(e, &mut solids);
+                    }
+                    b"orb" if section == Section::Solids => {
+                        parse_orb_solid(e, &mut solids);
                     }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -539,6 +550,14 @@ fn parse_trd_solid(e: &BytesStart, solids: &mut SolidSection) {
     }));
 }
 
+fn parse_orb_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::Orb(OrbSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        r: get_attr_or(e, "r", "0"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
+
 // ─── Polycone parser ─────────────────────────────────────────────────────────
 
 struct PolyconeAttrs {
@@ -662,6 +681,55 @@ fn read_xtru_body(reader: &mut Reader<&[u8]>, attrs: XtruAttrs) -> Result<XtruSo
         vertices,
         sections,
     })
+}
+
+// ─── Tessellated parser ──────────────────────────────────────────────────────
+
+fn read_tessellated_body(
+    reader: &mut Reader<&[u8]>,
+    name: String,
+) -> Result<TessellatedSolid> {
+    let mut facets = Vec::new();
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"triangular" => {
+                        facets.push(TessellatedFacet::Triangular {
+                            vertex1: get_attr_or(inner, "vertex1", ""),
+                            vertex2: get_attr_or(inner, "vertex2", ""),
+                            vertex3: get_attr_or(inner, "vertex3", ""),
+                            r#type: get_attr(inner, "type"),
+                        });
+                    }
+                    b"quadrangular" => {
+                        facets.push(TessellatedFacet::Quadrangular {
+                            vertex1: get_attr_or(inner, "vertex1", ""),
+                            vertex2: get_attr_or(inner, "vertex2", ""),
+                            vertex3: get_attr_or(inner, "vertex3", ""),
+                            vertex4: get_attr_or(inner, "vertex4", ""),
+                            r#type: get_attr(inner, "type"),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref inner)) => {
+                if inner.local_name().as_ref() == b"tessellated" {
+                    break;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(anyhow::anyhow!("XML error in tessellated: {}", e)),
+            _ => {}
+        }
+    }
+
+    Ok(TessellatedSolid { name, facets })
 }
 
 // ─── Structure parser ────────────────────────────────────────────────────────

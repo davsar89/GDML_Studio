@@ -194,6 +194,30 @@ fn test_nai_det_model_pipeline() {
 }
 
 #[test]
+fn test_pod_asm_tessellated_pipeline() {
+    let path = project_root().join("sample_data/pod_asm_tessellated.gdml");
+    assert!(path.exists(), "GDML file not found: {}", path.display());
+
+    let result = run_pipeline(&path);
+
+    println!("pod_asm_tessellated.gdml:");
+    println!("  positions:  {}", result.num_positions);
+    println!("  solids:     {}", result.num_solids);
+    println!("  volumes:    {}", result.num_volumes);
+    println!("  meshes:     {}", result.num_meshes);
+    println!("  triangles:  {}", result.total_triangles);
+
+    assert!(result.num_solids > 0, "Expected at least one solid");
+    assert!(result.num_volumes > 0, "Expected at least one volume");
+    assert!(result.num_meshes > 0, "Expected at least one mesh");
+    assert!(result.total_triangles > 0, "Expected at least one triangle");
+    assert_eq!(
+        result.num_meshes, result.num_solids,
+        "Every solid should be tessellated into a mesh"
+    );
+}
+
+#[test]
 fn test_all_features_pipeline() {
     let path = project_root().join("sample_data/test_all_features.gdml");
     assert!(path.exists(), "GDML file not found: {}", path.display());
@@ -296,6 +320,7 @@ fn test_mesh_geometry_validity() {
         "sample_data/NaiDetModelWithMLI_v2_00.gdml",
         "sample_data/test_all_features.gdml",
         "sample_data/pod_asm.gdml",
+        "sample_data/pod_asm_tessellated.gdml",
     ];
 
     for file in &files {

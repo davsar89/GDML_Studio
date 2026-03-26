@@ -74,6 +74,8 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::Trd(s) => tessellate_trd_solid(s, engine),
         Solid::Polycone(s) => tessellate_polycone_solid(s, engine, segments),
         Solid::Xtru(s) => tessellate_xtru_solid(s, engine),
+        Solid::Orb(s) => tessellate_orb_solid(s, engine, segments),
+        Solid::Tessellated(s) => tessellate_tessellated_solid(s, engine),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
 }
@@ -341,6 +343,117 @@ fn tessellate_trd_solid(s: &TrdSolid, engine: &EvalEngine) -> Result<TriangleMes
     let y2 = resolve_with_lunit(engine, &s.y2, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
     Ok(trd_mesh::tessellate_trd(x1, y1, x2, y2, z))
+}
+
+fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut indices = Vec::new();
+
+    let lookup = |name: &str| -> Result<[f64; 3]> {
+        engine
+            .position_values
+            .get(name)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("Tessellated vertex '{}' not found in defines", name))
+    };
+
+    for facet in &s.facets {
+        match facet {
+            TessellatedFacet::Triangular {
+                vertex1,
+                vertex2,
+                vertex3,
+                ..
+            } => {
+                let v1 = lookup(vertex1)?;
+                let v2 = lookup(vertex2)?;
+                let v3 = lookup(vertex3)?;
+
+                // Compute face normal via cross product
+                let e1 = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
+                let e2 = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
+                let nx = e1[1] * e2[2] - e1[2] * e2[1];
+                let ny = e1[2] * e2[0] - e1[0] * e2[2];
+                let nz = e1[0] * e2[1] - e1[1] * e2[0];
+                let len = (nx * nx + ny * ny + nz * nz).sqrt();
+                let (nx, ny, nz) = if len > 1e-12 {
+                    (nx / len, ny / len, nz / len)
+                } else {
+                    (0.0, 0.0, 1.0)
+                };
+
+                let base = (positions.len() / 3) as u32;
+                for v in &[v1, v2, v3] {
+                    positions.push(v[0] as f32);
+                    positions.push(v[1] as f32);
+                    positions.push(v[2] as f32);
+                    normals.push(nx as f32);
+                    normals.push(ny as f32);
+                    normals.push(nz as f32);
+                }
+                indices.push(base);
+                indices.push(base + 1);
+                indices.push(base + 2);
+            }
+            TessellatedFacet::Quadrangular {
+                vertex1,
+                vertex2,
+                vertex3,
+                vertex4,
+                ..
+            } => {
+                let v1 = lookup(vertex1)?;
+                let v2 = lookup(vertex2)?;
+                let v3 = lookup(vertex3)?;
+                let v4 = lookup(vertex4)?;
+
+                // Compute face normal from first triangle
+                let e1 = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
+                let e2 = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
+                let nx = e1[1] * e2[2] - e1[2] * e2[1];
+                let ny = e1[2] * e2[0] - e1[0] * e2[2];
+                let nz = e1[0] * e2[1] - e1[1] * e2[0];
+                let len = (nx * nx + ny * ny + nz * nz).sqrt();
+                let (nx, ny, nz) = if len > 1e-12 {
+                    (nx / len, ny / len, nz / len)
+                } else {
+                    (0.0, 0.0, 1.0)
+                };
+
+                let base = (positions.len() / 3) as u32;
+                for v in &[v1, v2, v3, v4] {
+                    positions.push(v[0] as f32);
+                    positions.push(v[1] as f32);
+                    positions.push(v[2] as f32);
+                    normals.push(nx as f32);
+                    normals.push(ny as f32);
+                    normals.push(nz as f32);
+                }
+                // Two triangles: (0,1,2) and (0,2,3)
+                indices.push(base);
+                indices.push(base + 1);
+                indices.push(base + 2);
+                indices.push(base);
+                indices.push(base + 2);
+                indices.push(base + 3);
+            }
+        }
+    }
+
+    Ok(TriangleMesh {
+        positions,
+        normals,
+        indices,
+    })
+}
+
+fn tessellate_orb_solid(s: &OrbSolid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let r = resolve_with_lunit(engine, &s.r, lunit);
+    Ok(sphere_mesh::tessellate_sphere(
+        0.0, r, 0.0, 2.0 * PI, 0.0, PI, segments,
+    ))
 }
 
 fn tessellate_polycone_solid(

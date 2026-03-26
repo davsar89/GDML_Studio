@@ -1,3 +1,4 @@
+use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderName, Method};
 use std::net::SocketAddr;
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -41,11 +42,14 @@ async fn main() {
         api_router
             .fallback_service(ServeDir::new(frontend_dir))
             .layer(cors)
+            .layer(DefaultBodyLimit::max(64 * 1024 * 1024)) // 64 MB for large tessellated GDML files
     } else {
         tracing::info!(
             "No frontend/dist found, serving API only (use Vite dev server for frontend)"
         );
-        api_router.layer(cors)
+        api_router
+            .layer(cors)
+            .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
     };
 
     let addr = SocketAddr::from(([127, 0, 0, 1], config::port()));

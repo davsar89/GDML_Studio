@@ -494,6 +494,57 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::End(BytesEnd::new("xtru")))?;
             }
+            Solid::Tessellated(ts) => {
+                let mut elem = BytesStart::new("tessellated");
+                elem.push_attribute(("name", ts.name.as_str()));
+                writer.write_event(Event::Start(elem))?;
+                for facet in &ts.facets {
+                    match facet {
+                        TessellatedFacet::Triangular {
+                            vertex1,
+                            vertex2,
+                            vertex3,
+                            r#type,
+                        } => {
+                            let mut fe = BytesStart::new("triangular");
+                            fe.push_attribute(("vertex1", vertex1.as_str()));
+                            fe.push_attribute(("vertex2", vertex2.as_str()));
+                            fe.push_attribute(("vertex3", vertex3.as_str()));
+                            if let Some(ref t) = r#type {
+                                fe.push_attribute(("type", t.as_str()));
+                            }
+                            writer.write_event(Event::Empty(fe))?;
+                        }
+                        TessellatedFacet::Quadrangular {
+                            vertex1,
+                            vertex2,
+                            vertex3,
+                            vertex4,
+                            r#type,
+                        } => {
+                            let mut fe = BytesStart::new("quadrangular");
+                            fe.push_attribute(("vertex1", vertex1.as_str()));
+                            fe.push_attribute(("vertex2", vertex2.as_str()));
+                            fe.push_attribute(("vertex3", vertex3.as_str()));
+                            fe.push_attribute(("vertex4", vertex4.as_str()));
+                            if let Some(ref t) = r#type {
+                                fe.push_attribute(("type", t.as_str()));
+                            }
+                            writer.write_event(Event::Empty(fe))?;
+                        }
+                    }
+                }
+                writer.write_event(Event::End(BytesEnd::new("tessellated")))?;
+            }
+            Solid::Orb(o) => {
+                let mut elem = BytesStart::new("orb");
+                elem.push_attribute(("name", o.name.as_str()));
+                elem.push_attribute(("r", o.r.as_str()));
+                if let Some(ref u) = o.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
             Solid::Boolean(bs) => {
                 let tag_name = match bs.operation {
                     BooleanOp::Subtraction => "subtraction",
