@@ -134,6 +134,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"paraboloid" if section == Section::Solids => {
                         parse_paraboloid_solid(e, &mut solids);
                     }
+                    b"arb8" if section == Section::Solids => {
+                        parse_arb8_solid(e, &mut solids);
+                    }
                     b"polycone" if section == Section::Solids => {
                         let attrs = extract_polycone_attrs(e);
                         let solid = read_polycone_body(&mut reader, attrs)?;
@@ -274,6 +277,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"paraboloid" if section == Section::Solids => {
                         parse_paraboloid_solid(e, &mut solids);
+                    }
+                    b"arb8" if section == Section::Solids => {
+                        parse_arb8_solid(e, &mut solids);
                     }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -701,6 +707,30 @@ fn parse_paraboloid_solid(e: &BytesStart, solids: &mut SolidSection) {
         rlo: get_attr_or(e, "rlo", "0"),
         rhi: get_attr_or(e, "rhi", "0"),
         dz: get_attr_or(e, "dz", "0"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
+
+fn parse_arb8_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::Arb8(Arb8Solid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        dz: get_attr_or(e, "dz", "0"),
+        v1x: get_attr_or(e, "v1x", "0"),
+        v1y: get_attr_or(e, "v1y", "0"),
+        v2x: get_attr_or(e, "v2x", "0"),
+        v2y: get_attr_or(e, "v2y", "0"),
+        v3x: get_attr_or(e, "v3x", "0"),
+        v3y: get_attr_or(e, "v3y", "0"),
+        v4x: get_attr_or(e, "v4x", "0"),
+        v4y: get_attr_or(e, "v4y", "0"),
+        v5x: get_attr_or(e, "v5x", "0"),
+        v5y: get_attr_or(e, "v5y", "0"),
+        v6x: get_attr_or(e, "v6x", "0"),
+        v6y: get_attr_or(e, "v6y", "0"),
+        v7x: get_attr_or(e, "v7x", "0"),
+        v7y: get_attr_or(e, "v7y", "0"),
+        v8x: get_attr_or(e, "v8x", "0"),
+        v8y: get_attr_or(e, "v8y", "0"),
         lunit: get_attr(e, "lunit"),
     }));
 }

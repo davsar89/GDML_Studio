@@ -146,6 +146,7 @@ pub enum Solid {
     Elcone(ElconeSolid),
     Paraboloid(ParaboloidSolid),
     GenericPolyhedra(GenericPolyhedraSolid),
+    Arb8(Arb8Solid),
     Boolean(BooleanSolid),
 }
 
@@ -174,6 +175,7 @@ impl Solid {
             Solid::Elcone(s) => &s.name,
             Solid::Paraboloid(s) => &s.name,
             Solid::GenericPolyhedra(s) => &s.name,
+            Solid::Arb8(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -484,6 +486,29 @@ pub struct GenericPolyhedraSolid {
     pub aunit: Option<String>,
     pub lunit: Option<String>,
     pub rzpoints: Vec<RZPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Arb8Solid {
+    pub name: String,
+    pub dz: String,
+    pub v1x: String,
+    pub v1y: String,
+    pub v2x: String,
+    pub v2y: String,
+    pub v3x: String,
+    pub v3y: String,
+    pub v4x: String,
+    pub v4y: String,
+    pub v5x: String,
+    pub v5y: String,
+    pub v6x: String,
+    pub v6y: String,
+    pub v7x: String,
+    pub v7y: String,
+    pub v8x: String,
+    pub v8y: String,
+    pub lunit: Option<String>,
 }
 
 // ─── Structure Section ───────────────────────────────────────────────────────

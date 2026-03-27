@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
-use super::primitives::{box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, xtru_mesh};
+use super::primitives::{arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, xtru_mesh};
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
@@ -89,6 +89,7 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::Elcone(s) => tessellate_elcone_solid(s, engine, segments),
         Solid::Paraboloid(s) => tessellate_paraboloid_solid(s, engine, segments),
         Solid::GenericPolyhedra(s) => tessellate_generic_polyhedra_solid(s, engine),
+        Solid::Arb8(s) => tessellate_arb8_solid(s, engine),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
 }
@@ -356,6 +357,22 @@ fn tessellate_trd_solid(s: &TrdSolid, engine: &EvalEngine) -> Result<TriangleMes
     let y2 = resolve_with_lunit(engine, &s.y2, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
     Ok(trd_mesh::tessellate_trd(x1, y1, x2, y2, z))
+}
+
+fn tessellate_arb8_solid(s: &Arb8Solid, engine: &EvalEngine) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let dz = resolve_with_lunit(engine, &s.dz, lunit);
+    let vertices: [[f64; 2]; 8] = [
+        [resolve_with_lunit(engine, &s.v1x, lunit), resolve_with_lunit(engine, &s.v1y, lunit)],
+        [resolve_with_lunit(engine, &s.v2x, lunit), resolve_with_lunit(engine, &s.v2y, lunit)],
+        [resolve_with_lunit(engine, &s.v3x, lunit), resolve_with_lunit(engine, &s.v3y, lunit)],
+        [resolve_with_lunit(engine, &s.v4x, lunit), resolve_with_lunit(engine, &s.v4y, lunit)],
+        [resolve_with_lunit(engine, &s.v5x, lunit), resolve_with_lunit(engine, &s.v5y, lunit)],
+        [resolve_with_lunit(engine, &s.v6x, lunit), resolve_with_lunit(engine, &s.v6y, lunit)],
+        [resolve_with_lunit(engine, &s.v7x, lunit), resolve_with_lunit(engine, &s.v7y, lunit)],
+        [resolve_with_lunit(engine, &s.v8x, lunit), resolve_with_lunit(engine, &s.v8y, lunit)],
+    ];
+    Ok(arb8_mesh::tessellate_arb8(dz, vertices))
 }
 
 fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Result<TriangleMesh> {

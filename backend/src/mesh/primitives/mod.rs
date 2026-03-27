@@ -1,3 +1,4 @@
+pub mod arb8_mesh;
 pub mod box_mesh;
 pub mod cone_mesh;
 pub mod cut_tube_mesh;

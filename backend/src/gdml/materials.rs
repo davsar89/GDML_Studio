@@ -819,6 +819,31 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::Arb8(a) => {
+                let mut elem = BytesStart::new("arb8");
+                elem.push_attribute(("name", a.name.as_str()));
+                elem.push_attribute(("dz", a.dz.as_str()));
+                elem.push_attribute(("v1x", a.v1x.as_str()));
+                elem.push_attribute(("v1y", a.v1y.as_str()));
+                elem.push_attribute(("v2x", a.v2x.as_str()));
+                elem.push_attribute(("v2y", a.v2y.as_str()));
+                elem.push_attribute(("v3x", a.v3x.as_str()));
+                elem.push_attribute(("v3y", a.v3y.as_str()));
+                elem.push_attribute(("v4x", a.v4x.as_str()));
+                elem.push_attribute(("v4y", a.v4y.as_str()));
+                elem.push_attribute(("v5x", a.v5x.as_str()));
+                elem.push_attribute(("v5y", a.v5y.as_str()));
+                elem.push_attribute(("v6x", a.v6x.as_str()));
+                elem.push_attribute(("v6y", a.v6y.as_str()));
+                elem.push_attribute(("v7x", a.v7x.as_str()));
+                elem.push_attribute(("v7y", a.v7y.as_str()));
+                elem.push_attribute(("v8x", a.v8x.as_str()));
+                elem.push_attribute(("v8y", a.v8y.as_str()));
+                if let Some(ref u) = a.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
             Solid::Boolean(bs) => {
                 let tag_name = match bs.operation {
                     BooleanOp::Subtraction => "subtraction",

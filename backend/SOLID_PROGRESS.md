@@ -31,7 +31,7 @@ Reference: `backend/reference/geant4/G4GDMLReadSolids.cc`
 12. [x] **Elcone** - Elliptical cone (dx, dy, zmax, zcut)
 13. [x] **Paraboloid** - Parabolic solid (rlo, rhi, dz)
 14. [x] **GenericPolyhedra** - Polyhedra from (r,z) pairs
-15. [ ] **Arb8/GenTrap** - Arbitrary 8-vertex solid
+15. [x] **Arb8/GenTrap** - Arbitrary 8-vertex solid
 16. [x] **Tessellated** - Triangular/quad facet solid
 
 ## Tier 4 - Rare / Specialized
