@@ -918,6 +918,27 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::Reflected(rs) => {
+                let mut elem = BytesStart::new("reflectedSolid");
+                elem.push_attribute(("name", rs.name.as_str()));
+                elem.push_attribute(("solid", rs.solid_ref.as_str()));
+                elem.push_attribute(("sx", rs.sx.as_str()));
+                elem.push_attribute(("sy", rs.sy.as_str()));
+                elem.push_attribute(("sz", rs.sz.as_str()));
+                elem.push_attribute(("rx", rs.rx.as_str()));
+                elem.push_attribute(("ry", rs.ry.as_str()));
+                elem.push_attribute(("rz", rs.rz.as_str()));
+                elem.push_attribute(("dx", rs.dx.as_str()));
+                elem.push_attribute(("dy", rs.dy.as_str()));
+                elem.push_attribute(("dz", rs.dz.as_str()));
+                if let Some(ref u) = rs.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = rs.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
             Solid::Scaled(ss) => {
                 let mut elem = BytesStart::new("scaledSolid");
                 elem.push_attribute(("name", ss.name.as_str()));

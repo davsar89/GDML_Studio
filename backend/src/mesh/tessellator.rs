@@ -24,7 +24,7 @@ pub fn tessellate_all_solids(
     for solid in &solids.solids {
         let name = solid.name().to_string();
         match solid {
-            Solid::Boolean(_) | Solid::Scaled(_) => {} // skip for phase 2
+            Solid::Boolean(_) | Solid::Scaled(_) | Solid::Reflected(_) => {} // skip for phase 2
             _ => match tessellate_solid(solid, engine, segments) {
                 Ok(mesh) => {
                     meshes.insert(name, mesh);
@@ -41,6 +41,27 @@ pub fn tessellate_all_solids(
     // Phase 2: Resolve composite solids (scaled, boolean — may reference each other)
     for solid in &solids.solids {
         match solid {
+            Solid::Reflected(rs) => {
+                let mut resolving = HashSet::new();
+                match tessellate_reflected_solid(
+                    rs,
+                    &solid_map,
+                    &mut meshes,
+                    engine,
+                    segments,
+                    &mut resolving,
+                ) {
+                    Ok(mesh) => {
+                        meshes.insert(rs.name.clone(), mesh);
+                    }
+                    Err(e) => {
+                        let msg =
+                            format!("Failed to tessellate reflected solid '{}': {}", rs.name, e);
+                        tracing::warn!("{}", msg);
+                        warnings.push(msg);
+                    }
+                }
+            }
             Solid::Scaled(ss) => {
                 let mut resolving = HashSet::new();
                 match tessellate_scaled_solid(
@@ -120,6 +141,7 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::TwistedTrap(s) => tessellate_twisted_trap_solid(s, engine, segments),
         Solid::TwistedTrd(s) => tessellate_twisted_trd_solid(s, engine, segments),
         Solid::Scaled(_) => Err(anyhow::anyhow!("Scaled solids resolved in phase 2")),
+        Solid::Reflected(_) => Err(anyhow::anyhow!("Reflected solids resolved in phase 2")),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
 }
@@ -200,6 +222,60 @@ fn scale_mesh(mesh: &TriangleMesh, sx: f64, sy: f64, sz: f64) -> TriangleMesh {
         normals,
         indices,
     }
+}
+
+fn tessellate_reflected_solid(
+    rs: &ReflectedSolidDef,
+    solid_map: &HashMap<&str, &Solid>,
+    meshes: &mut HashMap<String, TriangleMesh>,
+    engine: &EvalEngine,
+    segments: u32,
+    resolving: &mut HashSet<String>,
+) -> Result<TriangleMesh> {
+    if let Some(mesh) = meshes.get(&rs.name) {
+        return Ok(mesh.clone());
+    }
+
+    if !resolving.insert(rs.name.clone()) {
+        return Err(anyhow::anyhow!(
+            "Cyclic reflected solid dependency detected at '{}'",
+            rs.name
+        ));
+    }
+
+    let result = (|| -> Result<TriangleMesh> {
+        let inner_mesh = resolve_operand(
+            &rs.solid_ref,
+            solid_map,
+            meshes,
+            engine,
+            segments,
+            resolving,
+        )?;
+
+        let sx = resolve(engine, &rs.sx);
+        let sy = resolve(engine, &rs.sy);
+        let sz = resolve(engine, &rs.sz);
+
+        let lunit = rs.lunit.as_deref().unwrap_or("mm");
+        let aunit = rs.aunit.as_deref().unwrap_or("rad");
+
+        let dx = resolve_with_lunit(engine, &rs.dx, lunit);
+        let dy = resolve_with_lunit(engine, &rs.dy, lunit);
+        let dz = resolve_with_lunit(engine, &rs.dz, lunit);
+
+        let rx = units::angle_to_rad(resolve(engine, &rs.rx), aunit);
+        let ry = units::angle_to_rad(resolve(engine, &rs.ry), aunit);
+        let rz = units::angle_to_rad(resolve(engine, &rs.rz), aunit);
+
+        // Apply scale (with reflection via negative values)
+        let scaled = scale_mesh(&inner_mesh, sx, sy, sz);
+        // Apply rotation + translation
+        Ok(csg::transform_mesh(&scaled, [dx, dy, dz], [rx, ry, rz]))
+    })();
+
+    resolving.remove(&rs.name);
+    result
 }
 
 fn tessellate_boolean_solid(
@@ -292,6 +368,12 @@ fn resolve_operand(
         Solid::Scaled(ss) => {
             let mesh =
                 tessellate_scaled_solid(ss, solid_map, meshes, engine, segments, resolving)?;
+            meshes.insert(name.to_string(), mesh.clone());
+            Ok(mesh)
+        }
+        Solid::Reflected(rs) => {
+            let mesh =
+                tessellate_reflected_solid(rs, solid_map, meshes, engine, segments, resolving)?;
             meshes.insert(name.to_string(), mesh.clone());
             Ok(mesh)
         }

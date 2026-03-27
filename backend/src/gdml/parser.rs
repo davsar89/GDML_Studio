@@ -176,6 +176,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let solid = read_generic_polyhedra_body(&mut reader, e)?;
                         solids.solids.push(Solid::GenericPolyhedra(solid));
                     }
+                    b"reflectedSolid" if section == Section::Solids => {
+                        parse_reflected_solid(e, &mut solids);
+                    }
                     b"scaledSolid" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
                         let ss = read_scaled_solid_body(&mut reader, name)?;
@@ -309,6 +312,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"twistedtrd" if section == Section::Solids => {
                         parse_twisted_trd_solid(e, &mut solids);
+                    }
+                    b"reflectedSolid" if section == Section::Solids => {
+                        parse_reflected_solid(e, &mut solids);
                     }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -1402,6 +1408,24 @@ fn read_physvol_body(reader: &mut Reader<&[u8]>, name: Option<String>) -> Result
 }
 
 // ─── Boolean solid parser ────────────────────────────────────────────────────
+
+fn parse_reflected_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::Reflected(ReflectedSolidDef {
+        name: get_attr(e, "name").unwrap_or_default(),
+        solid_ref: get_attr(e, "solid").unwrap_or_default(),
+        sx: get_attr_or(e, "sx", "1"),
+        sy: get_attr_or(e, "sy", "1"),
+        sz: get_attr_or(e, "sz", "1"),
+        rx: get_attr_or(e, "rx", "0"),
+        ry: get_attr_or(e, "ry", "0"),
+        rz: get_attr_or(e, "rz", "0"),
+        dx: get_attr_or(e, "dx", "0"),
+        dy: get_attr_or(e, "dy", "0"),
+        dz: get_attr_or(e, "dz", "0"),
+        aunit: get_attr(e, "aunit"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
 
 fn read_scaled_solid_body(
     reader: &mut Reader<&[u8]>,

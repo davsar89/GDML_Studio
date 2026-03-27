@@ -152,6 +152,7 @@ pub enum Solid {
     TwistedTrap(TwistedTrapSolid),
     TwistedTrd(TwistedTrdSolid),
     Scaled(ScaledSolidDef),
+    Reflected(ReflectedSolidDef),
     Boolean(BooleanSolid),
 }
 
@@ -186,6 +187,7 @@ impl Solid {
             Solid::TwistedTrap(s) => &s.name,
             Solid::TwistedTrd(s) => &s.name,
             Solid::Scaled(s) => &s.name,
+            Solid::Reflected(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -582,6 +584,23 @@ pub struct ScaledSolidDef {
     pub scale_x: String,
     pub scale_y: String,
     pub scale_z: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReflectedSolidDef {
+    pub name: String,
+    pub solid_ref: String,
+    pub sx: String,
+    pub sy: String,
+    pub sz: String,
+    pub rx: String,
+    pub ry: String,
+    pub rz: String,
+    pub dx: String,
+    pub dy: String,
+    pub dz: String,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
 }
 
 // ─── Structure Section ───────────────────────────────────────────────────────
