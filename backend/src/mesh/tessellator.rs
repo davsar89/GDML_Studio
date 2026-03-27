@@ -24,7 +24,7 @@ pub fn tessellate_all_solids(
     for solid in &solids.solids {
         let name = solid.name().to_string();
         match solid {
-            Solid::Boolean(_) => {} // skip for now
+            Solid::Boolean(_) | Solid::Scaled(_) => {} // skip for phase 2
             _ => match tessellate_solid(solid, engine, segments) {
                 Ok(mesh) => {
                     meshes.insert(name, mesh);
@@ -38,27 +38,52 @@ pub fn tessellate_all_solids(
         }
     }
 
-    // Phase 2: Resolve boolean solids (may reference other booleans)
+    // Phase 2: Resolve composite solids (scaled, boolean — may reference each other)
     for solid in &solids.solids {
-        if let Solid::Boolean(bs) = solid {
-            let mut resolving = HashSet::new();
-            match tessellate_boolean_solid(
-                bs,
-                &solid_map,
-                &mut meshes,
-                engine,
-                segments,
-                &mut resolving,
-            ) {
-                Ok(mesh) => {
-                    meshes.insert(bs.name.clone(), mesh);
-                }
-                Err(e) => {
-                    let msg = format!("Failed to tessellate boolean solid '{}': {}", bs.name, e);
-                    tracing::warn!("{}", msg);
-                    warnings.push(msg);
+        match solid {
+            Solid::Scaled(ss) => {
+                let mut resolving = HashSet::new();
+                match tessellate_scaled_solid(
+                    ss,
+                    &solid_map,
+                    &mut meshes,
+                    engine,
+                    segments,
+                    &mut resolving,
+                ) {
+                    Ok(mesh) => {
+                        meshes.insert(ss.name.clone(), mesh);
+                    }
+                    Err(e) => {
+                        let msg =
+                            format!("Failed to tessellate scaled solid '{}': {}", ss.name, e);
+                        tracing::warn!("{}", msg);
+                        warnings.push(msg);
+                    }
                 }
             }
+            Solid::Boolean(bs) => {
+                let mut resolving = HashSet::new();
+                match tessellate_boolean_solid(
+                    bs,
+                    &solid_map,
+                    &mut meshes,
+                    engine,
+                    segments,
+                    &mut resolving,
+                ) {
+                    Ok(mesh) => {
+                        meshes.insert(bs.name.clone(), mesh);
+                    }
+                    Err(e) => {
+                        let msg =
+                            format!("Failed to tessellate boolean solid '{}': {}", bs.name, e);
+                        tracing::warn!("{}", msg);
+                        warnings.push(msg);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -94,7 +119,86 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::TwistedBox(s) => tessellate_twisted_box_solid(s, engine, segments),
         Solid::TwistedTrap(s) => tessellate_twisted_trap_solid(s, engine, segments),
         Solid::TwistedTrd(s) => tessellate_twisted_trd_solid(s, engine, segments),
+        Solid::Scaled(_) => Err(anyhow::anyhow!("Scaled solids resolved in phase 2")),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
+    }
+}
+
+fn tessellate_scaled_solid(
+    ss: &ScaledSolidDef,
+    solid_map: &HashMap<&str, &Solid>,
+    meshes: &mut HashMap<String, TriangleMesh>,
+    engine: &EvalEngine,
+    segments: u32,
+    resolving: &mut HashSet<String>,
+) -> Result<TriangleMesh> {
+    if let Some(mesh) = meshes.get(&ss.name) {
+        return Ok(mesh.clone());
+    }
+
+    if !resolving.insert(ss.name.clone()) {
+        return Err(anyhow::anyhow!(
+            "Cyclic scaled solid dependency detected at '{}'",
+            ss.name
+        ));
+    }
+
+    let result = (|| -> Result<TriangleMesh> {
+        let inner_mesh = resolve_operand(
+            &ss.solid_ref,
+            solid_map,
+            meshes,
+            engine,
+            segments,
+            resolving,
+        )?;
+
+        let sx = resolve(engine, &ss.scale_x);
+        let sy = resolve(engine, &ss.scale_y);
+        let sz = resolve(engine, &ss.scale_z);
+
+        Ok(scale_mesh(&inner_mesh, sx, sy, sz))
+    })();
+
+    resolving.remove(&ss.name);
+    result
+}
+
+fn scale_mesh(mesh: &TriangleMesh, sx: f64, sy: f64, sz: f64) -> TriangleMesh {
+    let mut positions = mesh.positions.clone();
+    let mut normals = mesh.normals.clone();
+    let n_verts = positions.len() / 3;
+
+    for i in 0..n_verts {
+        positions[i * 3] = (positions[i * 3] as f64 * sx) as f32;
+        positions[i * 3 + 1] = (positions[i * 3 + 1] as f64 * sy) as f32;
+        positions[i * 3 + 2] = (positions[i * 3 + 2] as f64 * sz) as f32;
+
+        // For non-uniform scaling, normals transform as (nx/sx, ny/sy, nz/sz)
+        let nx = normals[i * 3] as f64 / sx;
+        let ny = normals[i * 3 + 1] as f64 / sy;
+        let nz = normals[i * 3 + 2] as f64 / sz;
+        let len = (nx * nx + ny * ny + nz * nz).sqrt();
+        if len > 1e-12 {
+            normals[i * 3] = (nx / len) as f32;
+            normals[i * 3 + 1] = (ny / len) as f32;
+            normals[i * 3 + 2] = (nz / len) as f32;
+        }
+    }
+
+    // If any scale factor is negative, winding order flips — reverse triangle winding
+    let neg_count = [sx, sy, sz].iter().filter(|&&v| v < 0.0).count();
+    let mut indices = mesh.indices.clone();
+    if neg_count % 2 == 1 {
+        for tri in indices.chunks_exact_mut(3) {
+            tri.swap(1, 2);
+        }
+    }
+
+    TriangleMesh {
+        positions,
+        normals,
+        indices,
     }
 }
 
@@ -182,6 +286,12 @@ fn resolve_operand(
         Solid::Boolean(bs) => {
             let mesh =
                 tessellate_boolean_solid(bs, solid_map, meshes, engine, segments, resolving)?;
+            meshes.insert(name.to_string(), mesh.clone());
+            Ok(mesh)
+        }
+        Solid::Scaled(ss) => {
+            let mesh =
+                tessellate_scaled_solid(ss, solid_map, meshes, engine, segments, resolving)?;
             meshes.insert(name.to_string(), mesh.clone());
             Ok(mesh)
         }

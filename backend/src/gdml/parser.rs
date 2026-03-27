@@ -176,6 +176,11 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let solid = read_generic_polyhedra_body(&mut reader, e)?;
                         solids.solids.push(Solid::GenericPolyhedra(solid));
                     }
+                    b"scaledSolid" if section == Section::Solids => {
+                        let name = get_attr(e, "name").unwrap_or_default();
+                        let ss = read_scaled_solid_body(&mut reader, name)?;
+                        solids.solids.push(Solid::Scaled(ss));
+                    }
                     b"subtraction" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
                         let bs =
@@ -1397,6 +1402,48 @@ fn read_physvol_body(reader: &mut Reader<&[u8]>, name: Option<String>) -> Result
 }
 
 // ─── Boolean solid parser ────────────────────────────────────────────────────
+
+fn read_scaled_solid_body(
+    reader: &mut Reader<&[u8]>,
+    name: String,
+) -> Result<ScaledSolidDef> {
+    let mut solid_ref = String::new();
+    let mut scale_x = "1".to_string();
+    let mut scale_y = "1".to_string();
+    let mut scale_z = "1".to_string();
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"solidref" => {
+                        solid_ref = get_attr(inner, "ref").unwrap_or_default();
+                    }
+                    b"scale" => {
+                        scale_x = get_attr_or(inner, "x", "1");
+                        scale_y = get_attr_or(inner, "y", "1");
+                        scale_z = get_attr_or(inner, "z", "1");
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref e)) if e.local_name().as_ref() == b"scaledSolid" => break,
+            Ok(Event::Eof) => break,
+            _ => {}
+        }
+    }
+
+    Ok(ScaledSolidDef {
+        name,
+        solid_ref,
+        scale_x,
+        scale_y,
+        scale_z,
+    })
+}
 
 fn read_boolean_solid_body(
     reader: &mut Reader<&[u8]>,

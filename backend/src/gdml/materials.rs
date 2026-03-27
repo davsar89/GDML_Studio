@@ -918,6 +918,21 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::Scaled(ss) => {
+                let mut elem = BytesStart::new("scaledSolid");
+                elem.push_attribute(("name", ss.name.as_str()));
+                writer.write_event(Event::Start(elem))?;
+                let mut sref = BytesStart::new("solidref");
+                sref.push_attribute(("ref", ss.solid_ref.as_str()));
+                writer.write_event(Event::Empty(sref))?;
+                let mut scale = BytesStart::new("scale");
+                scale.push_attribute(("name", format!("{}_scale", ss.name).as_str()));
+                scale.push_attribute(("x", ss.scale_x.as_str()));
+                scale.push_attribute(("y", ss.scale_y.as_str()));
+                scale.push_attribute(("z", ss.scale_z.as_str()));
+                writer.write_event(Event::Empty(scale))?;
+                writer.write_event(Event::End(BytesEnd::new("scaledSolid")))?;
+            }
             Solid::Boolean(bs) => {
                 let tag_name = match bs.operation {
                     BooleanOp::Subtraction => "subtraction",
