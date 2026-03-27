@@ -1,7 +1,11 @@
 pub mod box_mesh;
 pub mod cone_mesh;
 pub mod cut_tube_mesh;
+pub mod elcone_mesh;
 pub mod ellipsoid_mesh;
+pub mod eltube_mesh;
+pub mod hype_mesh;
+pub mod paraboloid_mesh;
 pub mod polyhedra_mesh;
 pub mod polycone_mesh;
 pub mod sphere_mesh;

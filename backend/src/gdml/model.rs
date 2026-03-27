@@ -139,6 +139,13 @@ pub enum Solid {
     Polyhedra(PolyhedraSolid),
     Tessellated(TessellatedSolid),
     Ellipsoid(EllipsoidSolid),
+    Eltube(EltubeSolid),
+    Tet(TetSolid),
+    GenericPolycone(GenericPolyconeSolid),
+    Hype(HypeSolid),
+    Elcone(ElconeSolid),
+    Paraboloid(ParaboloidSolid),
+    GenericPolyhedra(GenericPolyhedraSolid),
     Boolean(BooleanSolid),
 }
 
@@ -160,6 +167,13 @@ impl Solid {
             Solid::Polyhedra(s) => &s.name,
             Solid::Tessellated(s) => &s.name,
             Solid::Ellipsoid(s) => &s.name,
+            Solid::Eltube(s) => &s.name,
+            Solid::Tet(s) => &s.name,
+            Solid::GenericPolycone(s) => &s.name,
+            Solid::Hype(s) => &s.name,
+            Solid::Elcone(s) => &s.name,
+            Solid::Paraboloid(s) => &s.name,
+            Solid::GenericPolyhedra(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -394,6 +408,82 @@ pub struct EllipsoidSolid {
     pub zcut1: Option<String>,
     pub zcut2: Option<String>,
     pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EltubeSolid {
+    pub name: String,
+    pub dx: String,
+    pub dy: String,
+    pub dz: String,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TetSolid {
+    pub name: String,
+    pub vertex1: String,
+    pub vertex2: String,
+    pub vertex3: String,
+    pub vertex4: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RZPoint {
+    pub r: String,
+    pub z: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenericPolyconeSolid {
+    pub name: String,
+    pub startphi: Option<String>,
+    pub deltaphi: Option<String>,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+    pub rzpoints: Vec<RZPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HypeSolid {
+    pub name: String,
+    pub rmin: Option<String>,
+    pub rmax: String,
+    pub inst: Option<String>,
+    pub outst: Option<String>,
+    pub z: String,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ElconeSolid {
+    pub name: String,
+    pub dx: String,
+    pub dy: String,
+    pub zmax: String,
+    pub zcut: String,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParaboloidSolid {
+    pub name: String,
+    pub rlo: String,
+    pub rhi: String,
+    pub dz: String,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GenericPolyhedraSolid {
+    pub name: String,
+    pub startphi: Option<String>,
+    pub deltaphi: Option<String>,
+    pub numsides: String,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+    pub rzpoints: Vec<RZPoint>,
 }
 
 // ─── Structure Section ───────────────────────────────────────────────────────

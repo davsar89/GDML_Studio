@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
-use super::primitives::{box_mesh, cone_mesh, cut_tube_mesh, ellipsoid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, xtru_mesh};
+use super::primitives::{box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, xtru_mesh};
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
@@ -82,6 +82,13 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::Polyhedra(s) => tessellate_polyhedra_solid(s, engine),
         Solid::Tessellated(s) => tessellate_tessellated_solid(s, engine),
         Solid::Ellipsoid(s) => tessellate_ellipsoid_solid(s, engine, segments),
+        Solid::Eltube(s) => tessellate_eltube_solid(s, engine, segments),
+        Solid::Tet(s) => tessellate_tet_solid(s, engine),
+        Solid::GenericPolycone(s) => tessellate_generic_polycone_solid(s, engine, segments),
+        Solid::Hype(s) => tessellate_hype_solid(s, engine, segments),
+        Solid::Elcone(s) => tessellate_elcone_solid(s, engine, segments),
+        Solid::Paraboloid(s) => tessellate_paraboloid_solid(s, engine, segments),
+        Solid::GenericPolyhedra(s) => tessellate_generic_polyhedra_solid(s, engine),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
 }
@@ -601,6 +608,99 @@ fn tessellate_ellipsoid_solid(
     ))
 }
 
+fn tessellate_eltube_solid(
+    s: &EltubeSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let dx = resolve_with_lunit(engine, &s.dx, lunit);
+    let dy = resolve_with_lunit(engine, &s.dy, lunit);
+    let dz = resolve_with_lunit(engine, &s.dz, lunit);
+    Ok(eltube_mesh::tessellate_eltube(dx, dy, dz, segments))
+}
+
+fn tessellate_tet_solid(s: &TetSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
+    let lookup = |name: &str| -> Result<[f64; 3]> {
+        engine
+            .position_values
+            .get(name)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("Tet vertex '{}' not found in defines", name))
+    };
+
+    let v1 = lookup(&s.vertex1)?;
+    let v2 = lookup(&s.vertex2)?;
+    let v3 = lookup(&s.vertex3)?;
+    let v4 = lookup(&s.vertex4)?;
+
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut indices = Vec::new();
+
+    // Helper to compute face normal and emit a triangle
+    let mut add_face = |a: [f64; 3], b: [f64; 3], c: [f64; 3]| {
+        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let nx = e1[1] * e2[2] - e1[2] * e2[1];
+        let ny = e1[2] * e2[0] - e1[0] * e2[2];
+        let nz = e1[0] * e2[1] - e1[1] * e2[0];
+        let len = (nx * nx + ny * ny + nz * nz).sqrt();
+        let (nx, ny, nz) = if len > 1e-12 {
+            (nx / len, ny / len, nz / len)
+        } else {
+            (0.0, 0.0, 1.0)
+        };
+
+        let base = (positions.len() / 3) as u32;
+        for v in &[a, b, c] {
+            positions.push(v[0] as f32);
+            positions.push(v[1] as f32);
+            positions.push(v[2] as f32);
+            normals.push(nx as f32);
+            normals.push(ny as f32);
+            normals.push(nz as f32);
+        }
+        indices.push(base);
+        indices.push(base + 1);
+        indices.push(base + 2);
+    };
+
+    // 4 faces of the tetrahedron with consistent outward winding
+    // Compute centroid to orient normals outward
+    let cx = (v1[0] + v2[0] + v3[0] + v4[0]) / 4.0;
+    let cy = (v1[1] + v2[1] + v3[1] + v4[1]) / 4.0;
+    let cz = (v1[2] + v2[2] + v3[2] + v4[2]) / 4.0;
+
+    let faces: [[usize; 3]; 4] = [[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
+    let verts = [v1, v2, v3, v4];
+
+    for face in &faces {
+        let a = verts[face[0]];
+        let b = verts[face[1]];
+        let c = verts[face[2]];
+
+        // Check if normal points away from centroid; if not, flip winding
+        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+        let nx = e1[1] * e2[2] - e1[2] * e2[1];
+        let ny = e1[2] * e2[0] - e1[0] * e2[2];
+        let nz = e1[0] * e2[1] - e1[1] * e2[0];
+
+        // Dot with vector from centroid to face
+        let to_face = [a[0] - cx, a[1] - cy, a[2] - cz];
+        let dot = nx * to_face[0] + ny * to_face[1] + nz * to_face[2];
+
+        if dot >= 0.0 {
+            add_face(a, b, c);
+        } else {
+            add_face(a, c, b);
+        }
+    }
+
+    Ok(TriangleMesh { positions, normals, indices })
+}
+
 fn tessellate_polycone_solid(
     s: &PolyconeSolid,
     engine: &EvalEngine,
@@ -627,6 +727,106 @@ fn tessellate_polycone_solid(
 
     Ok(polycone_mesh::tessellate_polycone(
         &planes, startphi, deltaphi, segments,
+    ))
+}
+
+fn tessellate_generic_polycone_solid(
+    s: &GenericPolyconeSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let deltaphi = match &s.deltaphi {
+        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        None => 2.0 * PI,
+    };
+
+    // Convert (r,z) pairs to (z, rmin=0, rmax=r) planes
+    let planes: Vec<(f64, f64, f64)> = s
+        .rzpoints
+        .iter()
+        .map(|rz| {
+            let r = resolve_with_lunit(engine, &rz.r, lunit);
+            let z = resolve_with_lunit(engine, &rz.z, lunit);
+            (z, 0.0, r)
+        })
+        .collect();
+
+    Ok(polycone_mesh::tessellate_polycone(
+        &planes, startphi, deltaphi, segments,
+    ))
+}
+
+fn tessellate_hype_solid(
+    s: &HypeSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
+    let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
+    let inst = units::angle_to_rad(resolve_opt(engine, &s.inst), aunit);
+    let outst = units::angle_to_rad(resolve_opt(engine, &s.outst), aunit);
+    let z = resolve_with_lunit(engine, &s.z, lunit);
+    let hz = z * 0.5; // Geant4 convention: z is full length, halved for constructor
+    Ok(hype_mesh::tessellate_hype(rmin, rmax, inst, outst, hz, segments))
+}
+
+fn tessellate_elcone_solid(
+    s: &ElconeSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    // dx, dy are dimensionless ratios — NOT scaled by lunit
+    let dx = resolve(engine, &s.dx);
+    let dy = resolve(engine, &s.dy);
+    let zmax = resolve_with_lunit(engine, &s.zmax, lunit);
+    let zcut = resolve_with_lunit(engine, &s.zcut, lunit);
+    Ok(elcone_mesh::tessellate_elcone(dx, dy, zmax, zcut, segments))
+}
+
+fn tessellate_paraboloid_solid(
+    s: &ParaboloidSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let rlo = resolve_with_lunit(engine, &s.rlo, lunit);
+    let rhi = resolve_with_lunit(engine, &s.rhi, lunit);
+    let dz = resolve_with_lunit(engine, &s.dz, lunit);
+    Ok(paraboloid_mesh::tessellate_paraboloid(rlo, rhi, dz, segments))
+}
+
+fn tessellate_generic_polyhedra_solid(
+    s: &GenericPolyhedraSolid,
+    engine: &EvalEngine,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let deltaphi = match &s.deltaphi {
+        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        None => 2.0 * PI,
+    };
+    let numsides = resolve(engine, &s.numsides) as u32;
+
+    // Convert (r,z) pairs to (z, rmin=0, rmax=r) planes
+    let planes: Vec<(f64, f64, f64)> = s
+        .rzpoints
+        .iter()
+        .map(|rz| {
+            let r = resolve_with_lunit(engine, &rz.r, lunit);
+            let z = resolve_with_lunit(engine, &rz.z, lunit);
+            (z, 0.0, r)
+        })
+        .collect();
+
+    Ok(polyhedra_mesh::tessellate_polyhedra(
+        &planes, startphi, deltaphi, numsides,
     ))
 }
 

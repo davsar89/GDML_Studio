@@ -22,15 +22,15 @@ Reference: `backend/reference/geant4/G4GDMLReadSolids.cc`
 
 ## Tier 2 - Common
 7. [x] **Ellipsoid** - Ellipsoid with z-cuts (ax, ay, az, zcut1, zcut2)
-8. [ ] **Eltube** - Elliptical tube (dx, dy, dz)
-9. [ ] **Tet** - Tetrahedron (4 vertex positions)
-10. [ ] **GenericPolycone** - Polycone from (r,z) pairs
-11. [ ] **Hype** - Hyperbolic tube (rmin, rmax, inst, outst, z)
+8. [x] **Eltube** - Elliptical tube (dx, dy, dz)
+9. [x] **Tet** - Tetrahedron (4 vertex positions)
+10. [x] **GenericPolycone** - Polycone from (r,z) pairs
+11. [x] **Hype** - Hyperbolic tube (rmin, rmax, inst, outst, z)
 
 ## Tier 3 - Moderate Use
-12. [ ] **Elcone** - Elliptical cone (dx, dy, zmax, zcut)
-13. [ ] **Paraboloid** - Parabolic solid (rlo, rhi, dz)
-14. [ ] **GenericPolyhedra** - Polyhedra from (r,z) pairs
+12. [x] **Elcone** - Elliptical cone (dx, dy, zmax, zcut)
+13. [x] **Paraboloid** - Parabolic solid (rlo, rhi, dz)
+14. [x] **GenericPolyhedra** - Polyhedra from (r,z) pairs
 15. [ ] **Arb8/GenTrap** - Arbitrary 8-vertex solid
 16. [x] **Tessellated** - Triangular/quad facet solid
 

@@ -562,6 +562,120 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::GenericPolyhedra(gp) => {
+                let mut elem = BytesStart::new("genericPolyhedra");
+                elem.push_attribute(("name", gp.name.as_str()));
+                if let Some(ref v) = gp.startphi {
+                    elem.push_attribute(("startphi", v.as_str()));
+                }
+                if let Some(ref v) = gp.deltaphi {
+                    elem.push_attribute(("deltaphi", v.as_str()));
+                }
+                elem.push_attribute(("numsides", gp.numsides.as_str()));
+                if let Some(ref u) = gp.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = gp.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Start(elem))?;
+                for rz in &gp.rzpoints {
+                    let mut rze = BytesStart::new("rzpoint");
+                    rze.push_attribute(("r", rz.r.as_str()));
+                    rze.push_attribute(("z", rz.z.as_str()));
+                    writer.write_event(Event::Empty(rze))?;
+                }
+                writer.write_event(Event::End(BytesEnd::new("genericPolyhedra")))?;
+            }
+            Solid::Paraboloid(p) => {
+                let mut elem = BytesStart::new("paraboloid");
+                elem.push_attribute(("name", p.name.as_str()));
+                elem.push_attribute(("rlo", p.rlo.as_str()));
+                elem.push_attribute(("rhi", p.rhi.as_str()));
+                elem.push_attribute(("dz", p.dz.as_str()));
+                if let Some(ref u) = p.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
+            Solid::Elcone(e) => {
+                let mut elem = BytesStart::new("elcone");
+                elem.push_attribute(("name", e.name.as_str()));
+                elem.push_attribute(("dx", e.dx.as_str()));
+                elem.push_attribute(("dy", e.dy.as_str()));
+                elem.push_attribute(("zmax", e.zmax.as_str()));
+                elem.push_attribute(("zcut", e.zcut.as_str()));
+                if let Some(ref u) = e.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
+            Solid::Hype(h) => {
+                let mut elem = BytesStart::new("hype");
+                elem.push_attribute(("name", h.name.as_str()));
+                if let Some(ref v) = h.rmin {
+                    elem.push_attribute(("rmin", v.as_str()));
+                }
+                elem.push_attribute(("rmax", h.rmax.as_str()));
+                if let Some(ref v) = h.inst {
+                    elem.push_attribute(("inst", v.as_str()));
+                }
+                if let Some(ref v) = h.outst {
+                    elem.push_attribute(("outst", v.as_str()));
+                }
+                elem.push_attribute(("z", h.z.as_str()));
+                if let Some(ref u) = h.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = h.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
+            Solid::GenericPolycone(gp) => {
+                let mut elem = BytesStart::new("genericPolycone");
+                elem.push_attribute(("name", gp.name.as_str()));
+                if let Some(ref v) = gp.startphi {
+                    elem.push_attribute(("startphi", v.as_str()));
+                }
+                if let Some(ref v) = gp.deltaphi {
+                    elem.push_attribute(("deltaphi", v.as_str()));
+                }
+                if let Some(ref u) = gp.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = gp.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Start(elem))?;
+                for rz in &gp.rzpoints {
+                    let mut rze = BytesStart::new("rzpoint");
+                    rze.push_attribute(("r", rz.r.as_str()));
+                    rze.push_attribute(("z", rz.z.as_str()));
+                    writer.write_event(Event::Empty(rze))?;
+                }
+                writer.write_event(Event::End(BytesEnd::new("genericPolycone")))?;
+            }
+            Solid::Tet(t) => {
+                let mut elem = BytesStart::new("tet");
+                elem.push_attribute(("name", t.name.as_str()));
+                elem.push_attribute(("vertex1", t.vertex1.as_str()));
+                elem.push_attribute(("vertex2", t.vertex2.as_str()));
+                elem.push_attribute(("vertex3", t.vertex3.as_str()));
+                elem.push_attribute(("vertex4", t.vertex4.as_str()));
+                writer.write_event(Event::Empty(elem))?;
+            }
+            Solid::Eltube(e) => {
+                let mut elem = BytesStart::new("eltube");
+                elem.push_attribute(("name", e.name.as_str()));
+                elem.push_attribute(("dx", e.dx.as_str()));
+                elem.push_attribute(("dy", e.dy.as_str()));
+                elem.push_attribute(("dz", e.dz.as_str()));
+                if let Some(ref u) = e.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
             Solid::Polyhedra(ph) => {
                 let mut elem = BytesStart::new("polyhedra");
                 elem.push_attribute(("name", ph.name.as_str()));
