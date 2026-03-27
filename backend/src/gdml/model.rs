@@ -148,6 +148,7 @@ pub enum Solid {
     GenericPolyhedra(GenericPolyhedraSolid),
     Arb8(Arb8Solid),
     TwistedTubs(TwistedTubsSolid),
+    TwistedBox(TwistedBoxSolid),
     Boolean(BooleanSolid),
 }
 
@@ -178,6 +179,7 @@ impl Solid {
             Solid::GenericPolyhedra(s) => &s.name,
             Solid::Arb8(s) => &s.name,
             Solid::TwistedTubs(s) => &s.name,
+            Solid::TwistedBox(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -521,6 +523,17 @@ pub struct TwistedTubsSolid {
     pub endouterrad: String,
     pub zlen: String,
     pub phi: Option<String>,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwistedBoxSolid {
+    pub name: String,
+    pub phi_twist: String,
+    pub x: String,
+    pub y: String,
+    pub z: String,
     pub aunit: Option<String>,
     pub lunit: Option<String>,
 }

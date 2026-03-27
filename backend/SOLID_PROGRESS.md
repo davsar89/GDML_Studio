@@ -36,7 +36,7 @@ Reference: `backend/reference/geant4/G4GDMLReadSolids.cc`
 
 ## Tier 4 - Rare / Specialized
 17. [x] **TwistedTubs** - Twisted tube
-18. [ ] **TwistedBox** - Twisted box
+18. [x] **TwistedBox** - Twisted box
 19. [ ] **TwistedTrap** - Twisted trapezoid
 20. [ ] **TwistedTrd** - Twisted trd
 21. [ ] **ScaledSolid** - Scale transform on existing solid

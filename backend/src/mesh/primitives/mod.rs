@@ -14,5 +14,6 @@ pub mod torus_mesh;
 pub mod trap_mesh;
 pub mod trd_mesh;
 pub mod tube_mesh;
+pub mod twisted_box_mesh;
 pub mod twisted_tubs_mesh;
 pub mod xtru_mesh;

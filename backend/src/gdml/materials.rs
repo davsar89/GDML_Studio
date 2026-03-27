@@ -839,6 +839,21 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::TwistedBox(t) => {
+                let mut elem = BytesStart::new("twistedbox");
+                elem.push_attribute(("name", t.name.as_str()));
+                elem.push_attribute(("PhiTwist", t.phi_twist.as_str()));
+                elem.push_attribute(("x", t.x.as_str()));
+                elem.push_attribute(("y", t.y.as_str()));
+                elem.push_attribute(("z", t.z.as_str()));
+                if let Some(ref u) = t.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = t.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
             Solid::Arb8(a) => {
                 let mut elem = BytesStart::new("arb8");
                 elem.push_attribute(("name", a.name.as_str()));
