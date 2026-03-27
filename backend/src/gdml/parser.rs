@@ -146,6 +146,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"twistedtrap" if section == Section::Solids => {
                         parse_twisted_trap_solid(e, &mut solids);
                     }
+                    b"twistedtrd" if section == Section::Solids => {
+                        parse_twisted_trd_solid(e, &mut solids);
+                    }
                     b"polycone" if section == Section::Solids => {
                         let attrs = extract_polycone_attrs(e);
                         let solid = read_polycone_body(&mut reader, attrs)?;
@@ -298,6 +301,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"twistedtrap" if section == Section::Solids => {
                         parse_twisted_trap_solid(e, &mut solids);
+                    }
+                    b"twistedtrd" if section == Section::Solids => {
+                        parse_twisted_trd_solid(e, &mut solids);
                     }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -725,6 +731,20 @@ fn parse_paraboloid_solid(e: &BytesStart, solids: &mut SolidSection) {
         rlo: get_attr_or(e, "rlo", "0"),
         rhi: get_attr_or(e, "rhi", "0"),
         dz: get_attr_or(e, "dz", "0"),
+        lunit: get_attr(e, "lunit"),
+    }));
+}
+
+fn parse_twisted_trd_solid(e: &BytesStart, solids: &mut SolidSection) {
+    solids.solids.push(Solid::TwistedTrd(TwistedTrdSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        phi_twist: get_attr_or(e, "PhiTwist", "0"),
+        x1: get_attr_or(e, "x1", "0"),
+        x2: get_attr_or(e, "x2", "0"),
+        y1: get_attr_or(e, "y1", "0"),
+        y2: get_attr_or(e, "y2", "0"),
+        z: get_attr_or(e, "z", "0"),
+        aunit: get_attr(e, "aunit"),
         lunit: get_attr(e, "lunit"),
     }));
 }

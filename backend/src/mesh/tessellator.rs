@@ -93,6 +93,7 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::TwistedTubs(s) => tessellate_twisted_tubs_solid(s, engine, segments),
         Solid::TwistedBox(s) => tessellate_twisted_box_solid(s, engine, segments),
         Solid::TwistedTrap(s) => tessellate_twisted_trap_solid(s, engine, segments),
+        Solid::TwistedTrd(s) => tessellate_twisted_trd_solid(s, engine, segments),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
 }
@@ -432,6 +433,25 @@ fn tessellate_twisted_trap_solid(
     let alph = units::angle_to_rad(resolve(engine, &s.alph), aunit);
     Ok(twisted_trap_mesh::tessellate_twisted_trap(
         phi_twist, z, theta, phi_angle, y1, x1, x2, y2, x3, x4, alph, segments,
+    ))
+}
+
+fn tessellate_twisted_trd_solid(
+    s: &TwistedTrdSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let phi_twist = units::angle_to_rad(resolve(engine, &s.phi_twist), aunit);
+    let x1 = resolve_with_lunit(engine, &s.x1, lunit);
+    let x2 = resolve_with_lunit(engine, &s.x2, lunit);
+    let y1 = resolve_with_lunit(engine, &s.y1, lunit);
+    let y2 = resolve_with_lunit(engine, &s.y2, lunit);
+    let z = resolve_with_lunit(engine, &s.z, lunit);
+    // TwistedTrd is TwistedTrap with theta=0, phi=0, alph=0, x1=x2=trd.x1, x3=x4=trd.x2
+    Ok(twisted_trap_mesh::tessellate_twisted_trap(
+        phi_twist, z, 0.0, 0.0, y1, x1, x1, y2, x2, x2, 0.0, segments,
     ))
 }
 

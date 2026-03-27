@@ -38,7 +38,7 @@ Reference: `backend/reference/geant4/G4GDMLReadSolids.cc`
 17. [x] **TwistedTubs** - Twisted tube
 18. [x] **TwistedBox** - Twisted box
 19. [x] **TwistedTrap** - Twisted trapezoid
-20. [ ] **TwistedTrd** - Twisted trd
+20. [x] **TwistedTrd** - Twisted trd
 21. [ ] **ScaledSolid** - Scale transform on existing solid
 22. [ ] **ReflectedSolid** - Mirror transform on existing solid
 23. [ ] **MultiUnion** - Multi-solid boolean union
