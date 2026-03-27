@@ -918,6 +918,26 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::MultiUnion(mu) => {
+                let mut elem = BytesStart::new("multiUnion");
+                elem.push_attribute(("name", mu.name.as_str()));
+                writer.write_event(Event::Start(elem))?;
+                for node in &mu.nodes {
+                    let node_elem = BytesStart::new("multiUnionNode");
+                    writer.write_event(Event::Start(node_elem))?;
+                    let mut sref = BytesStart::new("solid");
+                    sref.push_attribute(("ref", node.solid_ref.as_str()));
+                    writer.write_event(Event::Empty(sref))?;
+                    if let Some(ref pos) = node.position {
+                        write_placement_pos(writer, pos, "position", "positionref")?;
+                    }
+                    if let Some(ref rot) = node.rotation {
+                        write_placement_rot(writer, rot, "rotation", "rotationref")?;
+                    }
+                    writer.write_event(Event::End(BytesEnd::new("multiUnionNode")))?;
+                }
+                writer.write_event(Event::End(BytesEnd::new("multiUnion")))?;
+            }
             Solid::Reflected(rs) => {
                 let mut elem = BytesStart::new("reflectedSolid");
                 elem.push_attribute(("name", rs.name.as_str()));

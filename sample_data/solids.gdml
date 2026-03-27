@@ -38,6 +38,9 @@
   <position name="pos1003"  x="950" y="-125"/>
   <position name="pos1004"  x="1150" y="0"/>
   <position name="pos1005"  x="1150" y="125"/>
+  <position name="pos1006"  x="1150" y="-125"/>
+  <position name="munion_off1" x="30" y="0" z="0"/>
+  <position name="munion_off2" x="-30" y="0" z="0"/>
   <rotation name="rotatebyx" x="HALFPI"/>
   <rotation name="rotatebyall" x="HALFPI" y="PI" z="TWOPI"/>
   <position name="v0" unit="mm" x="10" y="10" z="0" />
@@ -155,6 +158,16 @@
   <twistedtrap name="ttwistedtrap" PhiTwist="1" z="10" Theta="1" Phi="2" y1="15" y2="15" x1="10" x2="10" x3="10" x4="10" Alph="1" aunit="rad" lunit="mm"/>
   <twistedtubs name="ttwistedtubs" endinnerrad="10" endouterrad="15" zlen="40" phi="90." twistedangle="1" aunit="degree" lunit="mm"/>
   <cutTube name="testcuttube" z="200.0" rmin="0" rmax="50.0" startphi="0" deltaphi="TWOPI" aunit="rad" lunit="mm" lowX="0" lowY="-0.5" lowZ="-1" highX="0" highY="0.5" highZ="1"/>
+  <multiUnion name="multiunion1">
+    <multiUnionNode name="mu_node1">
+      <solid ref="b100"/>
+      <positionref ref="munion_off1"/>
+    </multiUnionNode>
+    <multiUnionNode name="mu_node2">
+      <solid ref="s100"/>
+      <positionref ref="munion_off2"/>
+    </multiUnionNode>
+  </multiUnion>
   <reflectedSolid name="reflectedsphere1" solid="s100" sx="1" sy="1" sz="-1" rx="0" ry="0" rz="0" dx="0" dy="0" dz="0" lunit="mm" aunit="rad"/>
   <scaledSolid name="scaledbox1">
     <solidref ref="b100"/>
@@ -288,6 +301,10 @@
   <volume name="vol1005">
    <materialref ref="Water"/>
    <solidref ref="reflectedsphere1"/>
+  </volume>
+  <volume name="vol1006">
+   <materialref ref="Water"/>
+   <solidref ref="multiunion1"/>
   </volume>
   <volume name="World">
    <materialref ref="Air"/>
@@ -452,6 +469,12 @@
    <physvol>
      <volumeref ref="vol1005"/>
      <positionref ref="pos1005"/>
+     <rotationref ref="identity"/>
+   </physvol>
+
+   <physvol>
+     <volumeref ref="vol1006"/>
+     <positionref ref="pos1006"/>
      <rotationref ref="identity"/>
    </physvol>
   </volume>

@@ -153,6 +153,7 @@ pub enum Solid {
     TwistedTrd(TwistedTrdSolid),
     Scaled(ScaledSolidDef),
     Reflected(ReflectedSolidDef),
+    MultiUnion(MultiUnionSolid),
     Boolean(BooleanSolid),
 }
 
@@ -188,6 +189,7 @@ impl Solid {
             Solid::TwistedTrd(s) => &s.name,
             Solid::Scaled(s) => &s.name,
             Solid::Reflected(s) => &s.name,
+            Solid::MultiUnion(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -601,6 +603,19 @@ pub struct ReflectedSolidDef {
     pub dz: String,
     pub aunit: Option<String>,
     pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiUnionNode {
+    pub solid_ref: String,
+    pub position: Option<PlacementPos>,
+    pub rotation: Option<PlacementRot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MultiUnionSolid {
+    pub name: String,
+    pub nodes: Vec<MultiUnionNode>,
 }
 
 // ─── Structure Section ───────────────────────────────────────────────────────

@@ -41,4 +41,4 @@ Reference: `backend/reference/geant4/G4GDMLReadSolids.cc`
 20. [x] **TwistedTrd** - Twisted trd
 21. [x] **ScaledSolid** - Scale transform on existing solid
 22. [x] **ReflectedSolid** - Mirror transform on existing solid
-23. [ ] **MultiUnion** - Multi-solid boolean union
+23. [x] **MultiUnion** - Multi-solid boolean union

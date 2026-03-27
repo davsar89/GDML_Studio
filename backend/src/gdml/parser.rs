@@ -179,6 +179,11 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"reflectedSolid" if section == Section::Solids => {
                         parse_reflected_solid(e, &mut solids);
                     }
+                    b"multiUnion" if section == Section::Solids => {
+                        let name = get_attr(e, "name").unwrap_or_default();
+                        let mu = read_multiunion_body(&mut reader, name)?;
+                        solids.solids.push(Solid::MultiUnion(mu));
+                    }
                     b"scaledSolid" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
                         let ss = read_scaled_solid_body(&mut reader, name)?;
@@ -1425,6 +1430,133 @@ fn parse_reflected_solid(e: &BytesStart, solids: &mut SolidSection) {
         aunit: get_attr(e, "aunit"),
         lunit: get_attr(e, "lunit"),
     }));
+}
+
+fn read_multiunion_body(
+    reader: &mut Reader<&[u8]>,
+    name: String,
+) -> Result<MultiUnionSolid> {
+    let mut nodes = Vec::new();
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref inner)) => {
+                if inner.local_name().as_ref() == b"multiUnionNode" {
+                    let node = read_multiunion_node(reader)?;
+                    nodes.push(node);
+                }
+            }
+            Ok(Event::End(ref e)) if e.local_name().as_ref() == b"multiUnion" => break,
+            Ok(Event::Eof) => break,
+            _ => {}
+        }
+    }
+
+    Ok(MultiUnionSolid { name, nodes })
+}
+
+fn read_multiunion_node(reader: &mut Reader<&[u8]>) -> Result<MultiUnionNode> {
+    let mut solid_ref = String::new();
+    let mut position = None;
+    let mut rotation = None;
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"solid" => {
+                        // <solid ref="...">...</solid> or <solid>ref_name</solid>
+                        if let Some(r) = get_attr(inner, "ref") {
+                            solid_ref = r;
+                            // consume until </solid>
+                            let _ = reader.read_to_end(inner.to_end().name());
+                        } else {
+                            solid_ref = reader
+                                .read_text(inner.to_end().name())
+                                .unwrap_or_default()
+                                .trim()
+                                .to_string();
+                        }
+                    }
+                    b"position" => {
+                        position = Some(PlacementPos::Inline(Position {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                        let _ = reader.read_to_end(inner.to_end().name());
+                    }
+                    b"rotation" => {
+                        rotation = Some(PlacementRot::Inline(Rotation {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                        let _ = reader.read_to_end(inner.to_end().name());
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::Empty(ref inner)) => {
+                let tag = inner.local_name();
+                match tag.as_ref() {
+                    b"solid" => {
+                        solid_ref = get_attr(inner, "ref").unwrap_or_default();
+                    }
+                    b"solidref" => {
+                        solid_ref = get_attr(inner, "ref").unwrap_or_default();
+                    }
+                    b"position" => {
+                        position = Some(PlacementPos::Inline(Position {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                    }
+                    b"positionref" => {
+                        position = Some(PlacementPos::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                    }
+                    b"rotation" => {
+                        rotation = Some(PlacementRot::Inline(Rotation {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            x: get_attr(inner, "x"),
+                            y: get_attr(inner, "y"),
+                            z: get_attr(inner, "z"),
+                            unit: get_attr(inner, "unit"),
+                        }));
+                    }
+                    b"rotationref" => {
+                        rotation = Some(PlacementRot::Ref(
+                            get_attr(inner, "ref").unwrap_or_default(),
+                        ));
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref e)) if e.local_name().as_ref() == b"multiUnionNode" => break,
+            Ok(Event::Eof) => break,
+            _ => {}
+        }
+    }
+
+    Ok(MultiUnionNode {
+        solid_ref,
+        position,
+        rotation,
+    })
 }
 
 fn read_scaled_solid_body(
