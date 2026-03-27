@@ -149,6 +149,7 @@ pub enum Solid {
     Arb8(Arb8Solid),
     TwistedTubs(TwistedTubsSolid),
     TwistedBox(TwistedBoxSolid),
+    TwistedTrap(TwistedTrapSolid),
     Boolean(BooleanSolid),
 }
 
@@ -180,6 +181,7 @@ impl Solid {
             Solid::Arb8(s) => &s.name,
             Solid::TwistedTubs(s) => &s.name,
             Solid::TwistedBox(s) => &s.name,
+            Solid::TwistedTrap(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -534,6 +536,24 @@ pub struct TwistedBoxSolid {
     pub x: String,
     pub y: String,
     pub z: String,
+    pub aunit: Option<String>,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwistedTrapSolid {
+    pub name: String,
+    pub phi_twist: String,
+    pub z: String,
+    pub theta: String,
+    pub phi: String,
+    pub y1: String,
+    pub x1: String,
+    pub x2: String,
+    pub y2: String,
+    pub x3: String,
+    pub x4: String,
+    pub alph: String,
     pub aunit: Option<String>,
     pub lunit: Option<String>,
 }

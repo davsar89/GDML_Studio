@@ -839,6 +839,28 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
                 }
                 writer.write_event(Event::Empty(elem))?;
             }
+            Solid::TwistedTrap(t) => {
+                let mut elem = BytesStart::new("twistedtrap");
+                elem.push_attribute(("name", t.name.as_str()));
+                elem.push_attribute(("PhiTwist", t.phi_twist.as_str()));
+                elem.push_attribute(("z", t.z.as_str()));
+                elem.push_attribute(("Theta", t.theta.as_str()));
+                elem.push_attribute(("Phi", t.phi.as_str()));
+                elem.push_attribute(("y1", t.y1.as_str()));
+                elem.push_attribute(("x1", t.x1.as_str()));
+                elem.push_attribute(("x2", t.x2.as_str()));
+                elem.push_attribute(("y2", t.y2.as_str()));
+                elem.push_attribute(("x3", t.x3.as_str()));
+                elem.push_attribute(("x4", t.x4.as_str()));
+                elem.push_attribute(("Alph", t.alph.as_str()));
+                if let Some(ref u) = t.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
+                if let Some(ref u) = t.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(elem))?;
+            }
             Solid::TwistedBox(t) => {
                 let mut elem = BytesStart::new("twistedbox");
                 elem.push_attribute(("name", t.name.as_str()));
