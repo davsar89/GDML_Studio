@@ -35,7 +35,7 @@ Reference: `backend/reference/geant4/G4GDMLReadSolids.cc`
 16. [x] **Tessellated** - Triangular/quad facet solid
 
 ## Tier 4 - Rare / Specialized
-17. [ ] **TwistedTubs** - Twisted tube
+17. [x] **TwistedTubs** - Twisted tube
 18. [ ] **TwistedBox** - Twisted box
 19. [ ] **TwistedTrap** - Twisted trapezoid
 20. [ ] **TwistedTrd** - Twisted trd

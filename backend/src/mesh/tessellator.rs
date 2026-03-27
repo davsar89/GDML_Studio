@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
-use super::primitives::{arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, xtru_mesh};
+use super::primitives::{arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_tubs_mesh, xtru_mesh};
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
@@ -90,6 +90,7 @@ fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result
         Solid::Paraboloid(s) => tessellate_paraboloid_solid(s, engine, segments),
         Solid::GenericPolyhedra(s) => tessellate_generic_polyhedra_solid(s, engine),
         Solid::Arb8(s) => tessellate_arb8_solid(s, engine),
+        Solid::TwistedTubs(s) => tessellate_twisted_tubs_solid(s, engine, segments),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
     }
 }
@@ -373,6 +374,26 @@ fn tessellate_arb8_solid(s: &Arb8Solid, engine: &EvalEngine) -> Result<TriangleM
         [resolve_with_lunit(engine, &s.v8x, lunit), resolve_with_lunit(engine, &s.v8y, lunit)],
     ];
     Ok(arb8_mesh::tessellate_arb8(dz, vertices))
+}
+
+fn tessellate_twisted_tubs_solid(
+    s: &TwistedTubsSolid,
+    engine: &EvalEngine,
+    segments: u32,
+) -> Result<TriangleMesh> {
+    let lunit = s.lunit.as_deref().unwrap_or("mm");
+    let aunit = s.aunit.as_deref().unwrap_or("rad");
+    let rmin = resolve_opt_with_lunit(engine, &s.endinnerrad, lunit);
+    let rmax = resolve_with_lunit(engine, &s.endouterrad, lunit);
+    let zlen = resolve_with_lunit(engine, &s.zlen, lunit);
+    let twist_angle = units::angle_to_rad(resolve(engine, &s.twistedangle), aunit);
+    let phi = match &s.phi {
+        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        None => 2.0 * PI,
+    };
+    Ok(twisted_tubs_mesh::tessellate_twisted_tubs(
+        rmin, rmax, zlen, phi, twist_angle, segments,
+    ))
 }
 
 fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Result<TriangleMesh> {

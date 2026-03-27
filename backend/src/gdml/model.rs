@@ -147,6 +147,7 @@ pub enum Solid {
     Paraboloid(ParaboloidSolid),
     GenericPolyhedra(GenericPolyhedraSolid),
     Arb8(Arb8Solid),
+    TwistedTubs(TwistedTubsSolid),
     Boolean(BooleanSolid),
 }
 
@@ -176,6 +177,7 @@ impl Solid {
             Solid::Paraboloid(s) => &s.name,
             Solid::GenericPolyhedra(s) => &s.name,
             Solid::Arb8(s) => &s.name,
+            Solid::TwistedTubs(s) => &s.name,
             Solid::Boolean(s) => &s.name,
         }
     }
@@ -508,6 +510,18 @@ pub struct Arb8Solid {
     pub v7y: String,
     pub v8x: String,
     pub v8y: String,
+    pub lunit: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TwistedTubsSolid {
+    pub name: String,
+    pub twistedangle: String,
+    pub endinnerrad: Option<String>,
+    pub endouterrad: String,
+    pub zlen: String,
+    pub phi: Option<String>,
+    pub aunit: Option<String>,
     pub lunit: Option<String>,
 }
 
