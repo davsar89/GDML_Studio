@@ -303,6 +303,22 @@ fn validate_material_components(
     Ok(())
 }
 
+/// Warn about elements that are preserved verbatim on save but not interpreted
+/// or rendered (e.g. optical surfaces, `<userinfo>`, `<loop>`).
+fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
+    let mut tags: Vec<&str> = doc.raw_unknown.iter().map(|r| r.tag.as_str()).collect();
+    tags.sort_unstable();
+    tags.dedup();
+    tags.into_iter()
+        .map(|t| {
+            format!(
+                "<{}> elements are preserved on save but are not interpreted or rendered.",
+                t
+            )
+        })
+        .collect()
+}
+
 pub async fn upload_file(
     State(state): State<SharedState>,
     Json(req): Json<UploadFileRequest>,
@@ -337,6 +353,12 @@ pub async fn upload_file(
     let segments = req.segments.unwrap_or_else(config::mesh_segments);
     let (meshes, mut warnings) = tessellator::tessellate_all_solids(&doc.solids, &engine, segments)
         .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
+    // Surface non-fatal expression-evaluation failures (treated as 0) to the user.
+    warnings.extend(engine.take_warnings());
+    warnings.extend(raw_unknown_warnings(&doc));
+    if doc.setup.world_ref.is_empty() {
+        warnings.push("No world volume reference found (<setup>/<world> missing or empty); the geometry may not display.".to_string());
+    }
     warnings.extend(extra_warnings);
 
     let summary = json!({
@@ -417,6 +439,12 @@ pub async fn upload_files(
     let (meshes, mut warnings) =
         tessellator::tessellate_all_solids(&main_doc.solids, &engine, segments)
             .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
+    // Surface non-fatal expression-evaluation failures (treated as 0) to the user.
+    warnings.extend(engine.take_warnings());
+    warnings.extend(raw_unknown_warnings(&main_doc));
+    if main_doc.setup.world_ref.is_empty() {
+        warnings.push("No world volume reference found (<setup>/<world> missing or empty); the geometry may not display.".to_string());
+    }
     warnings.extend(merge_warnings);
 
     let summary = json!({
@@ -730,7 +758,17 @@ fn build_volume_node(
     // Expand replicavol into child nodes
     if let Some(ref replica) = vol.replica {
         if let Some(child_vol) = vol_map.get(replica.volume_ref.as_str()) {
-            let number = engine.resolve_value(&replica.number) as usize;
+            // Cap the replica count: it is attacker-controllable via the GDML and
+            // each replica allocates a SceneNode, so an absurd value would exhaust memory.
+            let resolved = engine.resolve_value(&replica.number);
+            let number = (resolved as usize).min(100_000);
+            if (resolved as usize) > number {
+                tracing::warn!(
+                    "replicavol number {} exceeds cap; clamped to {}",
+                    resolved,
+                    number
+                );
+            }
             let width_val = engine.resolve_value(&replica.width);
             let width_unit = replica.width_unit.as_deref().unwrap_or("mm");
             let width_mm = crate::gdml::units::length_to_mm(width_val, width_unit);
@@ -1264,6 +1302,7 @@ mod tests {
                 version: "1.0".to_string(),
                 world_ref: world_ref.to_string(),
             },
+            raw_unknown: Vec::new(),
         }
     }
 
@@ -1272,10 +1311,12 @@ mod tests {
             name: name.to_string(),
             formula: None,
             z: None,
+            state: None,
             density: None,
             density_ref: None,
             temperature: None,
             pressure: None,
+            mee: None,
             atom_value: None,
             components: Vec::new(),
         }

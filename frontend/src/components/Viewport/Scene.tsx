@@ -4,6 +4,9 @@ import MeshObject from './MeshObject';
 import { useAppStore } from '../../store';
 import type { SceneNode } from '../../store/types';
 
+/** Replace NaN/Inf with 0 so a malformed coordinate can't poison the scene graph. */
+const finite = (v: number): number => (Number.isFinite(v) ? v : 0);
+
 // Bright fallback palette for materials without density info
 const PALETTE = [
   '#64B5F6', // blue
@@ -94,8 +97,13 @@ function SceneNodeGroup({ node, depth, maxDepth }: { node: SceneNode; depth: num
   // GDML applies extrinsic rotations Rx·Ry·Rz → matrix Rz·Ry·Rx → Three.js Euler 'XYZ'
   const euler = useMemo(() => {
     const [rx, ry, rz] = node.rotation;
-    return new THREE.Euler(rx, ry, rz, 'XYZ');
+    return new THREE.Euler(finite(rx), finite(ry), finite(rz), 'XYZ');
   }, [node.rotation]);
+
+  const position = useMemo<[number, number, number]>(
+    () => [finite(node.position[0]), finite(node.position[1]), finite(node.position[2])],
+    [node.position],
+  );
 
   const color = materialColor(node.material_name, node.color, node.density);
 
@@ -103,7 +111,7 @@ function SceneNodeGroup({ node, depth, maxDepth }: { node: SceneNode; depth: num
   const skipMesh = node.is_world || !meshData || isHidden;
 
   return (
-    <group position={node.position as [number, number, number]} rotation={euler}>
+    <group position={position} rotation={euler}>
       {!skipMesh && meshData && (
         <MeshObject
           meshData={meshData}

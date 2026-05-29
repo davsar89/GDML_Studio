@@ -26,7 +26,7 @@ pub fn tessellate_paraboloid(rlo: f64, rhi: f64, dz: f64, segments: u32) -> Tria
         if r2 > 0.0 { r2.sqrt() } else { 0.0 }
     };
 
-    let phi_seg = segments;
+    let phi_seg = segments.max(3); // guard divisor against 0 (defense in depth)
     let z_seg = (segments / 2).max(2);
     let dphi = 2.0 * PI / phi_seg as f64;
     let dz_step = 2.0 * dz / z_seg as f64;

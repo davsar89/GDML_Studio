@@ -3,12 +3,23 @@ import type { DocumentSummary, MeshData, SceneNode, DefineValue, VolumeInfo, Mat
 const BASE = '';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${url}`, init);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `HTTP ${res.status}`);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${url}`, init);
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`Could not reach the backend (${detail}). Is it running?`);
   }
-  return res.json();
+  if (!res.ok) {
+    // The error body may be non-JSON or not an object; access `.error` defensively.
+    const body: unknown = await res.json().catch(() => null);
+    const apiError =
+      body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
+        ? (body as { error: string }).error
+        : null;
+    throw new Error(apiError ?? `HTTP ${res.status} ${res.statusText}`.trim());
+  }
+  return res.json() as Promise<T>;
 }
 
 export async function uploadFile(filename: string, content: string) {

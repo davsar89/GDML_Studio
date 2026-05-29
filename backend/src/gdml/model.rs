@@ -9,6 +9,18 @@ pub struct GdmlDocument {
     pub solids: SolidSection,
     pub structure: StructureSection,
     pub setup: SetupSection,
+    /// Elements the parser recognizes by name but does not interpret
+    /// (e.g. `<opticalsurface>`, `<skinsurface>`, `<userinfo>`, `<loop>`).
+    /// Stored verbatim so they survive a load → save round-trip instead of
+    /// being silently dropped.
+    #[serde(default)]
+    pub raw_unknown: Vec<RawElement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawElement {
+    pub tag: String,
+    pub xml: String,
 }
 
 // ─── Define Section ──────────────────────────────────────────────────────────
@@ -71,8 +83,25 @@ pub struct Rotation {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MaterialSection {
+    #[serde(default)]
+    pub isotopes: Vec<Isotope>,
     pub elements: Vec<Element>,
     pub materials: Vec<Material>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Isotope {
+    pub name: String,
+    pub n: Option<String>,
+    pub z: Option<String>,
+    pub atom_value: Option<String>,
+}
+
+/// A `<fraction n=".." ref=".."/>` entry used in isotope-defined elements.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Fraction {
+    pub n: String,
+    pub ref_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +110,9 @@ pub struct Element {
     pub formula: Option<String>,
     pub z: Option<String>,
     pub atom_value: Option<String>,
+    /// Isotope composition for elements defined via `<fraction>` children.
+    #[serde(default)]
+    pub fractions: Vec<Fraction>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,10 +126,16 @@ pub struct Material {
     pub name: String,
     pub formula: Option<String>,
     pub z: Option<String>,
+    /// Physical state: "solid" | "liquid" | "gas" (GDML `state` attribute).
+    #[serde(default)]
+    pub state: Option<String>,
     pub density: Option<Density>,
     pub density_ref: Option<String>,
     pub temperature: Option<PropertyValue>,
     pub pressure: Option<PropertyValue>,
+    /// Mean excitation energy (`<MEE value=".." unit=".."/>`).
+    #[serde(default)]
+    pub mee: Option<PropertyValue>,
     pub atom_value: Option<String>,
     pub components: Vec<MaterialComponent>,
 }

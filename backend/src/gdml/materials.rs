@@ -1,7 +1,7 @@
 use anyhow::Result;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use std::sync::LazyLock;
 
 use super::model::*;
@@ -31,7 +31,15 @@ pub struct NistMaterial {
 
 static NIST_MATERIALS: LazyLock<Vec<NistMaterial>> = LazyLock::new(|| {
     let data = include_str!("../../data/nist_materials.json");
-    serde_json::from_str(data).expect("Failed to parse nist_materials.json")
+    // Fall back to an empty database rather than panicking inside a request handler
+    // if the embedded JSON ever fails to parse.
+    match serde_json::from_str(data) {
+        Ok(materials) => materials,
+        Err(e) => {
+            tracing::error!("Failed to parse embedded nist_materials.json: {}", e);
+            Vec::new()
+        }
+    }
 });
 
 pub fn find_nist_material(name: &str) -> Option<&'static NistMaterial> {
@@ -88,6 +96,12 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     write_solids(&mut writer, &doc.solids)?;
     write_structure(&mut writer, &doc.structure)?;
     write_setup(&mut writer, &doc.setup)?;
+
+    // Re-emit recognized-but-uninterpreted elements verbatim (preserved on load).
+    for raw in &doc.raw_unknown {
+        writer.get_mut().write_all(b"\n  ")?;
+        writer.get_mut().write_all(raw.xml.as_bytes())?;
+    }
 
     // </gdml>
     writer.write_event(Event::End(BytesEnd::new("gdml")))?;
@@ -180,6 +194,26 @@ fn write_materials(
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("materials")))?;
 
+    for iso in &materials.isotopes {
+        let mut elem = BytesStart::new("isotope");
+        elem.push_attribute(("name", iso.name.as_str()));
+        if let Some(ref n) = iso.n {
+            elem.push_attribute(("N", n.as_str()));
+        }
+        if let Some(ref z) = iso.z {
+            elem.push_attribute(("Z", z.as_str()));
+        }
+        if let Some(ref av) = iso.atom_value {
+            writer.write_event(Event::Start(elem))?;
+            let mut atom = BytesStart::new("atom");
+            atom.push_attribute(("value", av.as_str()));
+            writer.write_event(Event::Empty(atom))?;
+            writer.write_event(Event::End(BytesEnd::new("isotope")))?;
+        } else {
+            writer.write_event(Event::Empty(elem))?;
+        }
+    }
+
     for el in &materials.elements {
         let mut elem = BytesStart::new("element");
         elem.push_attribute(("name", el.name.as_str()));
@@ -189,11 +223,19 @@ fn write_materials(
         if let Some(ref z) = el.z {
             elem.push_attribute(("Z", z.as_str()));
         }
-        if let Some(ref av) = el.atom_value {
+        if el.atom_value.is_some() || !el.fractions.is_empty() {
             writer.write_event(Event::Start(elem))?;
-            let mut atom = BytesStart::new("atom");
-            atom.push_attribute(("value", av.as_str()));
-            writer.write_event(Event::Empty(atom))?;
+            if let Some(ref av) = el.atom_value {
+                let mut atom = BytesStart::new("atom");
+                atom.push_attribute(("value", av.as_str()));
+                writer.write_event(Event::Empty(atom))?;
+            }
+            for fr in &el.fractions {
+                let mut fe = BytesStart::new("fraction");
+                fe.push_attribute(("n", fr.n.as_str()));
+                fe.push_attribute(("ref", fr.ref_name.as_str()));
+                writer.write_event(Event::Empty(fe))?;
+            }
             writer.write_event(Event::End(BytesEnd::new("element")))?;
         } else {
             writer.write_event(Event::Empty(elem))?;
@@ -208,6 +250,9 @@ fn write_materials(
         }
         if let Some(ref z) = mat.z {
             elem.push_attribute(("Z", z.as_str()));
+        }
+        if let Some(ref s) = mat.state {
+            elem.push_attribute(("state", s.as_str()));
         }
         writer.write_event(Event::Start(elem))?;
 
@@ -239,6 +284,14 @@ fn write_materials(
                 pe.push_attribute(("unit", u.as_str()));
             }
             writer.write_event(Event::Empty(pe))?;
+        }
+        if let Some(ref m) = mat.mee {
+            let mut me = BytesStart::new("MEE");
+            me.push_attribute(("value", m.value.as_str()));
+            if let Some(ref u) = m.unit {
+                me.push_attribute(("unit", u.as_str()));
+            }
+            writer.write_event(Event::Empty(me))?;
         }
         if let Some(ref av) = mat.atom_value {
             let mut atom = BytesStart::new("atom");

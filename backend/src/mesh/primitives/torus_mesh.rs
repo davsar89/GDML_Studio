@@ -21,6 +21,7 @@ pub fn tessellate_torus(
     let mut normals: Vec<f32> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
 
+    let segments = segments.max(3); // guard divisor against 0 (defense in depth)
     let ring_segs = segments;
     let tube_segs = segments;
     let full_ring = (deltaphi - 2.0 * PI).abs() < 1e-6;

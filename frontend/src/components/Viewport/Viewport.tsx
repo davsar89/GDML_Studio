@@ -31,6 +31,13 @@ function AutoFitCamera({ sceneGraph }: { sceneGraph: unknown }) {
       box.getSize(size);
 
       const maxDim = Math.max(size.x, size.y, size.z);
+      // Bail on a degenerate/non-finite box; otherwise camera near/far/position become NaN.
+      if (
+        !Number.isFinite(maxDim) || maxDim <= 0 ||
+        !Number.isFinite(center.x) || !Number.isFinite(center.y) || !Number.isFinite(center.z)
+      ) {
+        return;
+      }
       const fov = (camera as THREE.PerspectiveCamera).fov * (Math.PI / 180);
       const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.5;
 
@@ -77,9 +84,11 @@ function DynamicGrid() {
         maxCoord = Math.max(maxCoord, Math.abs(m.positions[i]));
       }
     }
-    // Round up to a nice number
+    // Round up to a nice number. Guard maxCoord==0 (all-zero meshes): log10(0) is
+    // -Infinity → Math.pow(10, -Infinity) === 0, which would hide the grid/axes.
     const grid = Math.pow(10, Math.ceil(Math.log10(maxCoord * 2)));
-    return { grid, axes: grid * 0.1 };
+    const safeGrid = Number.isFinite(grid) && grid > 0 ? grid : 2000;
+    return { grid: safeGrid, axes: safeGrid * 0.1 };
   }, [meshes]);
 
   return (

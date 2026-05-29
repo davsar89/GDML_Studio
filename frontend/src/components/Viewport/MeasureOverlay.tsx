@@ -103,8 +103,6 @@ function DashedLine({ start, end, color = LINE_COLOR, depthTest = false }: {
   color?: number;
   depthTest?: boolean;
 }) {
-  const lineRef = useRef<THREE.Line>(null);
-
   const geometry = useMemo(() => {
     const geom = new THREE.BufferGeometry();
     geom.setAttribute(
@@ -113,13 +111,6 @@ function DashedLine({ start, end, color = LINE_COLOR, depthTest = false }: {
     );
     return geom;
   }, [start[0], start[1], start[2], end[0], end[1], end[2]]);
-
-  // computeLineDistances is required for dashed material
-  useEffect(() => {
-    if (lineRef.current) {
-      lineRef.current.computeLineDistances();
-    }
-  }, [geometry]);
 
   const material = useMemo(
     () =>
@@ -133,10 +124,21 @@ function DashedLine({ start, end, color = LINE_COLOR, depthTest = false }: {
     [color, depthTest],
   );
 
+  // Memoize the Line itself (avoids allocating a new THREE.Line every render) and
+  // compute dash distances once per geometry/material change.
+  const line = useMemo(() => {
+    const ln = new THREE.Line(geometry, material);
+    ln.computeLineDistances();
+    return ln;
+  }, [geometry, material]);
+
+  // Dispose GPU resources when geometry/material are replaced or on unmount.
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(() => () => material.dispose(), [material]);
+
   return (
     <primitive
-      ref={lineRef}
-      object={new THREE.Line(geometry, material)}
+      object={line}
       raycast={noRaycast}
       userData={{ isMeasureTool: true }}
       renderOrder={998}

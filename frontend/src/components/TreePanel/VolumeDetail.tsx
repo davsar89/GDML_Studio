@@ -3,21 +3,8 @@ import { useAppStore } from '../../store';
 import type { NistMaterial } from '../../store/types';
 import * as api from '../../api/client';
 import { importNistMaterial } from '../../utils/nistImport';
+import { refreshMaterialsAndMeshes } from '../../utils/refresh';
 import SearchableCombobox from '../SearchableCombobox';
-
-async function refreshMaterialsAndMeshes() {
-  const matData = await api.getMaterials();
-  const store = useAppStore.getState();
-  store.setMaterials(matData.materials);
-  store.setElements(matData.elements);
-  const [meshData, structData] = await Promise.all([
-    api.getMeshes(),
-    api.getStructure(),
-  ]);
-  store.setMeshes(meshData.meshes);
-  store.setSceneGraph(meshData.scene_graph);
-  store.setVolumes(structData.volumes);
-}
 
 export default function VolumeDetail() {
   const selectedVolume = useAppStore((s) => s.selectedVolume);

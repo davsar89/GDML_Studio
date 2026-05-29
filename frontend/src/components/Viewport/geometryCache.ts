@@ -3,7 +3,14 @@ import type { MeshData } from '../../store/types';
 
 const cache = new Map<string, { geometry: THREE.BufferGeometry; refCount: number }>();
 
-export function getOrCreateGeometry(solidName: string, meshData: MeshData): THREE.BufferGeometry {
+/**
+ * Acquire the geometry for a solid, incrementing its reference count.
+ * MUST be balanced by exactly one `releaseGeometry(solidName)` call.
+ * Call this once per consumer lifetime (e.g. in a mount effect) — NOT in a
+ * React render body, or the ref count grows on every re-render and the
+ * geometry is never disposed.
+ */
+export function acquireGeometry(solidName: string, meshData: MeshData): THREE.BufferGeometry {
   const entry = cache.get(solidName);
   if (entry) {
     entry.refCount++;
@@ -17,6 +24,14 @@ export function getOrCreateGeometry(solidName: string, meshData: MeshData): THRE
 
   cache.set(solidName, { geometry: geo, refCount: 1 });
   return geo;
+}
+
+/**
+ * Read the cached geometry for a solid WITHOUT changing its reference count.
+ * Returns undefined if it has not been acquired yet. Safe to call during render.
+ */
+export function peekGeometry(solidName: string): THREE.BufferGeometry | undefined {
+  return cache.get(solidName)?.geometry;
 }
 
 export function releaseGeometry(solidName: string): void {

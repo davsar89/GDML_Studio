@@ -330,6 +330,116 @@ fn test_all_files_materials_non_empty() {
 }
 
 #[test]
+fn test_round_trip_preserves_material_fidelity_and_escaping() {
+    use gdml_studio_backend::gdml::materials::serialize_gdml;
+    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
+
+    let src = r#"<?xml version="1.0"?>
+<gdml>
+  <define/>
+  <materials>
+    <isotope name="U235" N="235" Z="92"><atom value="235.0439"/></isotope>
+    <isotope name="U238" N="238" Z="92"><atom value="238.0508"/></isotope>
+    <element name="enriched_U">
+      <fraction n="0.9" ref="U235"/>
+      <fraction n="0.1" ref="U238"/>
+    </element>
+    <material name="Air &amp; Stuff" state="gas">
+      <MEE value="85.7" unit="eV"/>
+      <D value="0.0012" unit="g/cm3"/>
+      <fraction n="1.0" ref="enriched_U"/>
+    </material>
+  </materials>
+  <solids>
+    <box name="WorldBox" x="100" y="100" z="100" lunit="mm"/>
+    <opticalsurface name="mirror" model="glisur" finish="polished" type="dielectric_metal" value="1.0">
+      <property name="REFLECTIVITY" ref="refl"/>
+    </opticalsurface>
+  </solids>
+  <structure>
+    <volume name="World"><materialref ref="Air &amp; Stuff"/><solidref ref="WorldBox"/></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+</gdml>"#;
+
+    let assert_doc = |doc: &gdml_studio_backend::gdml::model::GdmlDocument, ctx: &str| {
+        assert_eq!(doc.materials.isotopes.len(), 2, "{}: isotopes", ctx);
+        let enriched = doc
+            .materials
+            .elements
+            .iter()
+            .find(|e| e.name == "enriched_U")
+            .unwrap_or_else(|| panic!("{}: missing enriched_U element", ctx));
+        assert_eq!(enriched.fractions.len(), 2, "{}: element fractions", ctx);
+        let air = doc
+            .materials
+            .materials
+            .iter()
+            .find(|m| m.name == "Air & Stuff") // the "&amp;" must decode to a single "&"
+            .unwrap_or_else(|| panic!("{}: missing 'Air & Stuff' material", ctx));
+        assert_eq!(air.state.as_deref(), Some("gas"), "{}: state", ctx);
+        assert!(air.mee.is_some(), "{}: MEE", ctx);
+        assert!(
+            doc.raw_unknown.iter().any(|r| r.tag == "opticalsurface"),
+            "{}: <opticalsurface> not preserved",
+            ctx
+        );
+    };
+
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
+    assert_doc(&doc, "first parse");
+
+    // Serialize, then re-parse: every field must survive the round-trip.
+    let xml = serialize_gdml(&doc).unwrap();
+    assert!(
+        !xml.contains("&amp;amp;"),
+        "attribute double-escaping detected on save:\n{}",
+        xml
+    );
+    let doc2 = parse_gdml_from_bytes(xml.as_bytes(), "t2.gdml".to_string()).unwrap();
+    assert_doc(&doc2, "round-trip");
+}
+
+#[test]
+fn test_segments_extremes_produce_finite_bounded_meshes() {
+    // `segments` is request-controlled. 0 used to divide by zero (NaN geometry) in
+    // several primitives, and a huge value would blow up memory. The central clamp
+    // in tessellate_all_solids must make both cases finite and bounded.
+    let path = project_root().join("sample_data/solids.gdml"); // widest variety of solids
+    let doc = parse_gdml(&path).unwrap();
+    let mut engine = EvalEngine::new();
+    engine.evaluate_all(&doc.defines).unwrap();
+
+    for &segments in &[0u32, 1, 2, u32::MAX] {
+        let (meshes, _warnings) = tessellate_all_solids(&doc.solids, &engine, segments)
+            .unwrap_or_else(|e| panic!("tessellation failed for segments={}: {}", segments, e));
+
+        assert!(!meshes.is_empty(), "segments={}: expected meshes", segments);
+
+        let mut total_tris = 0usize;
+        for (name, mesh) in &meshes {
+            for &v in mesh.positions.iter().chain(mesh.normals.iter()) {
+                assert!(
+                    v.is_finite(),
+                    "segments={}: solid '{}' produced a non-finite value {}",
+                    segments,
+                    name,
+                    v
+                );
+            }
+            total_tris += mesh.triangle_count();
+        }
+        // With the clamp (max 512), even u32::MAX cannot explode the vertex count.
+        assert!(
+            total_tris < 10_000_000,
+            "segments={}: triangle count {} not bounded — clamp failed",
+            segments,
+            total_tris
+        );
+    }
+}
+
+#[test]
 fn test_mesh_geometry_validity() {
     // Verify that every mesh has valid geometry: positions divisible by 3,
     // normals divisible by 3, indices divisible by 3, and index values in range.

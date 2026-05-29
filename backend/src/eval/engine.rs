@@ -12,6 +12,11 @@ pub struct EvalEngine {
     pub position_values: HashMap<String, [f64; 3]>,
     pub rotation_values: HashMap<String, [f64; 3]>,
     pub length_symbols: HashSet<String>,
+    /// Non-fatal evaluation warnings collected during value resolution
+    /// (e.g. expressions that failed and were treated as 0). Behind a `Mutex`
+    /// rather than a `RefCell` so `EvalEngine` stays `Sync` (it lives inside
+    /// `AppState` behind a `tokio::RwLock`).
+    warnings: std::sync::Mutex<Vec<String>>,
 }
 
 impl EvalEngine {
@@ -21,6 +26,7 @@ impl EvalEngine {
             position_values: HashMap::new(),
             rotation_values: HashMap::new(),
             length_symbols: HashSet::new(),
+            warnings: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -30,6 +36,9 @@ impl EvalEngine {
         self.position_values.clear();
         self.rotation_values.clear();
         self.length_symbols.clear();
+        if let Ok(mut w) = self.warnings.lock() {
+            w.clear();
+        }
 
         // Collect all define entries for dependency analysis
         let mut entries: Vec<DefineEntry> = Vec::new();
@@ -154,16 +163,19 @@ impl EvalEngine {
                 .ok();
         }
 
-        // evalexpr uses ^ for power instead of ** - GDML doesn't use ** typically
-        // evalexpr uses "math::pi" etc but we've set pi as a variable
-
-        let result = eval_float_with_context(expr, &eval_context);
+        // Rewrite GDML/CLHEP conventions for evalexpr:
+        //  - bare math functions (sin, sqrt, …) live under the `math::` namespace
+        //  - `**` is power in some GDML; evalexpr spells power as `^`
+        // We use `eval_number_with_context` (not `eval_float_*`) so integer-valued
+        // results (e.g. "2*3", "360/8") are coerced to f64 instead of erroring.
+        let prepared = rewrite_math_functions(expr).replace("**", "^");
+        let result = eval_number_with_context(&prepared, &eval_context);
         match result {
             Ok(v) => Ok(v),
             Err(_) => {
-                // Try with some fixups for GDML patterns
-                let fixed = fix_gdml_expr(expr);
-                eval_float_with_context(&fixed, &eval_context)
+                // Try with some fixups for GDML patterns (e.g. "360.*deg" -> "360.0*deg")
+                let fixed = fix_gdml_expr(&prepared);
+                eval_number_with_context(&fixed, &eval_context)
                     .map_err(|e| anyhow::anyhow!("evalexpr error for '{}': {}", expr, e))
             }
         }
@@ -230,9 +242,30 @@ impl EvalEngine {
             Ok(v) => v,
             Err(e) => {
                 tracing::warn!("Failed to evaluate '{}': {} -- using 0.0", expr_str, e);
+                self.record_warning(format!(
+                    "Could not evaluate expression \"{}\"; treated as 0.",
+                    expr_str.trim()
+                ));
                 0.0
             }
         }
+    }
+
+    /// Record a non-fatal evaluation warning (deduplicated, capped to avoid flooding).
+    fn record_warning(&self, msg: String) {
+        if let Ok(mut warnings) = self.warnings.lock() {
+            if warnings.len() < 100 && !warnings.contains(&msg) {
+                warnings.push(msg);
+            }
+        }
+    }
+
+    /// Drain accumulated non-fatal evaluation warnings. Returns and clears the buffer.
+    pub fn take_warnings(&self) -> Vec<String> {
+        self.warnings
+            .lock()
+            .map(|mut w| std::mem::take(&mut *w))
+            .unwrap_or_default()
     }
 
     pub fn expression_uses_length_symbols(&self, expr: &str) -> bool {
@@ -295,4 +328,133 @@ fn fix_gdml_expr(expr: &str) -> String {
         }
     }
     result
+}
+
+/// Map a bare GDML/CLHEP math-function name to evalexpr's `math::` namespace.
+/// Returns `None` for names that are NOT namespaced in evalexpr (`floor`, `ceil`,
+/// `round`, `min`, `max`) or that aren't functions. Note GDML `log` is the natural
+/// logarithm (CLHEP), which is `math::ln` in evalexpr (`math::log` there is 2-arg).
+fn map_math_function(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "sin" => "math::sin",
+        "cos" => "math::cos",
+        "tan" => "math::tan",
+        "asin" => "math::asin",
+        "acos" => "math::acos",
+        "atan" => "math::atan",
+        "atan2" => "math::atan2",
+        "sinh" => "math::sinh",
+        "cosh" => "math::cosh",
+        "tanh" => "math::tanh",
+        "exp" => "math::exp",
+        "exp2" => "math::exp2",
+        "log" | "ln" => "math::ln",
+        "log2" => "math::log2",
+        "log10" => "math::log10",
+        "sqrt" => "math::sqrt",
+        "cbrt" => "math::cbrt",
+        "abs" => "math::abs",
+        "pow" => "math::pow",
+        "hypot" => "math::hypot",
+        _ => return None,
+    })
+}
+
+/// Rewrite bare math-function calls (`sin(...)`, `sqrt(...)`) to evalexpr's
+/// `math::` namespace. Only identifiers immediately followed by `(` are treated as
+/// calls, and identifiers already prefixed with `::` are left untouched, so this is
+/// idempotent and never touches variable names that merely look like a function.
+fn rewrite_math_functions(expr: &str) -> String {
+    let chars: Vec<char> = expr.chars().collect();
+    let mut out = String::with_capacity(expr.len() + 16);
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c.is_alphabetic() || c == '_' {
+            let start = i;
+            let mut ident = String::new();
+            ident.push(c);
+            i += 1;
+            while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                ident.push(chars[i]);
+                i += 1;
+            }
+            // Is the next non-space character a '(' (i.e. a function call)?
+            let mut j = i;
+            while j < chars.len() && chars[j] == ' ' {
+                j += 1;
+            }
+            let is_call = j < chars.len() && chars[j] == '(';
+            // Already namespaced (preceded by "::")? Then leave as-is.
+            let already_ns = start >= 2 && chars[start - 1] == ':' && chars[start - 2] == ':';
+            if is_call && !already_ns {
+                if let Some(mapped) = map_math_function(&ident) {
+                    out.push_str(mapped);
+                    continue;
+                }
+            }
+            out.push_str(&ident);
+        } else {
+            out.push(c);
+            i += 1;
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn integer_result_expressions_evaluate() {
+        let e = EvalEngine::new();
+        assert_eq!(e.eval_expr("2*3").unwrap(), 6.0);
+        assert_eq!(e.eval_expr("360/8").unwrap(), 45.0); // integer division
+        assert_eq!(e.eval_expr("10-1").unwrap(), 9.0);
+    }
+
+    #[test]
+    fn mixed_int_float_arithmetic_evaluates() {
+        let e = EvalEngine::new();
+        let v = e.eval_expr("2*pi").unwrap();
+        assert!((v - 2.0 * std::f64::consts::PI).abs() < 1e-9);
+    }
+
+    #[test]
+    fn bare_math_functions_evaluate() {
+        let e = EvalEngine::new();
+        assert!((e.eval_expr("sqrt(2)*2").unwrap() - 2.0 * std::f64::consts::SQRT_2).abs() < 1e-9);
+        assert!(e.eval_expr("sin(0)").unwrap().abs() < 1e-12);
+        assert!((e.eval_expr("cos(0)").unwrap() - 1.0).abs() < 1e-12);
+        assert!((e.eval_expr("abs(0-5)").unwrap() - 5.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn predefined_constants_resolve() {
+        let e = EvalEngine::new();
+        assert!((e.eval_expr("twopi/4").unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+        assert!((e.eval_expr("halfpi").unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+        assert!((e.eval_expr("90*deg").unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+    }
+
+    #[test]
+    fn undefined_symbol_records_warning_and_returns_zero() {
+        let e = EvalEngine::new();
+        assert_eq!(e.resolve_value("nonexistent_symbol_xyz * 2"), 0.0);
+        let w = e.take_warnings();
+        assert!(!w.is_empty(), "expected a warning for an undefined symbol");
+        // buffer should be drained
+        assert!(e.take_warnings().is_empty());
+    }
+
+    #[test]
+    fn rewrite_is_idempotent_and_targeted() {
+        assert_eq!(rewrite_math_functions("sin(x)+cos(y)"), "math::sin(x)+math::cos(y)");
+        assert_eq!(rewrite_math_functions("math::sin(x)"), "math::sin(x)");
+        // bare evalexpr builtins must NOT be namespaced
+        assert_eq!(rewrite_math_functions("max(1,2)"), "max(1,2)");
+        // a variable that merely looks like a function name is left alone
+        assert_eq!(rewrite_math_functions("sinphi*2"), "sinphi*2");
+    }
 }

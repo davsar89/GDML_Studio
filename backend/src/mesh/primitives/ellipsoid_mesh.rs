@@ -34,8 +34,8 @@ pub fn tessellate_ellipsoid(
     let theta_start = (zcut2 / cz).clamp(-1.0, 1.0).acos(); // top cut -> smaller theta
     let theta_end = (zcut1 / cz).clamp(-1.0, 1.0).acos(); // bottom cut -> larger theta
 
-    let phi_segs = segments;
-    let theta_segs = segments / 2;
+    let phi_segs = segments.max(3); // guard divisor against 0 (defense in depth)
+    let theta_segs = (segments / 2).max(2);
     let dphi = 2.0 * PI / phi_segs as f64;
     let dtheta = (theta_end - theta_start) / theta_segs as f64;
 

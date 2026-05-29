@@ -18,7 +18,9 @@ async fn main() {
     // API routes
     let api_router = api::routes::create_router(shared_state.clone());
 
-    // CORS restricted to localhost origins (Vite dev server + production)
+    // CORS restricted to localhost origins (Vite dev server + production).
+    // NOTE: this is a single-user localhost tool with no authentication; any local
+    // origin can drive the full (mutating) API against the one in-memory document.
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _| {
             if let Ok(s) = origin.to_str() {
@@ -55,6 +57,10 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], config::port()));
     tracing::info!("GDML Studio backend starting on http://{}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| {
+        panic!("Failed to bind {addr}: {e} (is the port already in use?)")
+    });
+    if let Err(e) = axum::serve(listener, app).await {
+        tracing::error!("Server stopped with error: {}", e);
+    }
 }

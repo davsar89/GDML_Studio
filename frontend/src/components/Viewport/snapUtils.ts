@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { SnapPoint } from '../../store/types';
 
-const _v = new THREE.Vector3();
 const _proj = new THREE.Vector3();
 
 interface SnapCandidate {

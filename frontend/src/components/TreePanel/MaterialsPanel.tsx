@@ -3,6 +3,7 @@ import { useAppStore } from '../../store';
 import type { MaterialInfo, ElementInfo, MaterialComponent, NistMaterial } from '../../store/types';
 import * as api from '../../api/client';
 import { importNistMaterial } from '../../utils/nistImport';
+import { refreshMaterials, refreshMaterialsAndMeshes } from '../../utils/refresh';
 
 export default function MaterialsPanel() {
   const materials = useAppStore((s) => s.materials);
@@ -442,7 +443,10 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
   }, []);
 
   useEffect(() => {
-    if (open) doSearch(search, category);
+    if (!open) return;
+    // Debounce so we don't fire an API request on every keystroke.
+    const t = setTimeout(() => doSearch(search, category), 250);
+    return () => clearTimeout(t);
   }, [open, search, category, doSearch]);
 
   const handleApply = async (nist: NistMaterial) => {
@@ -718,28 +722,6 @@ function generateDefaultMaterialName(
   return name;
 }
 
-async function refreshMaterials() {
-  const data = await api.getMaterials();
-  const store = useAppStore.getState();
-  store.setMaterials(data.materials);
-  store.setElements(data.elements);
-}
-
-async function refreshMaterialsAndMeshes() {
-  await refreshMaterials();
-  try {
-    const [meshData, structData] = await Promise.all([
-      api.getMeshes(),
-      api.getStructure(),
-    ]);
-    const store = useAppStore.getState();
-    store.setMeshes(meshData.meshes);
-    store.setSceneGraph(meshData.scene_graph);
-    store.setVolumes(structData.volumes);
-  } catch (e: unknown) {
-    console.warn('Refresh failed:', e);
-  }
-}
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 

@@ -12,7 +12,6 @@ export function useMeasureRaycast() {
   const { camera, gl, scene } = useThree();
   const mouseRef = useRef({ x: 0, y: 0 });
   const lastSnapRef = useRef<SnapPoint | null>(null);
-  const lastScreenRef = useRef({ x: 0, y: 0 });
   const lastHitMeshRef = useRef<THREE.Mesh | null>(null);
   const prevPendingRef = useRef<SnapPoint | null>(null);
 

@@ -14,7 +14,7 @@ pub fn tessellate_eltube(dx: f64, dy: f64, dz: f64, segments: u32) -> TriangleMe
         return TriangleMesh { positions, normals, indices };
     }
 
-    let seg = segments;
+    let seg = segments.max(3); // guard divisor against 0 (defense in depth)
     let dphi = 2.0 * PI / seg as f64;
 
     // Side wall: quads connecting bottom and top ellipse rings

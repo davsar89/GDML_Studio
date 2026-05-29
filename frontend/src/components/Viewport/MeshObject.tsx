@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { MeshData } from '../../store/types';
 import { useAppStore } from '../../store';
-import { getOrCreateGeometry, releaseGeometry } from './geometryCache';
+import { acquireGeometry, releaseGeometry, peekGeometry } from './geometryCache';
 
 interface Props {
   meshData: MeshData;
@@ -19,16 +19,24 @@ interface Props {
 export default function MeshObject({ meshData, color, selected, name, instanceId, solidName, depth, maxDepth }: Props) {
   const meshRef = useRef<THREE.Mesh>(null);
   const meshOpacity = useAppStore((s) => s.meshOpacity);
-  const geometry = getOrCreateGeometry(solidName, meshData);
+
+  // Acquire the shared geometry exactly once per (solidName, meshData) lifetime
+  // and release it once on unmount/change. Acquiring in an effect (not the render
+  // body) keeps the cache's reference count accurate so geometries get disposed.
+  const [geometry, setGeometry] = useState<THREE.BufferGeometry | undefined>(() =>
+    peekGeometry(solidName),
+  );
+  useEffect(() => {
+    // Acquire-on-mount; the single extra render to publish the geometry is intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setGeometry(acquireGeometry(solidName, meshData));
+    return () => { releaseGeometry(solidName); };
+  }, [solidName, meshData]);
 
   // Depth-weighted opacity: power curve so outer fades first, inner resists.
   // At 0% everything invisible, at 100% everything opaque.
   const depthFactor = maxDepth > 0 ? depth / maxDepth : 0;
   const effectiveOpacity = Math.pow(meshOpacity, 3 - 2 * depthFactor);
-
-  useEffect(() => {
-    return () => { releaseGeometry(solidName); };
-  }, [solidName]);
 
   const handleClick = (e: THREE.Event) => {
     if (useAppStore.getState().measureMode) return;
@@ -36,6 +44,10 @@ export default function MeshObject({ meshData, color, selected, name, instanceId
     e.stopPropagation?.();
     useAppStore.getState().setSelectedVolume(name);
   };
+
+  // Geometry is acquired in a mount effect; skip rendering until it is ready
+  // (at most one frame on first mount).
+  if (!geometry) return null;
 
   return (
     <mesh

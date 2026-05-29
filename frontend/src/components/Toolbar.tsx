@@ -47,9 +47,21 @@ function downloadFile(content: string, filename: string) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  // Defer cleanup: revoking the object URL synchronously after click() can abort
+  // the download in some browsers before it has started reading the blob.
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 0);
 }
+
+// Monotonic load counter: lets us discard results from a load that was superseded
+// by a newer one (the backend holds a single global document, so interleaved loads
+// would otherwise mix documents in the store).
+let loadSeq = 0;
 
 export default function Toolbar() {
   const loading = useAppStore((s) => s.loading);
@@ -69,6 +81,10 @@ export default function Toolbar() {
       if (!fileList || fileList.length === 0) return;
 
       const store = useAppStore.getState();
+      // Only the newest load is allowed to write to the store / toggle loading.
+      const mySeq = ++loadSeq;
+      const isCurrent = () => mySeq === loadSeq;
+
       store.setLoading(true);
       store.setError(null);
       store.setWarnings([]);
@@ -83,48 +99,44 @@ export default function Toolbar() {
         }
 
         let result: Awaited<ReturnType<typeof api.uploadFile>>;
-
         if (fileList.length === 1) {
-          // Single file — check if it references other files
           const name = fileList[0].name;
-          const content = fileMap[name];
-          const refs = findFileRefs(content);
-
-          if (refs.length > 0) {
-            // Auto-detect: prompt user (via warning) but still load what we can
-            result = await api.uploadFile(name, content);
-          } else {
-            result = await api.uploadFile(name, content);
-          }
+          result = await api.uploadFile(name, fileMap[name]);
         } else {
           // Multiple files — auto-detect main and use multi-upload
           const mainFile = detectMainFile(fileMap);
           result = await api.uploadFiles(fileMap, mainFile);
         }
+        if (!isCurrent()) return;
+
+        // Fetch everything for THIS load before touching the store, so a later
+        // failure can't leave the store with a half-updated (mismatched) document.
+        const meshData = await api.getMeshes();
+        if (!isCurrent()) return;
+        const defData = await api.getDefines();
+        if (!isCurrent()) return;
+        const structData = await api.getStructure();
+        if (!isCurrent()) return;
+        const matData = await api.getMaterials();
+        if (!isCurrent()) return;
 
         store.setSummary(result);
-        store.setWarnings(result.warnings);
-
-        const meshData = await api.getMeshes();
+        store.setWarnings(result.warnings ?? []);
         store.setMeshes(meshData.meshes);
         store.setSceneGraph(meshData.scene_graph);
-
-        const defData = await api.getDefines();
         store.setDefines(defData.defines);
-
-        const structData = await api.getStructure();
         store.setVolumes(structData.volumes);
-
-        // Fetch materials and elements into store
-        const matData = await api.getMaterials();
         store.setMaterials(matData.materials);
         store.setElements(matData.elements);
       } catch (e: unknown) {
+        if (!isCurrent()) return;
         const msg = e instanceof Error ? e.message : String(e);
         const names = Array.from(fileList).map((f) => f.name).join(', ');
+        // Discard any partial state from this failed load, then surface the error.
+        store.reset();
         store.setError(`Failed to load ${names}: ${msg}`);
       } finally {
-        store.setLoading(false);
+        if (isCurrent()) store.setLoading(false);
       }
     };
     input.click();

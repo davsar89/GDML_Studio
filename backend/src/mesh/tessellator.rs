@@ -14,6 +14,10 @@ pub fn tessellate_all_solids(
     engine: &EvalEngine,
     segments: u32,
 ) -> Result<(HashMap<String, TriangleMesh>, Vec<String>)> {
+    // Clamp the subdivision count to a safe range. `segments` comes straight from
+    // the request body; 0 would make `2*PI/segments` divide by zero (NaN geometry)
+    // and an unbounded value would blow up memory (sphere/torus are O(segments^2)).
+    let segments = segments.clamp(3, 512);
     let mut meshes = HashMap::new();
     let mut warnings = Vec::new();
 
@@ -214,15 +218,24 @@ fn scale_mesh(mesh: &TriangleMesh, sx: f64, sy: f64, sz: f64) -> TriangleMesh {
     let mut normals = mesh.normals.clone();
     let n_verts = positions.len() / 3;
 
+    // Guard against a zero scale component: dividing the normal transform by zero
+    // would yield NaN normals. The scaled geometry is degenerate at scale 0 either
+    // way, but we keep the normals finite by treating the divisor as 1.
+    let (dx, dy, dz) = (
+        if sx == 0.0 { 1.0 } else { sx },
+        if sy == 0.0 { 1.0 } else { sy },
+        if sz == 0.0 { 1.0 } else { sz },
+    );
+
     for i in 0..n_verts {
         positions[i * 3] = (positions[i * 3] as f64 * sx) as f32;
         positions[i * 3 + 1] = (positions[i * 3 + 1] as f64 * sy) as f32;
         positions[i * 3 + 2] = (positions[i * 3 + 2] as f64 * sz) as f32;
 
         // For non-uniform scaling, normals transform as (nx/sx, ny/sy, nz/sz)
-        let nx = normals[i * 3] as f64 / sx;
-        let ny = normals[i * 3 + 1] as f64 / sy;
-        let nz = normals[i * 3 + 2] as f64 / sz;
+        let nx = normals[i * 3] as f64 / dx;
+        let ny = normals[i * 3 + 1] as f64 / dy;
+        let nz = normals[i * 3 + 2] as f64 / dz;
         let len = (nx * nx + ny * ny + nz * nz).sqrt();
         if len > 1e-12 {
             normals[i * 3] = (nx / len) as f32;
@@ -846,7 +859,8 @@ fn tessellate_polyhedra_solid(s: &PolyhedraSolid, engine: &EvalEngine) -> Result
         Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
         None => 2.0 * PI,
     };
-    let numsides = resolve(engine, &s.numsides) as u32;
+    // Clamp sides: 0/1/2 are degenerate and an unbounded value blows up memory.
+    let numsides = (resolve(engine, &s.numsides) as u32).clamp(3, 512);
 
     let planes: Vec<(f64, f64, f64)> = s
         .zplanes
@@ -1189,7 +1203,8 @@ fn tessellate_generic_polyhedra_solid(
         Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
         None => 2.0 * PI,
     };
-    let numsides = resolve(engine, &s.numsides) as u32;
+    // Clamp sides: 0/1/2 are degenerate and an unbounded value blows up memory.
+    let numsides = (resolve(engine, &s.numsides) as u32).clamp(3, 512);
 
     // Convert (r,z) pairs to (z, rmin=0, rmax=r) planes
     let planes: Vec<(f64, f64, f64)> = s

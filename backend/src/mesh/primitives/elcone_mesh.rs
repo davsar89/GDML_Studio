@@ -25,7 +25,7 @@ pub fn tessellate_elcone(
     }
 
     let zcut = zcut.min(zmax);
-    let phi_seg = segments;
+    let phi_seg = segments.max(3); // guard divisor against 0 (defense in depth)
     let z_seg = (segments / 2).max(2);
     let dphi = 2.0 * PI / phi_seg as f64;
     let dz = 2.0 * zcut / z_seg as f64;

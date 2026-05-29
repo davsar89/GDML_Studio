@@ -26,6 +26,7 @@ pub fn tessellate_cut_tube(
     let mut normals: Vec<f32> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
 
+    let segments = segments.max(3); // guard divisor against 0 (defense in depth)
     let hz = z / 2.0;
     let full_circle = (deltaphi - 2.0 * PI).abs() < 1e-6;
 

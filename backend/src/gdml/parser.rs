@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::Reader;
+use quick_xml::Writer;
 use std::path::Path;
 
 use super::model::*;
@@ -24,6 +25,8 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
     let mut solids = SolidSection::default();
     let mut structure = StructureSection::default();
     let mut setup = None;
+    // Elements recognized by name but not interpreted; preserved verbatim.
+    let mut raw_unknown: Vec<RawElement> = Vec::new();
 
     #[derive(Debug, PartialEq)]
     enum Section {
@@ -77,6 +80,10 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"rotation" if section == Section::Define => {
                         parse_rotation(e, &mut defines);
+                    }
+                    b"isotope" if section == Section::Materials => {
+                        let attrs = extract_isotope_attrs(e);
+                        read_isotope_body(&mut reader, attrs, &mut materials)?;
                     }
                     b"element" if section == Section::Materials => {
                         let attrs = extract_element_attrs(e);
@@ -210,6 +217,14 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let vol_name = get_attr(e, "name").unwrap_or_default();
                         read_volume_body(&mut reader, vol_name, &mut structure)?;
                     }
+                    // Recognized-but-uninterpreted constructs: preserve verbatim so
+                    // they survive a load -> save round-trip (and warn the user).
+                    b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
+                    | b"loop" => {
+                        let raw_tag = String::from_utf8_lossy(tag).to_string();
+                        let xml = capture_raw_subtree(&mut reader, e.clone().into_owned())?;
+                        raw_unknown.push(RawElement { tag: raw_tag, xml });
+                    }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
                         let version = get_attr(e, "version").unwrap_or_else(|| "1.0".to_string());
@@ -244,6 +259,14 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"rotation" if section == Section::Define => {
                         parse_rotation(e, &mut defines);
                     }
+                    b"isotope" if section == Section::Materials => {
+                        materials.isotopes.push(Isotope {
+                            name: get_attr(e, "name").unwrap_or_default(),
+                            n: get_attr(e, "N"),
+                            z: get_attr(e, "Z"),
+                            atom_value: None,
+                        });
+                    }
                     b"element" if section == Section::Materials => {
                         let name = get_attr(e, "name").unwrap_or_default();
                         let formula = get_attr(e, "formula");
@@ -253,6 +276,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                             formula,
                             z,
                             atom_value: None,
+                            fractions: Vec::new(),
                         });
                     }
                     b"box" if section == Section::Solids => {
@@ -321,6 +345,13 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"reflectedSolid" if section == Section::Solids => {
                         parse_reflected_solid(e, &mut solids);
                     }
+                    // Self-closing recognized-but-uninterpreted constructs: preserve verbatim.
+                    b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
+                    | b"loop" => {
+                        let raw_tag = String::from_utf8_lossy(tag).to_string();
+                        let xml = empty_element_to_string(e)?;
+                        raw_unknown.push(RawElement { tag: raw_tag, xml });
+                    }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
                         let version = get_attr(e, "version").unwrap_or_else(|| "1.0".to_string());
@@ -373,7 +404,49 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             version: "1.0".to_string(),
             world_ref: String::new(),
         }),
+        raw_unknown,
     })
+}
+
+/// Capture a recognized-but-uninterpreted element (`<tag>...</tag>`) verbatim,
+/// including all nested content, so it can be re-emitted unchanged on save.
+fn capture_raw_subtree(reader: &mut Reader<&[u8]>, start: BytesStart<'static>) -> Result<String> {
+    let mut w = Writer::new(Vec::new());
+    let tag_name = start.name().as_ref().to_vec();
+    w.write_event(Event::Start(start))?;
+    let mut depth = 1usize;
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) => {
+                if e.name().as_ref() == tag_name.as_slice() {
+                    depth += 1;
+                }
+                w.write_event(Event::Start(e))?;
+            }
+            Event::End(e) => {
+                let matches_root = e.name().as_ref() == tag_name.as_slice();
+                w.write_event(Event::End(e))?;
+                if matches_root {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+            }
+            Event::Eof => break,
+            other => w.write_event(other)?,
+        }
+    }
+    Ok(String::from_utf8(w.into_inner())?)
+}
+
+/// Serialize a single self-closing element verbatim.
+fn empty_element_to_string(e: &BytesStart) -> Result<String> {
+    let mut w = Writer::new(Vec::new());
+    w.write_event(Event::Empty(e.clone()))?;
+    Ok(String::from_utf8(w.into_inner())?)
 }
 
 // ─── Attribute helpers ───────────────────────────────────────────────────────
@@ -381,7 +454,17 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
 fn get_attr(e: &BytesStart, name: &str) -> Option<String> {
     for attr in e.attributes().flatten() {
         if attr.key.as_ref() == name.as_bytes() {
-            return Some(String::from_utf8_lossy(&attr.value).to_string());
+            // quick_xml does NOT auto-unescape attribute values, so decode XML
+            // entities here (e.g. "&amp;" -> "&"). The serializer re-escapes on
+            // write, making the round-trip correct instead of double-escaping.
+            // (GDML uploads are UTF-8; `unescape_value` is unavailable with the
+            // `encoding` feature, so decode the bytes then unescape entities.)
+            let raw = String::from_utf8_lossy(&attr.value);
+            return Some(
+                quick_xml::escape::unescape(&raw)
+                    .map(|c| c.into_owned())
+                    .unwrap_or_else(|_| raw.into_owned()),
+            );
         }
     }
     None
@@ -475,14 +558,20 @@ fn read_element_body(
     materials: &mut MaterialSection,
 ) -> Result<()> {
     let mut atom_value = None;
+    let mut fractions = Vec::new();
     let mut buf = Vec::new();
 
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
-                if inner.local_name().as_ref() == b"atom" {
-                    atom_value = get_attr(inner, "value");
+            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
+                match inner.local_name().as_ref() {
+                    b"atom" => atom_value = get_attr(inner, "value"),
+                    b"fraction" => fractions.push(Fraction {
+                        n: get_attr(inner, "n").unwrap_or_default(),
+                        ref_name: get_attr(inner, "ref").unwrap_or_default(),
+                    }),
+                    _ => {}
                 }
             }
             Ok(Event::End(ref inner)) => {
@@ -501,6 +590,59 @@ fn read_element_body(
         formula: attrs.formula,
         z: attrs.z,
         atom_value,
+        fractions,
+    });
+    Ok(())
+}
+
+// ─── Isotope parser ──────────────────────────────────────────────────────────
+
+struct IsotopeAttrs {
+    name: String,
+    n: Option<String>,
+    z: Option<String>,
+}
+
+fn extract_isotope_attrs(e: &BytesStart) -> IsotopeAttrs {
+    IsotopeAttrs {
+        name: get_attr(e, "name").unwrap_or_default(),
+        n: get_attr(e, "N"),
+        z: get_attr(e, "Z"),
+    }
+}
+
+fn read_isotope_body(
+    reader: &mut Reader<&[u8]>,
+    attrs: IsotopeAttrs,
+    materials: &mut MaterialSection,
+) -> Result<()> {
+    let mut atom_value = None;
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
+                if inner.local_name().as_ref() == b"atom" {
+                    atom_value = get_attr(inner, "value");
+                }
+            }
+            Ok(Event::End(ref inner)) => {
+                if inner.local_name().as_ref() == b"isotope" {
+                    break;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(anyhow::anyhow!("XML error in isotope: {}", e)),
+            _ => {}
+        }
+    }
+
+    materials.isotopes.push(Isotope {
+        name: attrs.name,
+        n: attrs.n,
+        z: attrs.z,
+        atom_value,
     });
     Ok(())
 }
@@ -509,6 +651,7 @@ struct MaterialAttrs {
     name: String,
     formula: Option<String>,
     z: Option<String>,
+    state: Option<String>,
 }
 
 fn extract_material_attrs(e: &BytesStart) -> MaterialAttrs {
@@ -516,6 +659,7 @@ fn extract_material_attrs(e: &BytesStart) -> MaterialAttrs {
         name: get_attr(e, "name").unwrap_or_default(),
         formula: get_attr(e, "formula"),
         z: get_attr(e, "Z"),
+        state: get_attr(e, "state"),
     }
 }
 
@@ -528,6 +672,7 @@ fn read_material_body(
     let mut density_ref = None;
     let mut temperature = None;
     let mut pressure = None;
+    let mut mee = None;
     let mut atom_value = None;
     let mut components = Vec::new();
     let mut buf = Vec::new();
@@ -555,6 +700,12 @@ fn read_material_body(
                     }
                     b"P" => {
                         pressure = Some(PropertyValue {
+                            value: get_attr(inner, "value").unwrap_or_default(),
+                            unit: get_attr(inner, "unit"),
+                        });
+                    }
+                    b"MEE" => {
+                        mee = Some(PropertyValue {
                             value: get_attr(inner, "value").unwrap_or_default(),
                             unit: get_attr(inner, "unit"),
                         });
@@ -592,10 +743,12 @@ fn read_material_body(
         name: attrs.name,
         formula: attrs.formula,
         z: attrs.z,
+        state: attrs.state,
         density,
         density_ref,
         temperature,
         pressure,
+        mee,
         atom_value,
         components,
     });
