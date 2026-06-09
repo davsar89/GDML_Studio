@@ -94,10 +94,14 @@ function SceneNodeGroup({ node, depth, maxDepth }: { node: SceneNode; depth: num
   const isSelected = selectedVolume === node.volume_name;
   const isHidden = hiddenInstances.has(node.instance_id);
 
-  // GDML applies extrinsic rotations Rx·Ry·Rz → matrix Rz·Ry·Rx → Three.js Euler 'XYZ'
+  // GDML physvol rotations are applied INVERTED by Geant4: the reader builds
+  // R = Rz·Ry·Rx from the angles, then places the daughter with R⁻¹ =
+  // Rx(-x)·Ry(-y)·Rz(-z)  (see G4GDMLReadStructure: GetRotationMatrix(rot).inverse()).
+  // Three.js Euler 'XYZ' composes Rx·Ry·Rz, so negating all three angles
+  // reproduces Geant4's active rotation exactly.
   const euler = useMemo(() => {
     const [rx, ry, rz] = node.rotation;
-    return new THREE.Euler(finite(rx), finite(ry), finite(rz), 'XYZ');
+    return new THREE.Euler(-finite(rx), -finite(ry), -finite(rz), 'XYZ');
   }, [node.rotation]);
 
   const position = useMemo<[number, number, number]>(

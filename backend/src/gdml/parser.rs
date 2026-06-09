@@ -27,6 +27,8 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
     let mut setup = None;
     // Elements recognized by name but not interpreted; preserved verbatim.
     let mut raw_unknown: Vec<RawElement> = Vec::new();
+    // Unsupported constructs that had to be dropped entirely (warn the user).
+    let mut skipped_unsupported: Vec<String> = Vec::new();
 
     #[derive(Debug, PartialEq)]
     enum Section {
@@ -215,12 +217,12 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"volume" if section == Section::Structure => {
                         let vol_name = get_attr(e, "name").unwrap_or_default();
-                        read_volume_body(&mut reader, vol_name, &mut structure)?;
+                        read_volume_body(&mut reader, vol_name, &mut structure, &mut skipped_unsupported)?;
                     }
                     // Recognized-but-uninterpreted constructs: preserve verbatim so
                     // they survive a load -> save round-trip (and warn the user).
                     b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
-                    | b"loop" => {
+                    | b"loop" | b"assembly" | b"matrix" | b"scale" => {
                         let raw_tag = String::from_utf8_lossy(tag).to_string();
                         let xml = capture_raw_subtree(&mut reader, e.clone().into_owned())?;
                         raw_unknown.push(RawElement { tag: raw_tag, xml });
@@ -347,7 +349,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     // Self-closing recognized-but-uninterpreted constructs: preserve verbatim.
                     b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
-                    | b"loop" => {
+                    | b"loop" | b"assembly" | b"matrix" | b"scale" => {
                         let raw_tag = String::from_utf8_lossy(tag).to_string();
                         let xml = empty_element_to_string(e)?;
                         raw_unknown.push(RawElement { tag: raw_tag, xml });
@@ -405,6 +407,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             world_ref: String::new(),
         }),
         raw_unknown,
+        skipped_unsupported,
     })
 }
 
@@ -1364,6 +1367,7 @@ fn read_volume_body(
     reader: &mut Reader<&[u8]>,
     vol_name: String,
     structure: &mut StructureSection,
+    skipped: &mut Vec<String>,
 ) -> Result<()> {
     let mut material_ref = String::new();
     let mut solid_ref = String::new();
@@ -1407,12 +1411,23 @@ fn read_volume_body(
                     }
                     b"physvol" => {
                         let pv_name = get_attr(inner, "name");
-                        let pv = read_physvol_body(reader, pv_name)?;
+                        let pv = read_physvol_body(reader, pv_name, &vol_name, skipped)?;
                         physvols.push(pv);
                     }
                     b"replicavol" => {
                         let number = get_attr(inner, "number").unwrap_or_else(|| "0".to_string());
                         replica = Some(read_replicavol_body(reader, number)?);
+                    }
+                    // Unsupported placement constructs: skip the whole subtree so
+                    // their children can't leak into this volume, and warn.
+                    b"divisionvol" | b"paramvol" => {
+                        let t = String::from_utf8_lossy(tag.as_ref()).to_string();
+                        skipped.push(format!(
+                            "volume '{}': <{}> is not supported; its placements are not \
+                             rendered and it will be MISSING from a save.",
+                            vol_name, t
+                        ));
+                        reader.read_to_end(inner.to_end().name())?;
                     }
                     _ => {}
                 }
@@ -1439,7 +1454,12 @@ fn read_volume_body(
     Ok(())
 }
 
-fn read_physvol_body(reader: &mut Reader<&[u8]>, name: Option<String>) -> Result<PhysVol> {
+fn read_physvol_body(
+    reader: &mut Reader<&[u8]>,
+    name: Option<String>,
+    parent_vol: &str,
+    skipped: &mut Vec<String>,
+) -> Result<PhysVol> {
     let mut volume_ref = String::new();
     let mut file_ref = None;
     let mut position = None;
@@ -1491,6 +1511,14 @@ fn read_physvol_body(reader: &mut Reader<&[u8]>, name: Option<String>) -> Result
                             get_attr(inner, "ref").unwrap_or_default(),
                         ));
                     }
+                    b"scale" | b"scaleref" => {
+                        skipped.push(format!(
+                            "volume '{}': physvol <scale> (reflection) is not supported; \
+                             the placement is rendered unmirrored and the scale will be \
+                             MISSING from a save.",
+                            parent_vol
+                        ));
+                    }
                     _ => {}
                 }
             }
@@ -1499,6 +1527,15 @@ fn read_physvol_body(reader: &mut Reader<&[u8]>, name: Option<String>) -> Result
                 match tag.as_ref() {
                     b"volumeref" => {
                         volume_ref = get_attr(inner, "ref").unwrap_or_default();
+                        reader.read_to_end(inner.to_end().name())?;
+                    }
+                    b"scale" | b"scaleref" => {
+                        skipped.push(format!(
+                            "volume '{}': physvol <scale> (reflection) is not supported; \
+                             the placement is rendered unmirrored and the scale will be \
+                             MISSING from a save.",
+                            parent_vol
+                        ));
                         reader.read_to_end(inner.to_end().name())?;
                     }
                     b"file" => {

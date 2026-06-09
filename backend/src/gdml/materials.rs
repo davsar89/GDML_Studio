@@ -76,6 +76,24 @@ pub fn search_nist_materials(query: &str, category: Option<&str>) -> Vec<&'stati
 
 // ─── GDML Serializer ────────────────────────────────────────────────────────
 
+/// The GDML section a preserved-verbatim element must be re-emitted into for
+/// the exported file to remain schema-valid.
+fn raw_section_for_tag(tag: &str) -> &'static str {
+    match tag {
+        "loop" | "matrix" | "scale" => "define",
+        "opticalsurface" => "solids",
+        "skinsurface" | "bordersurface" | "assembly" => "structure",
+        _ => "gdml", // e.g. <userinfo> lives directly under <gdml>
+    }
+}
+
+/// Write a preserved-verbatim element inside the currently open section.
+fn write_raw(writer: &mut Writer<Cursor<Vec<u8>>>, raw: &RawElement) -> Result<()> {
+    writer.get_mut().write_all(b"\n    ")?;
+    writer.get_mut().write_all(raw.xml.as_bytes())?;
+    Ok(())
+}
+
 pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
 
@@ -91,14 +109,23 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     ));
     writer.write_event(Event::Start(gdml))?;
 
-    write_defines(&mut writer, &doc.defines)?;
+    // Preserved-verbatim elements are re-emitted into the section the schema
+    // requires (e.g. <opticalsurface> in <solids>, <skinsurface> in <structure>).
+    let raw_in = |section: &str| -> Vec<&RawElement> {
+        doc.raw_unknown
+            .iter()
+            .filter(|r| raw_section_for_tag(&r.tag) == section)
+            .collect()
+    };
+
+    write_defines(&mut writer, &doc.defines, &raw_in("define"))?;
     write_materials(&mut writer, &doc.materials)?;
-    write_solids(&mut writer, &doc.solids)?;
-    write_structure(&mut writer, &doc.structure)?;
+    write_solids(&mut writer, &doc.solids, &raw_in("solids"))?;
+    write_structure(&mut writer, &doc.structure, &raw_in("structure"))?;
     write_setup(&mut writer, &doc.setup)?;
 
-    // Re-emit recognized-but-uninterpreted elements verbatim (preserved on load).
-    for raw in &doc.raw_unknown {
+    // Elements that belong directly under <gdml> (e.g. <userinfo>).
+    for raw in raw_in("gdml") {
         writer.get_mut().write_all(b"\n  ")?;
         writer.get_mut().write_all(raw.xml.as_bytes())?;
     }
@@ -110,7 +137,11 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     Ok(String::from_utf8(result)?)
 }
 
-fn write_defines(writer: &mut Writer<Cursor<Vec<u8>>>, defines: &DefineSection) -> Result<()> {
+fn write_defines(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    defines: &DefineSection,
+    raws: &[&RawElement],
+) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("define")))?;
 
     for c in &defines.constants {
@@ -182,6 +213,12 @@ fn write_defines(writer: &mut Writer<Cursor<Vec<u8>>>, defines: &DefineSection) 
             elem.push_attribute(("unit", u.as_str()));
         }
         writer.write_event(Event::Empty(elem))?;
+    }
+
+    // Preserved-verbatim define-section elements (<matrix>, <scale>, <loop>)
+    // go last so anything they reference is already defined.
+    for raw in raws {
+        write_raw(writer, raw)?;
     }
 
     writer.write_event(Event::End(BytesEnd::new("define")))?;
@@ -392,7 +429,11 @@ fn write_placement_rot(
     Ok(())
 }
 
-fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> Result<()> {
+fn write_solids(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    solids: &SolidSection,
+    raws: &[&RawElement],
+) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("solids")))?;
 
     for solid in &solids.solids {
@@ -1063,6 +1104,11 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
         }
     }
 
+    // Preserved-verbatim solids-section elements (<opticalsurface>).
+    for raw in raws {
+        write_raw(writer, raw)?;
+    }
+
     writer.write_event(Event::End(BytesEnd::new("solids")))?;
     Ok(())
 }
@@ -1070,6 +1116,7 @@ fn write_solids(writer: &mut Writer<Cursor<Vec<u8>>>, solids: &SolidSection) -> 
 fn write_structure(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     structure: &StructureSection,
+    raws: &[&RawElement],
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("structure")))?;
 
@@ -1215,6 +1262,12 @@ fn write_structure(
         }
 
         writer.write_event(Event::End(BytesEnd::new("volume")))?;
+    }
+
+    // Preserved-verbatim structure-section elements (<assembly>, <skinsurface>,
+    // <bordersurface>). Surfaces reference volumes, so they go last.
+    for raw in raws {
+        write_raw(writer, raw)?;
     }
 
     writer.write_event(Event::End(BytesEnd::new("structure")))?;

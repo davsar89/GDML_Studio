@@ -220,6 +220,11 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
   const [z, setZ] = useState(material.z || '');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // GDML density/Z values are xs:double; refuse to persist non-numeric input
+  // (the field shows red and the previous valid value is kept on save).
+  const densityValid = densityVal.trim() !== '' && Number.isFinite(Number(densityVal));
+  const zValid = z.trim() === '' || Number.isFinite(Number(z));
+
   const save = useCallback(async (overrides: Partial<MaterialInfo> = {}) => {
     const updated: MaterialInfo = {
       name: material.name,
@@ -228,9 +233,9 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
       pressure: material.pressure,
       atom_value: material.atom_value,
       density_ref: material.density_ref,
-      density: { value: densityVal, unit: densityUnit },
+      density: densityValid ? { value: densityVal, unit: densityUnit } : material.density,
       formula: formula || null,
-      z: z || null,
+      z: zValid ? z || null : material.z,
       ...overrides,
     };
     try {
@@ -239,34 +244,43 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
     } catch (e: unknown) {
       useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
     }
-  }, [material.name, material.components, material.temperature, material.pressure, material.atom_value, material.density_ref, densityVal, densityUnit, formula, z]);
+  }, [material, densityVal, densityUnit, formula, z, densityValid, zValid]);
+
+  // `save`'s identity changes on every keystroke (its deps include the field
+  // values). The debounce timeout and the unmount flush must always call the
+  // LATEST save — going through a ref avoids both saving stale values and
+  // re-running a flush effect per keystroke.
+  const saveRef = useRef(save);
+  useEffect(() => {
+    saveRef.current = save;
+  }, [save]);
 
   const scheduleSave = useCallback((overrides?: Partial<MaterialInfo>) => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       saveTimeoutRef.current = null;
-      save(overrides);
+      saveRef.current(overrides);
     }, 500);
-  }, [save]);
+  }, []);
 
-  // Flush pending save on unmount
+  // Flush pending save on unmount ONLY (empty deps; latest save via ref).
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
-        save();
+        saveRef.current();
       }
     };
-  }, [save]);
+  }, []);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
-      save();
+      saveRef.current();
       e.currentTarget.blur();
     }
-  }, [save]);
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
@@ -275,7 +289,12 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
           value={densityVal}
           onChange={(e) => { setDensityVal(e.target.value); scheduleSave(); }}
           onKeyDown={handleKeyDown}
-          style={{ ...inputStyle, width: 80 }}
+          style={{
+            ...inputStyle,
+            width: 80,
+            ...(densityValid ? {} : { border: '1px solid #e94560' }),
+          }}
+          title={densityValid ? undefined : 'Density must be a number'}
         />
         <select
           value={densityUnit}
@@ -300,7 +319,12 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
           value={z}
           onChange={(e) => { setZ(e.target.value); scheduleSave(); }}
           onKeyDown={handleKeyDown}
-          style={{ ...inputStyle, width: 50 }}
+          style={{
+            ...inputStyle,
+            width: 50,
+            ...(zValid ? {} : { border: '1px solid #e94560' }),
+          }}
+          title={zValid ? undefined : 'Z must be a number'}
         />
       </FieldRow>
     </div>

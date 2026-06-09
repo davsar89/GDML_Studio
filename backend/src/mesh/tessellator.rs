@@ -241,6 +241,11 @@ fn scale_mesh(mesh: &TriangleMesh, sx: f64, sy: f64, sz: f64) -> TriangleMesh {
             normals[i * 3] = (nx / len) as f32;
             normals[i * 3 + 1] = (ny / len) as f32;
             normals[i * 3 + 2] = (nz / len) as f32;
+        } else {
+            // Keep normals unit-length even for degenerate input.
+            normals[i * 3] = 0.0;
+            normals[i * 3 + 1] = 0.0;
+            normals[i * 3 + 2] = 1.0;
         }
     }
 
@@ -359,9 +364,9 @@ fn tessellate_reflected_solid(
         let dy = resolve_with_lunit(engine, &rs.dy, lunit);
         let dz = resolve_with_lunit(engine, &rs.dz, lunit);
 
-        let rx = units::angle_to_rad(resolve(engine, &rs.rx), aunit);
-        let ry = units::angle_to_rad(resolve(engine, &rs.ry), aunit);
-        let rz = units::angle_to_rad(resolve(engine, &rs.rz), aunit);
+        let rx = resolve_with_aunit(engine, &rs.rx, aunit);
+        let ry = resolve_with_aunit(engine, &rs.ry, aunit);
+        let rz = resolve_with_aunit(engine, &rs.rz, aunit);
 
         // Apply scale (with reflection via negative values)
         let scaled = scale_mesh(&inner_mesh, sx, sy, sz);
@@ -501,14 +506,11 @@ fn apply_placement_transform(
 fn resolve_placement_pos(pos: &Option<PlacementPos>, engine: &EvalEngine) -> [f64; 3] {
     match pos {
         Some(PlacementPos::Inline(p)) => {
-            let x = p.x.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
-            let y = p.y.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
-            let z = p.z.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
             let unit = p.unit.as_deref().unwrap_or("mm");
             [
-                units::length_to_mm(x, unit),
-                units::length_to_mm(y, unit),
-                units::length_to_mm(z, unit),
+                resolve_opt_with_lunit(engine, &p.x, unit),
+                resolve_opt_with_lunit(engine, &p.y, unit),
+                resolve_opt_with_lunit(engine, &p.z, unit),
             ]
         }
         Some(PlacementPos::Ref(name)) => engine
@@ -523,14 +525,11 @@ fn resolve_placement_pos(pos: &Option<PlacementPos>, engine: &EvalEngine) -> [f6
 fn resolve_placement_rot(rot: &Option<PlacementRot>, engine: &EvalEngine) -> [f64; 3] {
     match rot {
         Some(PlacementRot::Inline(r)) => {
-            let x = r.x.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
-            let y = r.y.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
-            let z = r.z.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
             let unit = r.unit.as_deref().unwrap_or("rad");
             [
-                units::angle_to_rad(x, unit),
-                units::angle_to_rad(y, unit),
-                units::angle_to_rad(z, unit),
+                resolve_opt_with_aunit(engine, &r.x, unit),
+                resolve_opt_with_aunit(engine, &r.y, unit),
+                resolve_opt_with_aunit(engine, &r.z, unit),
             ]
         }
         Some(PlacementRot::Ref(name)) => engine
@@ -572,6 +571,26 @@ fn resolve_opt_with_lunit(engine: &EvalEngine, expr: &Option<String>, lunit: &st
     }
 }
 
+/// Resolve an angle expression, applying aunit conversion only for literal values.
+/// If the expression references any symbols that are already angle values in
+/// radians (converted `type="angle"` quantities), skip the aunit conversion to
+/// avoid double-converting. Mirrors `resolve_with_lunit`.
+fn resolve_with_aunit(engine: &EvalEngine, expr: &str, aunit: &str) -> f64 {
+    let val = engine.resolve_value(expr);
+    if engine.expression_uses_angle_symbols(expr) {
+        val
+    } else {
+        units::angle_to_rad(val, aunit)
+    }
+}
+
+fn resolve_opt_with_aunit(engine: &EvalEngine, expr: &Option<String>, aunit: &str) -> f64 {
+    match expr {
+        Some(s) => resolve_with_aunit(engine, s, aunit),
+        None => 0.0,
+    }
+}
+
 fn tessellate_box_solid(s: &BoxSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let x = resolve_with_lunit(engine, &s.x, lunit);
@@ -590,9 +609,9 @@ fn tessellate_tube_solid(
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = match &s.deltaphi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
     Ok(tube_mesh::tessellate_tube(
@@ -612,9 +631,9 @@ fn tessellate_cone_solid(
     let rmin2 = resolve_opt_with_lunit(engine, &s.rmin2, lunit);
     let rmax2 = resolve_with_lunit(engine, &s.rmax2, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = match &s.deltaphi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
     Ok(cone_mesh::tessellate_cone(
@@ -631,14 +650,14 @@ fn tessellate_sphere_solid(
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
-    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = match &s.deltaphi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
-    let starttheta = units::angle_to_rad(resolve_opt(engine, &s.starttheta), aunit);
+    let starttheta = resolve_opt_with_aunit(engine, &s.starttheta, aunit);
     let deltatheta = match &s.deltatheta {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => PI,
     };
     Ok(sphere_mesh::tessellate_sphere(
@@ -682,9 +701,9 @@ fn tessellate_twisted_tubs_solid(
     let rmin = resolve_opt_with_lunit(engine, &s.endinnerrad, lunit);
     let rmax = resolve_with_lunit(engine, &s.endouterrad, lunit);
     let zlen = resolve_with_lunit(engine, &s.zlen, lunit);
-    let twist_angle = units::angle_to_rad(resolve(engine, &s.twistedangle), aunit);
+    let twist_angle = resolve_with_aunit(engine, &s.twistedangle, aunit);
     let phi = match &s.phi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
     Ok(twisted_tubs_mesh::tessellate_twisted_tubs(
@@ -699,7 +718,7 @@ fn tessellate_twisted_box_solid(
 ) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
-    let phi_twist = units::angle_to_rad(resolve(engine, &s.phi_twist), aunit);
+    let phi_twist = resolve_with_aunit(engine, &s.phi_twist, aunit);
     let x = resolve_with_lunit(engine, &s.x, lunit);
     let y = resolve_with_lunit(engine, &s.y, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
@@ -713,17 +732,17 @@ fn tessellate_twisted_trap_solid(
 ) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
-    let phi_twist = units::angle_to_rad(resolve(engine, &s.phi_twist), aunit);
+    let phi_twist = resolve_with_aunit(engine, &s.phi_twist, aunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    let theta = units::angle_to_rad(resolve(engine, &s.theta), aunit);
-    let phi_angle = units::angle_to_rad(resolve(engine, &s.phi), aunit);
+    let theta = resolve_with_aunit(engine, &s.theta, aunit);
+    let phi_angle = resolve_with_aunit(engine, &s.phi, aunit);
     let y1 = resolve_with_lunit(engine, &s.y1, lunit);
     let x1 = resolve_with_lunit(engine, &s.x1, lunit);
     let x2 = resolve_with_lunit(engine, &s.x2, lunit);
     let y2 = resolve_with_lunit(engine, &s.y2, lunit);
     let x3 = resolve_with_lunit(engine, &s.x3, lunit);
     let x4 = resolve_with_lunit(engine, &s.x4, lunit);
-    let alph = units::angle_to_rad(resolve(engine, &s.alph), aunit);
+    let alph = resolve_with_aunit(engine, &s.alph, aunit);
     Ok(twisted_trap_mesh::tessellate_twisted_trap(
         phi_twist, z, theta, phi_angle, y1, x1, x2, y2, x3, x4, alph, segments,
     ))
@@ -736,7 +755,7 @@ fn tessellate_twisted_trd_solid(
 ) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
-    let phi_twist = units::angle_to_rad(resolve(engine, &s.phi_twist), aunit);
+    let phi_twist = resolve_with_aunit(engine, &s.phi_twist, aunit);
     let x1 = resolve_with_lunit(engine, &s.x1, lunit);
     let x2 = resolve_with_lunit(engine, &s.x2, lunit);
     let y1 = resolve_with_lunit(engine, &s.y1, lunit);
@@ -854,9 +873,9 @@ fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Re
 fn tessellate_polyhedra_solid(s: &PolyhedraSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
-    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = match &s.deltaphi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
     // Clamp sides: 0/1/2 are degenerate and an unbounded value blows up memory.
@@ -888,9 +907,9 @@ fn tessellate_cut_tube_solid(
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = match &s.deltaphi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
     let low_norm = [
@@ -920,9 +939,9 @@ fn tessellate_para_solid(s: &ParaSolid, engine: &EvalEngine) -> Result<TriangleM
     let x = resolve_with_lunit(engine, &s.x, lunit);
     let y = resolve_with_lunit(engine, &s.y, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    let alpha = units::angle_to_rad(resolve_opt(engine, &s.alpha), aunit);
-    let theta = units::angle_to_rad(resolve_opt(engine, &s.theta), aunit);
-    let phi = units::angle_to_rad(resolve_opt(engine, &s.phi), aunit);
+    let alpha = resolve_opt_with_aunit(engine, &s.alpha, aunit);
+    let theta = resolve_opt_with_aunit(engine, &s.theta, aunit);
+    let phi = resolve_opt_with_aunit(engine, &s.phi, aunit);
     // Para is Trap with uniform x/y dimensions
     Ok(trap_mesh::tessellate_trap(
         z, theta, phi, y, x, x, alpha, y, x, x, alpha,
@@ -933,16 +952,16 @@ fn tessellate_trap_solid(s: &TrapSolid, engine: &EvalEngine) -> Result<TriangleM
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    let theta = units::angle_to_rad(resolve_opt(engine, &s.theta), aunit);
-    let phi = units::angle_to_rad(resolve_opt(engine, &s.phi), aunit);
+    let theta = resolve_opt_with_aunit(engine, &s.theta, aunit);
+    let phi = resolve_opt_with_aunit(engine, &s.phi, aunit);
     let y1 = resolve_with_lunit(engine, &s.y1, lunit);
     let x1 = resolve_with_lunit(engine, &s.x1, lunit);
     let x2 = resolve_with_lunit(engine, &s.x2, lunit);
-    let alpha1 = units::angle_to_rad(resolve_opt(engine, &s.alpha1), aunit);
+    let alpha1 = resolve_opt_with_aunit(engine, &s.alpha1, aunit);
     let y2 = resolve_with_lunit(engine, &s.y2, lunit);
     let x3 = resolve_with_lunit(engine, &s.x3, lunit);
     let x4 = resolve_with_lunit(engine, &s.x4, lunit);
-    let alpha2 = units::angle_to_rad(resolve_opt(engine, &s.alpha2), aunit);
+    let alpha2 = resolve_opt_with_aunit(engine, &s.alpha2, aunit);
     Ok(trap_mesh::tessellate_trap(
         z, theta, phi, y1, x1, x2, alpha1, y2, x3, x4, alpha2,
     ))
@@ -958,9 +977,9 @@ fn tessellate_torus_solid(
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let rtor = resolve_with_lunit(engine, &s.rtor, lunit);
-    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = match &s.deltaphi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
     Ok(torus_mesh::tessellate_torus(
@@ -1099,9 +1118,9 @@ fn tessellate_polycone_solid(
 ) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
-    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = match &s.deltaphi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
 
@@ -1128,9 +1147,9 @@ fn tessellate_generic_polycone_solid(
 ) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
-    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = match &s.deltaphi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
 
@@ -1159,8 +1178,8 @@ fn tessellate_hype_solid(
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
-    let inst = units::angle_to_rad(resolve_opt(engine, &s.inst), aunit);
-    let outst = units::angle_to_rad(resolve_opt(engine, &s.outst), aunit);
+    let inst = resolve_opt_with_aunit(engine, &s.inst, aunit);
+    let outst = resolve_opt_with_aunit(engine, &s.outst, aunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
     let hz = z * 0.5; // Geant4 convention: z is full length, halved for constructor
     Ok(hype_mesh::tessellate_hype(rmin, rmax, inst, outst, hz, segments))
@@ -1198,9 +1217,9 @@ fn tessellate_generic_polyhedra_solid(
 ) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
-    let startphi = units::angle_to_rad(resolve_opt(engine, &s.startphi), aunit);
+    let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = match &s.deltaphi {
-        Some(expr) => units::angle_to_rad(resolve(engine, expr), aunit),
+        Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
     // Clamp sides: 0/1/2 are degenerate and an unbounded value blows up memory.
@@ -1280,6 +1299,29 @@ mod tests {
         // Literal values still respect the solid's lunit.
         let literal_val = resolve_with_lunit(&engine, "2.0", "cm");
         assert!((literal_val - 20.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn resolve_with_aunit_does_not_double_convert_angle_expressions() {
+        let mut engine = EvalEngine::new();
+        let mut defines = DefineSection::default();
+        defines.quantities.push(Quantity {
+            name: "ang".to_string(),
+            r#type: Some("angle".to_string()),
+            value: "90".to_string(),
+            unit: Some("deg".to_string()),
+        });
+        engine.evaluate_all(&defines).unwrap();
+
+        // The quantity is converted to radians at definition time, so it must
+        // come through unchanged regardless of the solid's aunit.
+        let half_pi = std::f64::consts::FRAC_PI_2;
+        assert!((resolve_with_aunit(&engine, "ang", "rad") - half_pi).abs() < 1e-9);
+        assert!((resolve_with_aunit(&engine, "ang", "deg") - half_pi).abs() < 1e-9);
+
+        // Literal values still respect the solid's aunit.
+        assert!((resolve_with_aunit(&engine, "90", "deg") - half_pi).abs() < 1e-9);
+        assert!((resolve_with_aunit(&engine, "0.5", "rad") - 0.5).abs() < 1e-9);
     }
 
     #[test]

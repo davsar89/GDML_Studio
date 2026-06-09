@@ -217,13 +217,13 @@ pub fn tessellate_twisted_tubs(
                 let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
                 let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
                 let p3 = [rmin_f * a1.cos(), rmin_f * a1.sin(), z1 as f32];
-                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, true);
+                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, false);
             } else {
                 let p0 = [0.0, 0.0, z0 as f32];
                 let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
                 let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
                 let p3 = [0.0, 0.0, z1 as f32];
-                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, true);
+                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, false);
             }
         }
 
@@ -241,13 +241,13 @@ pub fn tessellate_twisted_tubs(
                 let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
                 let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
                 let p3 = [rmin_f * a1.cos(), rmin_f * a1.sin(), z1 as f32];
-                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, false);
+                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, true);
             } else {
                 let p0 = [0.0, 0.0, z0 as f32];
                 let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
                 let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
                 let p3 = [0.0, 0.0, z1 as f32];
-                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, false);
+                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, true);
             }
         }
     }

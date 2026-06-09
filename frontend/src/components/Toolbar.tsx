@@ -120,8 +120,12 @@ export default function Toolbar() {
         const matData = await api.getMaterials();
         if (!isCurrent()) return;
 
+        // Measurements reference world coordinates of the previous document.
+        store.setMeasureMode(false);
+        store.clearMeasurements();
+
         store.setSummary(result);
-        store.setWarnings(result.warnings ?? []);
+        store.setWarnings([...(result.warnings ?? []), ...(meshData.warnings ?? [])]);
         store.setMeshes(meshData.meshes);
         store.setSceneGraph(meshData.scene_graph);
         store.setDefines(defData.defines);

@@ -16,7 +16,7 @@ pub fn angle_to_rad(value: f64, unit: &str) -> f64 {
     match unit {
         "deg" | "degree" | "degrees" => value * std::f64::consts::PI / 180.0,
         "rad" | "radian" | "radians" => value,
-        "mrad" => value * 0.001,
+        "mrad" | "milliradian" => value * 0.001,
         _ => value, // default rad
     }
 }

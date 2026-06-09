@@ -75,11 +75,11 @@ pub fn tessellate_torus(
                 let d = base + (i + 1) * stride + j;
 
                 if outward {
-                    indices.push(a); indices.push(b); indices.push(c);
-                    indices.push(a); indices.push(c); indices.push(d);
-                } else {
                     indices.push(a); indices.push(c); indices.push(b);
                     indices.push(a); indices.push(d); indices.push(c);
+                } else {
+                    indices.push(a); indices.push(b); indices.push(c);
+                    indices.push(a); indices.push(c); indices.push(d);
                 }
             }
         }
@@ -98,9 +98,10 @@ pub fn tessellate_torus(
         let gen_cap = |phi: f64, flip: bool, positions: &mut Vec<f32>, normals: &mut Vec<f32>, indices: &mut Vec<u32>| {
             let cos_phi = phi.cos();
             let sin_phi = phi.sin();
-            // Normal is tangent to ring direction
-            let nx = if flip { sin_phi } else { -sin_phi };
-            let ny = if flip { -cos_phi } else { cos_phi };
+            // Outward normal is tangent to the ring direction: -phi_hat at the
+            // start cap (flip=false), +phi_hat at the end cap (flip=true).
+            let nx = if flip { -sin_phi } else { sin_phi };
+            let ny = if flip { cos_phi } else { -cos_phi };
             let nz = 0.0;
 
             let r_inner = if rmin > 1e-12 { rmin } else { 0.0 };

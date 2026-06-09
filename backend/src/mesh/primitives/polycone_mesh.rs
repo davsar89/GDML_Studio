@@ -178,7 +178,8 @@ pub fn tessellate_polycone(
         for &phi in &[startphi, startphi + deltaphi] {
             let is_start = (phi - startphi).abs() < 1e-10;
             let (sp, cp) = (phi.sin() as f32, phi.cos() as f32);
-            let (nx, ny) = if is_start { (-sp, cp) } else { (sp, -cp) };
+            // Outward normal: -phi_hat at the start face, +phi_hat at the end face.
+            let (nx, ny) = if is_start { (sp, -cp) } else { (-sp, cp) };
 
             // Build a strip of quads along z-planes at this phi angle
             for p in 0..n - 1 {
@@ -199,11 +200,11 @@ pub fn tessellate_polycone(
                     positions.extend_from_slice(&[rmin2 as f32 * cp, rmin2 as f32 * sp, z2f]);
                     normals.extend_from_slice(&[nx, ny, 0.0]);
                     if is_start {
-                        indices.extend_from_slice(&[base, base + 2, base + 1]);
-                        indices.extend_from_slice(&[base, base + 3, base + 2]);
-                    } else {
                         indices.extend_from_slice(&[base, base + 1, base + 2]);
                         indices.extend_from_slice(&[base, base + 2, base + 3]);
+                    } else {
+                        indices.extend_from_slice(&[base, base + 2, base + 1]);
+                        indices.extend_from_slice(&[base, base + 3, base + 2]);
                     }
                 } else {
                     positions.extend_from_slice(&[0.0, 0.0, z1f]);
@@ -215,11 +216,11 @@ pub fn tessellate_polycone(
                     positions.extend_from_slice(&[0.0, 0.0, z2f]);
                     normals.extend_from_slice(&[nx, ny, 0.0]);
                     if is_start {
-                        indices.extend_from_slice(&[base, base + 2, base + 1]);
-                        indices.extend_from_slice(&[base, base + 3, base + 2]);
-                    } else {
                         indices.extend_from_slice(&[base, base + 1, base + 2]);
                         indices.extend_from_slice(&[base, base + 2, base + 3]);
+                    } else {
+                        indices.extend_from_slice(&[base, base + 2, base + 1]);
+                        indices.extend_from_slice(&[base, base + 3, base + 2]);
                     }
                 }
             }

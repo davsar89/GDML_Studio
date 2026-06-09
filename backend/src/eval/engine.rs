@@ -12,6 +12,7 @@ pub struct EvalEngine {
     pub position_values: HashMap<String, [f64; 3]>,
     pub rotation_values: HashMap<String, [f64; 3]>,
     pub length_symbols: HashSet<String>,
+    pub angle_symbols: HashSet<String>,
     /// Non-fatal evaluation warnings collected during value resolution
     /// (e.g. expressions that failed and were treated as 0). Behind a `Mutex`
     /// rather than a `RefCell` so `EvalEngine` stays `Sync` (it lives inside
@@ -26,6 +27,7 @@ impl EvalEngine {
             position_values: HashMap::new(),
             rotation_values: HashMap::new(),
             length_symbols: HashSet::new(),
+            angle_symbols: HashSet::new(),
             warnings: std::sync::Mutex::new(Vec::new()),
         }
     }
@@ -36,6 +38,7 @@ impl EvalEngine {
         self.position_values.clear();
         self.rotation_values.clear();
         self.length_symbols.clear();
+        self.angle_symbols.clear();
         if let Ok(mut w) = self.warnings.lock() {
             w.clear();
         }
@@ -87,6 +90,12 @@ impl EvalEngine {
             .filter(|q| q.r#type.as_deref() == Some("length"))
             .map(|q| q.name.as_str())
             .collect();
+        let angle_quantity_names: HashSet<&str> = defines
+            .quantities
+            .iter()
+            .filter(|q| q.r#type.as_deref() == Some("angle"))
+            .map(|q| q.name.as_str())
+            .collect();
 
         // Evaluate in order
         for idx in order {
@@ -94,6 +103,8 @@ impl EvalEngine {
             let refs = extract_identifiers(&entry.expression);
             let is_length_symbol = length_quantity_names.contains(entry.name.as_str())
                 || refs.iter().any(|name| self.length_symbols.contains(name));
+            let is_angle_symbol = angle_quantity_names.contains(entry.name.as_str())
+                || refs.iter().any(|name| self.angle_symbols.contains(name));
 
             let value = self.eval_expr(&entry.expression).with_context(|| {
                 format!(
@@ -108,6 +119,7 @@ impl EvalEngine {
                 if let Some(q) = qty {
                     match q.r#type.as_deref() {
                         Some("length") => units::length_to_mm(value, unit),
+                        Some("angle") => units::angle_to_rad(value, unit),
                         Some("density") => value, // keep as-is
                         _ => value,
                     }
@@ -121,6 +133,9 @@ impl EvalEngine {
             self.context.set(&entry.name, final_value);
             if is_length_symbol {
                 self.length_symbols.insert(entry.name.clone());
+            }
+            if is_angle_symbol {
+                self.angle_symbols.insert(entry.name.clone());
             }
         }
 
@@ -183,58 +198,41 @@ impl EvalEngine {
 
     fn eval_position(&self, pos: &Position) -> Result<[f64; 3]> {
         let unit = pos.unit.as_deref().unwrap_or("mm");
-        let x = pos
-            .x
-            .as_ref()
-            .map(|v| self.eval_expr(v))
-            .transpose()?
-            .unwrap_or(0.0);
-        let y = pos
-            .y
-            .as_ref()
-            .map(|v| self.eval_expr(v))
-            .transpose()?
-            .unwrap_or(0.0);
-        let z = pos
-            .z
-            .as_ref()
-            .map(|v| self.eval_expr(v))
-            .transpose()?
-            .unwrap_or(0.0);
-
-        Ok([
-            units::length_to_mm(x, unit),
-            units::length_to_mm(y, unit),
-            units::length_to_mm(z, unit),
-        ])
+        // Components whose expression references an already-converted length
+        // quantity are in mm already; converting again would double-apply the unit.
+        let comp = |expr: &Option<String>| -> Result<f64> {
+            match expr {
+                Some(e) => {
+                    let v = self.eval_expr(e)?;
+                    Ok(if self.expression_uses_length_symbols(e) {
+                        v
+                    } else {
+                        units::length_to_mm(v, unit)
+                    })
+                }
+                None => Ok(0.0),
+            }
+        };
+        Ok([comp(&pos.x)?, comp(&pos.y)?, comp(&pos.z)?])
     }
 
     fn eval_rotation(&self, rot: &Rotation) -> Result<[f64; 3]> {
         let unit = rot.unit.as_deref().unwrap_or("rad");
-        let x = rot
-            .x
-            .as_ref()
-            .map(|v| self.eval_expr(v))
-            .transpose()?
-            .unwrap_or(0.0);
-        let y = rot
-            .y
-            .as_ref()
-            .map(|v| self.eval_expr(v))
-            .transpose()?
-            .unwrap_or(0.0);
-        let z = rot
-            .z
-            .as_ref()
-            .map(|v| self.eval_expr(v))
-            .transpose()?
-            .unwrap_or(0.0);
-
-        Ok([
-            units::angle_to_rad(x, unit),
-            units::angle_to_rad(y, unit),
-            units::angle_to_rad(z, unit),
-        ])
+        // Same guard as eval_position, for angle quantities already in radians.
+        let comp = |expr: &Option<String>| -> Result<f64> {
+            match expr {
+                Some(e) => {
+                    let v = self.eval_expr(e)?;
+                    Ok(if self.expression_uses_angle_symbols(e) {
+                        v
+                    } else {
+                        units::angle_to_rad(v, unit)
+                    })
+                }
+                None => Ok(0.0),
+            }
+        };
+        Ok([comp(&rot.x)?, comp(&rot.y)?, comp(&rot.z)?])
     }
 
     pub fn resolve_value(&self, expr_str: &str) -> f64 {
@@ -278,6 +276,16 @@ impl EvalEngine {
             .any(|name| self.length_symbols.contains(name))
     }
 
+    pub fn expression_uses_angle_symbols(&self, expr: &str) -> bool {
+        let trimmed = expr.trim();
+        if self.angle_symbols.contains(trimmed) {
+            return true;
+        }
+        extract_identifiers(trimmed)
+            .iter()
+            .any(|name| self.angle_symbols.contains(name))
+    }
+
     pub fn resolve_position(&self, pos: &PlacementPosRef) -> [f64; 3] {
         match pos {
             PlacementPosRef::Values(v) => *v,
@@ -309,16 +317,17 @@ pub enum PlacementRotRef {
 
 /// Fix common GDML expression patterns for evalexpr.
 /// Handles any `<digit>.*` pattern (e.g. "360.*deg", "-1.*pi") by inserting ".0*".
+/// Iterates over chars (not bytes) so multi-byte UTF-8 input passes through intact.
 fn fix_gdml_expr(expr: &str) -> String {
-    let bytes = expr.as_bytes();
+    let chars: Vec<char> = expr.chars().collect();
     let mut result = String::with_capacity(expr.len() + 8);
     let mut i = 0;
-    while i < bytes.len() {
-        result.push(bytes[i] as char);
-        if bytes[i].is_ascii_digit()
-            && i + 2 < bytes.len()
-            && bytes[i + 1] == b'.'
-            && bytes[i + 2] == b'*'
+    while i < chars.len() {
+        result.push(chars[i]);
+        if chars[i].is_ascii_digit()
+            && i + 2 < chars.len()
+            && chars[i + 1] == '.'
+            && chars[i + 2] == '*'
         {
             // Convert "N.*" to "N.0*"
             result.push_str(".0*");

@@ -15,6 +15,11 @@ pub struct GdmlDocument {
     /// being silently dropped.
     #[serde(default)]
     pub raw_unknown: Vec<RawElement>,
+    /// Human-readable notes about unsupported constructs the parser had to
+    /// skip entirely (e.g. `<divisionvol>` inside a volume). Surfaced as load
+    /// warnings: these are NOT preserved and will be missing from a save.
+    #[serde(default)]
+    pub skipped_unsupported: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

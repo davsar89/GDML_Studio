@@ -93,12 +93,14 @@ pub fn tessellate_ellipsoid(
             push_vert(theta1, phi1, &mut positions, &mut normals);
             push_vert(theta1, phi0, &mut positions, &mut normals);
 
+            // Wind so the face normal points outward (matches the gradient
+            // normals): theta increases toward -z, phi counter-clockwise.
             indices.push(base);
+            indices.push(base + 2);
             indices.push(base + 1);
-            indices.push(base + 2);
             indices.push(base);
-            indices.push(base + 2);
             indices.push(base + 3);
+            indices.push(base + 2);
         }
     }
 

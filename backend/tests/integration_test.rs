@@ -533,3 +533,115 @@ fn test_mesh_geometry_validity() {
         }
     }
 }
+
+// ─── Raw-element preservation and sectioned export ───────────────────────────
+
+#[test]
+fn raw_elements_round_trip_into_correct_sections() {
+    use gdml_studio_backend::gdml::materials::serialize_gdml;
+    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
+
+    let gdml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<gdml>
+  <define>
+    <constant name="c1" value="1"/>
+    <matrix name="m1" coldim="2" values="1 2 3 4"/>
+  </define>
+  <materials>
+    <material name="Vac" Z="1"><D value="1e-25" unit="g/cm3"/><atom value="1"/></material>
+  </materials>
+  <solids>
+    <box name="world_box" x="100" y="100" z="100"/>
+    <opticalsurface name="os1" model="glisur" finish="polished" type="dielectric_dielectric" value="1"/>
+  </solids>
+  <structure>
+    <assembly name="asm1">
+      <physvol><volumeref ref="WorldLV"/></physvol>
+    </assembly>
+    <volume name="WorldLV">
+      <materialref ref="Vac"/>
+      <solidref ref="world_box"/>
+    </volume>
+    <skinsurface name="ss1" surfaceproperty="os1"><volumeref ref="WorldLV"/></skinsurface>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="WorldLV"/></setup>
+</gdml>"#;
+
+    let doc = parse_gdml_from_bytes(gdml.as_bytes(), "t.gdml".to_string()).unwrap();
+    let tags: Vec<&str> = doc.raw_unknown.iter().map(|r| r.tag.as_str()).collect();
+    for expected in ["matrix", "opticalsurface", "assembly", "skinsurface"] {
+        assert!(tags.contains(&expected), "expected '{}' preserved, got {:?}", expected, tags);
+    }
+
+    let xml = serialize_gdml(&doc).unwrap();
+
+    // Each preserved element must be re-emitted INSIDE its proper section so
+    // the exported file stays schema-valid.
+    let in_section = |needle: &str, open: &str, close: &str| {
+        let s = xml.find(open).unwrap_or_else(|| panic!("missing {open}"));
+        let e = xml.find(close).unwrap_or_else(|| panic!("missing {close}"));
+        match xml.find(needle) {
+            Some(p) => p > s && p < e,
+            None => false,
+        }
+    };
+    assert!(in_section("<matrix", "<define>", "</define>"), "matrix not inside <define>:\n{xml}");
+    assert!(in_section("<opticalsurface", "<solids>", "</solids>"), "opticalsurface not inside <solids>:\n{xml}");
+    assert!(in_section("<assembly", "<structure>", "</structure>"), "assembly not inside <structure>:\n{xml}");
+    assert!(in_section("<skinsurface", "<structure>", "</structure>"), "skinsurface not inside <structure>:\n{xml}");
+
+    // Re-parsing the export preserves the same elements again (stable round-trip).
+    let doc2 = parse_gdml_from_bytes(xml.as_bytes(), "t2.gdml".to_string()).unwrap();
+    assert_eq!(doc2.raw_unknown.len(), doc.raw_unknown.len());
+}
+
+#[test]
+fn unsupported_volume_constructs_produce_warnings() {
+    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
+
+    let gdml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<gdml>
+  <materials>
+    <material name="Vac" Z="1"><D value="1e-25" unit="g/cm3"/><atom value="1"/></material>
+  </materials>
+  <solids>
+    <box name="world_box" x="100" y="100" z="100"/>
+    <box name="slice_box" x="10" y="100" z="100"/>
+  </solids>
+  <structure>
+    <volume name="SliceLV">
+      <materialref ref="Vac"/>
+      <solidref ref="slice_box"/>
+    </volume>
+    <volume name="WorldLV">
+      <materialref ref="Vac"/>
+      <solidref ref="world_box"/>
+      <divisionvol axis="kXAxis" number="10" width="10" unit="mm">
+        <volumeref ref="SliceLV"/>
+      </divisionvol>
+      <physvol>
+        <volumeref ref="SliceLV"/>
+        <scale name="mirror" x="-1" y="1" z="1"/>
+      </physvol>
+    </volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="WorldLV"/></setup>
+</gdml>"#;
+
+    let doc = parse_gdml_from_bytes(gdml.as_bytes(), "t.gdml".to_string()).unwrap();
+    assert!(
+        doc.skipped_unsupported.iter().any(|w| w.contains("divisionvol")),
+        "expected divisionvol warning, got {:?}",
+        doc.skipped_unsupported
+    );
+    assert!(
+        doc.skipped_unsupported.iter().any(|w| w.contains("scale")),
+        "expected physvol scale warning, got {:?}",
+        doc.skipped_unsupported
+    );
+    // The divisionvol's volumeref must not leak into the volume as a solidref
+    // or physvol entry.
+    let world = doc.structure.volumes.iter().find(|v| v.name == "WorldLV").unwrap();
+    assert_eq!(world.physvols.len(), 1);
+    assert_eq!(world.solid_ref, "world_box");
+}

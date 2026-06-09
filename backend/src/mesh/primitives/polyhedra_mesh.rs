@@ -25,8 +25,10 @@ pub fn tessellate_polyhedra(
     let full_circle = (deltaphi - 2.0 * PI).abs() < 1e-6;
     let n = numsides;
 
-    // Convert apothem (rmin/rmax) to vertex radius: r_vertex = r_apothem / cos(pi/n)
-    let cos_half = (PI / n as f64).cos();
+    // Convert apothem (rmin/rmax) to vertex radius. Each of the n sides spans
+    // deltaphi/n, so the corner sits at r_apothem / cos(deltaphi / (2n)).
+    // (For a full circle this is the familiar cos(pi/n).)
+    let cos_half = (deltaphi / (2.0 * n as f64)).cos();
 
     // Generate polygon vertices at each z-plane for a given radius type
     let polygon_verts = |r_apothem: f64, z: f64| -> Vec<[f64; 3]> {
@@ -182,8 +184,10 @@ pub fn tessellate_polyhedra(
             }
         };
 
-        gen_phi_face(startphi, false, &mut positions, &mut normals, &mut indices);
-        gen_phi_face(startphi + deltaphi, true, &mut positions, &mut normals, &mut indices);
+        // flip=true at the start face: outward is -phi_hat (solid lies at larger
+        // phi); flip=false (+phi_hat) at the end face.
+        gen_phi_face(startphi, true, &mut positions, &mut normals, &mut indices);
+        gen_phi_face(startphi + deltaphi, false, &mut positions, &mut normals, &mut indices);
     }
 
     TriangleMesh {

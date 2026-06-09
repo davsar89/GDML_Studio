@@ -49,6 +49,7 @@ export async function getMeshes() {
   return fetchJson<{
     meshes: Record<string, MeshData>;
     scene_graph: SceneNode;
+    warnings?: string[];
   }>('/api/document/meshes');
 }
 

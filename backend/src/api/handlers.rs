@@ -309,14 +309,17 @@ fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
     let mut tags: Vec<&str> = doc.raw_unknown.iter().map(|r| r.tag.as_str()).collect();
     tags.sort_unstable();
     tags.dedup();
-    tags.into_iter()
+    let mut warnings: Vec<String> = tags
+        .into_iter()
         .map(|t| {
             format!(
                 "<{}> elements are preserved on save but are not interpreted or rendered.",
                 t
             )
         })
-        .collect()
+        .collect();
+    warnings.extend(doc.skipped_unsupported.iter().cloned());
+    warnings
 }
 
 pub async fn upload_file(
@@ -509,7 +512,8 @@ pub async fn get_meshes(State(state): State<SharedState>) -> Result<Json<Value>,
     let engine = &loaded.engine;
 
     // Build scene graph from the world volume
-    let scene_graph = build_scene_graph(doc, engine);
+    let mut scene_warnings = Vec::new();
+    let scene_graph = build_scene_graph(doc, engine, &mut scene_warnings);
 
     // Serialize meshes
     let meshes: HashMap<String, MeshData> = loaded
@@ -530,6 +534,7 @@ pub async fn get_meshes(State(state): State<SharedState>) -> Result<Json<Value>,
     Ok(Json(json!({
         "meshes": meshes,
         "scene_graph": scene_graph,
+        "warnings": scene_warnings,
     })))
 }
 
@@ -634,7 +639,11 @@ pub async fn get_structure(State(state): State<SharedState>) -> Result<Json<Valu
 
 // ─── Scene graph builder ─────────────────────────────────────────────────────
 
-fn build_scene_graph(doc: &GdmlDocument, engine: &EvalEngine) -> SceneNode {
+fn build_scene_graph(
+    doc: &GdmlDocument,
+    engine: &EvalEngine,
+    warnings: &mut Vec<String>,
+) -> SceneNode {
     let world_ref = &doc.setup.world_ref;
     let vol_map: HashMap<&str, &Volume> = doc
         .structure
@@ -674,6 +683,7 @@ fn build_scene_graph(doc: &GdmlDocument, engine: &EvalEngine) -> SceneNode {
             true,
             &mut visited,
             format!("/{}", world_vol.name),
+            warnings,
         )
     } else {
         SceneNode {
@@ -702,6 +712,7 @@ fn build_volume_node(
     is_world: bool,
     visited: &mut HashSet<String>,
     instance_id: String,
+    warnings: &mut Vec<String>,
 ) -> SceneNode {
     visited.insert(vol.name.clone());
 
@@ -727,7 +738,17 @@ fn build_volume_node(
                 return None;
             }
 
-            let child_vol = vol_map.get(pv.volume_ref.as_str())?;
+            let child_vol = match vol_map.get(pv.volume_ref.as_str()) {
+                Some(v) => v,
+                None => {
+                    warnings.push(format!(
+                        "volume '{}': physvol references undefined volume '{}' \
+                         (possibly an unsupported <assembly>); skipping it.",
+                        vol.name, pv.volume_ref
+                    ));
+                    return None;
+                }
+            };
 
             let pos = resolve_placement_pos(&pv.position, engine);
             let rot = resolve_placement_rot(&pv.rotation, engine);
@@ -751,6 +772,7 @@ fn build_volume_node(
                 false,
                 visited,
                 child_instance_id,
+                warnings,
             ))
         })
         .collect();
@@ -763,11 +785,12 @@ fn build_volume_node(
             let resolved = engine.resolve_value(&replica.number);
             let number = (resolved as usize).min(100_000);
             if (resolved as usize) > number {
-                tracing::warn!(
-                    "replicavol number {} exceeds cap; clamped to {}",
-                    resolved,
-                    number
+                let msg = format!(
+                    "replicavol '{}': number {} exceeds the safety cap; clamped to {}.",
+                    replica.volume_ref, resolved, number
                 );
+                tracing::warn!("{}", msg);
+                warnings.push(msg);
             }
             let width_val = engine.resolve_value(&replica.width);
             let width_unit = replica.width_unit.as_deref().unwrap_or("mm");
@@ -776,6 +799,13 @@ fn build_volume_node(
             let offset_val = engine.resolve_value(&replica.offset);
             let offset_unit = replica.offset_unit.as_deref().unwrap_or("mm");
             let offset_mm = crate::gdml::units::length_to_mm(offset_val, offset_unit);
+            if offset_mm.abs() > 1e-9 {
+                warnings.push(format!(
+                    "replicavol '{}': non-zero offset ({} mm) is ignored for Cartesian \
+                     replication axes (Geant4 rejects it).",
+                    replica.volume_ref, offset_mm
+                ));
+            }
 
             // Determine axis index: x=0, y=1, z=2
             let axis = if replica.direction[0]
@@ -800,7 +830,10 @@ fn build_volume_node(
 
             for n in 0..number {
                 let mut pos = [0.0_f64; 3];
-                pos[axis] = offset_mm + (n as f64) * width_mm;
+                // Geant4 centers the replica stack in the mother
+                // (G4ReplicaNavigation): x_n = -width*(N-1)/2 + n*width.
+                pos[axis] = -width_mm * 0.5 * (number.saturating_sub(1) as f64)
+                    + (n as f64) * width_mm;
                 let replica_instance_id =
                     format!("{}/replica[{}]:{}", instance_id, n, replica.volume_ref);
                 let child_node = build_volume_node(
@@ -813,6 +846,7 @@ fn build_volume_node(
                     false,
                     visited,
                     replica_instance_id,
+                    warnings,
                 );
                 children.push(child_node);
             }
@@ -839,15 +873,23 @@ fn build_volume_node(
 fn resolve_placement_pos(pos: &Option<PlacementPos>, engine: &EvalEngine) -> [f64; 3] {
     match pos {
         Some(PlacementPos::Inline(p)) => {
-            let x = p.x.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
-            let y = p.y.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
-            let z = p.z.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
             let unit = p.unit.as_deref().unwrap_or("mm");
-            [
-                crate::gdml::units::length_to_mm(x, unit),
-                crate::gdml::units::length_to_mm(y, unit),
-                crate::gdml::units::length_to_mm(z, unit),
-            ]
+            // Skip the unit conversion for expressions that reference
+            // already-converted length quantities (they are in mm).
+            let comp = |expr: &Option<String>| -> f64 {
+                match expr {
+                    Some(e) => {
+                        let v = engine.resolve_value(e);
+                        if engine.expression_uses_length_symbols(e) {
+                            v
+                        } else {
+                            crate::gdml::units::length_to_mm(v, unit)
+                        }
+                    }
+                    None => 0.0,
+                }
+            };
+            [comp(&p.x), comp(&p.y), comp(&p.z)]
         }
         Some(PlacementPos::Ref(name)) => engine
             .position_values
@@ -861,15 +903,23 @@ fn resolve_placement_pos(pos: &Option<PlacementPos>, engine: &EvalEngine) -> [f6
 fn resolve_placement_rot(rot: &Option<PlacementRot>, engine: &EvalEngine) -> [f64; 3] {
     match rot {
         Some(PlacementRot::Inline(r)) => {
-            let x = r.x.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
-            let y = r.y.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
-            let z = r.z.as_ref().map(|v| engine.resolve_value(v)).unwrap_or(0.0);
             let unit = r.unit.as_deref().unwrap_or("rad");
-            [
-                crate::gdml::units::angle_to_rad(x, unit),
-                crate::gdml::units::angle_to_rad(y, unit),
-                crate::gdml::units::angle_to_rad(z, unit),
-            ]
+            // Skip the unit conversion for expressions that reference
+            // already-converted angle quantities (they are in radians).
+            let comp = |expr: &Option<String>| -> f64 {
+                match expr {
+                    Some(e) => {
+                        let v = engine.resolve_value(e);
+                        if engine.expression_uses_angle_symbols(e) {
+                            v
+                        } else {
+                            crate::gdml::units::angle_to_rad(v, unit)
+                        }
+                    }
+                    None => 0.0,
+                }
+            };
+            [comp(&r.x), comp(&r.y), comp(&r.z)]
         }
         Some(PlacementRot::Ref(name)) => engine
             .rotation_values
@@ -1303,6 +1353,7 @@ mod tests {
                 world_ref: world_ref.to_string(),
             },
             raw_unknown: Vec::new(),
+            skipped_unsupported: Vec::new(),
         }
     }
 
@@ -1705,9 +1756,35 @@ mod tests {
         doc.structure.volumes.push(volume("Leaf", "Vacuum"));
 
         let engine = EvalEngine::new();
-        let graph = build_scene_graph(&doc, &engine);
+        let mut warnings = Vec::new();
+        let graph = build_scene_graph(&doc, &engine, &mut warnings);
         assert_eq!(graph.children.len(), 2);
         assert_eq!(graph.children[0].volume_name, graph.children[1].volume_name);
         assert_ne!(graph.children[0].instance_id, graph.children[1].instance_id);
+    }
+
+    #[test]
+    fn replica_positions_are_centered_in_mother() {
+        let mut doc = base_doc("test.gdml", "World");
+        let mut world = volume("World", "Vacuum");
+        world.replica = Some(crate::gdml::model::ReplicaVol {
+            volume_ref: "Slice".to_string(),
+            number: "4".to_string(),
+            direction: [Some("1".to_string()), None, None],
+            width: "10".to_string(),
+            width_unit: Some("mm".to_string()),
+            offset: "0".to_string(),
+            offset_unit: None,
+        });
+        doc.structure.volumes.push(world);
+        doc.structure.volumes.push(volume("Slice", "Vacuum"));
+
+        let engine = EvalEngine::new();
+        let mut warnings = Vec::new();
+        let graph = build_scene_graph(&doc, &engine, &mut warnings);
+        // Geant4 centers the stack: 4 slices of width 10 -> x = -15, -5, +5, +15
+        let xs: Vec<f64> = graph.children.iter().map(|c| c.position[0]).collect();
+        assert_eq!(xs, vec![-15.0, -5.0, 5.0, 15.0]);
+        assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
     }
 }

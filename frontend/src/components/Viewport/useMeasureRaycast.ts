@@ -35,6 +35,10 @@ export function useMeasureRaycast() {
         useAppStore.getState().setHoverSnap(null);
         useAppStore.getState().setHoverCandidates([]);
       }
+      // Drop references to meshes from a previous session/scene so re-entering
+      // measure mode can't compute candidates from unmounted geometry.
+      lastHitMeshRef.current = null;
+      prevPendingRef.current = null;
       return;
     }
 

@@ -203,8 +203,10 @@ pub fn tessellate_cut_tube(
             }
         };
 
-        gen_wedge(startphi, false, &mut positions, &mut normals, &mut indices);
-        gen_wedge(startphi + deltaphi, true, &mut positions, &mut normals, &mut indices);
+        // flip=true at the start face: outward is -phi_hat (solid lies at larger
+        // phi); flip=false (+phi_hat) at the end face.
+        gen_wedge(startphi, true, &mut positions, &mut normals, &mut indices);
+        gen_wedge(startphi + deltaphi, false, &mut positions, &mut normals, &mut indices);
     }
 
     TriangleMesh {

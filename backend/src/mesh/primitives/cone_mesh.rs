@@ -209,7 +209,9 @@ fn add_cone_wedge_face(
     is_start: bool,
 ) {
     let (sp, cp) = (phi.sin() as f32, phi.cos() as f32);
-    let (nx, ny) = if is_start { (-sp, cp) } else { (sp, -cp) };
+    // Outward normal: -phi_hat at the start face (solid lies at larger phi),
+    // +phi_hat at the end face (solid lies at smaller phi).
+    let (nx, ny) = if is_start { (sp, -cp) } else { (-sp, cp) };
     let base = positions.len() as u32 / 3;
 
     if has_hole {
@@ -223,11 +225,11 @@ fn add_cone_wedge_face(
         positions.extend_from_slice(&[rmin2 as f32 * cp, rmin2 as f32 * sp, hz]);
         normals.extend_from_slice(&[nx, ny, 0.0]);
         if is_start {
-            indices.extend_from_slice(&[base, base + 2, base + 1]);
-            indices.extend_from_slice(&[base, base + 3, base + 2]);
-        } else {
             indices.extend_from_slice(&[base, base + 1, base + 2]);
             indices.extend_from_slice(&[base, base + 2, base + 3]);
+        } else {
+            indices.extend_from_slice(&[base, base + 2, base + 1]);
+            indices.extend_from_slice(&[base, base + 3, base + 2]);
         }
     } else {
         // Triangle: center, outer-bottom, outer-top
@@ -240,11 +242,11 @@ fn add_cone_wedge_face(
         positions.extend_from_slice(&[0.0, 0.0, hz]);
         normals.extend_from_slice(&[nx, ny, 0.0]);
         if is_start {
-            indices.extend_from_slice(&[base, base + 2, base + 1]);
-            indices.extend_from_slice(&[base, base + 3, base + 2]);
-        } else {
             indices.extend_from_slice(&[base, base + 1, base + 2]);
             indices.extend_from_slice(&[base, base + 2, base + 3]);
+        } else {
+            indices.extend_from_slice(&[base, base + 2, base + 1]);
+            indices.extend_from_slice(&[base, base + 3, base + 2]);
         }
     }
 }

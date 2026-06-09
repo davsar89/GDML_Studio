@@ -183,11 +183,11 @@ fn add_sphere_surface(
             let d = b + 1;
 
             if invert {
-                indices.extend_from_slice(&[a, b, c]);
-                indices.extend_from_slice(&[c, b, d]);
-            } else {
                 indices.extend_from_slice(&[a, c, b]);
                 indices.extend_from_slice(&[c, d, b]);
+            } else {
+                indices.extend_from_slice(&[a, b, c]);
+                indices.extend_from_slice(&[c, b, d]);
             }
         }
     }
@@ -210,8 +210,9 @@ fn add_phi_wedge_face(
     is_start: bool,
 ) {
     let (sp, cp) = (phi.sin() as f32, phi.cos() as f32);
-    // Normal is perpendicular to the radial plane at this phi
-    let (nx, ny) = if is_start { (-sp, cp) } else { (sp, -cp) };
+    // Outward normal perpendicular to the radial plane at this phi:
+    // -phi_hat at the start face, +phi_hat at the end face.
+    let (nx, ny) = if is_start { (sp, -cp) } else { (-sp, cp) };
 
     let base = positions.len() as u32 / 3;
     let theta_step = deltatheta / theta_seg as f64;
@@ -237,11 +238,11 @@ fn add_phi_wedge_face(
         for j in 0..theta_seg {
             let b = base + j * 2;
             if is_start {
-                indices.extend_from_slice(&[b, b + 1, b + 3]);
-                indices.extend_from_slice(&[b, b + 3, b + 2]);
-            } else {
                 indices.extend_from_slice(&[b, b + 3, b + 1]);
                 indices.extend_from_slice(&[b, b + 2, b + 3]);
+            } else {
+                indices.extend_from_slice(&[b, b + 1, b + 3]);
+                indices.extend_from_slice(&[b, b + 3, b + 2]);
             }
         }
     } else {
@@ -267,11 +268,11 @@ fn add_phi_wedge_face(
         for j in 0..theta_seg {
             let b = base + j * 2;
             if is_start {
-                indices.extend_from_slice(&[b, b + 1, b + 3]);
-                indices.extend_from_slice(&[b, b + 3, b + 2]);
-            } else {
                 indices.extend_from_slice(&[b, b + 3, b + 1]);
                 indices.extend_from_slice(&[b, b + 2, b + 3]);
+            } else {
+                indices.extend_from_slice(&[b, b + 1, b + 3]);
+                indices.extend_from_slice(&[b, b + 3, b + 2]);
             }
         }
     }
@@ -340,12 +341,12 @@ fn add_theta_cap(
         for i in 0..phi_seg {
             let b = base + i * 2;
             if is_start {
-                // Normal points inward (toward theta=0), winding flipped
-                indices.extend_from_slice(&[b, b + 3, b + 1]);
-                indices.extend_from_slice(&[b, b + 2, b + 3]);
-            } else {
+                // Winding matches the outward normal (toward theta=0)
                 indices.extend_from_slice(&[b, b + 1, b + 3]);
                 indices.extend_from_slice(&[b, b + 3, b + 2]);
+            } else {
+                indices.extend_from_slice(&[b, b + 3, b + 1]);
+                indices.extend_from_slice(&[b, b + 2, b + 3]);
             }
         }
     } else {
@@ -376,9 +377,9 @@ fn add_theta_cap(
 
         for i in 0..phi_seg {
             if is_start {
-                indices.extend_from_slice(&[base, base + 2 + i, base + 1 + i]);
-            } else {
                 indices.extend_from_slice(&[base, base + 1 + i, base + 2 + i]);
+            } else {
+                indices.extend_from_slice(&[base, base + 2 + i, base + 1 + i]);
             }
         }
     }

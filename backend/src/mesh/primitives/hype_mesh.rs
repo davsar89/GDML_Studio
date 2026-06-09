@@ -80,6 +80,10 @@ pub fn tessellate_hype(
                 let len = (nx * nx + ny * ny + nz * nz).sqrt();
                 if len > 1e-12 {
                     nx /= len; ny /= len; nz /= len;
+                } else {
+                    // Degenerate quad: fall back to a unit normal so the GPU
+                    // never receives a zero-length vector.
+                    nx = 0.0; ny = 0.0; nz = 1.0;
                 }
                 if flip {
                     nx = -nx; ny = -ny; nz = -nz;

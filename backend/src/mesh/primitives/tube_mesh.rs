@@ -140,42 +140,10 @@ pub fn tessellate_tube(
 
     // Side caps for partial phi (wedge faces)
     if !full_circle {
-        // Start phi face
+        // Start phi face: the solid lies at phi > startphi, so the outward
+        // normal is -phi_hat = (sin(phi), -cos(phi)).
         {
             let phi = startphi;
-            let (sp, cp) = (phi.sin() as f32, phi.cos() as f32);
-            let nx = -sp;
-            let ny = cp;
-            let base = positions.len() as u32 / 3;
-
-            if has_hole {
-                positions.extend_from_slice(&[rmin as f32 * cp, rmin as f32 * sp, -hz]);
-                normals.extend_from_slice(&[nx, ny, 0.0]);
-                positions.extend_from_slice(&[rmax as f32 * cp, rmax as f32 * sp, -hz]);
-                normals.extend_from_slice(&[nx, ny, 0.0]);
-                positions.extend_from_slice(&[rmax as f32 * cp, rmax as f32 * sp, hz]);
-                normals.extend_from_slice(&[nx, ny, 0.0]);
-                positions.extend_from_slice(&[rmin as f32 * cp, rmin as f32 * sp, hz]);
-                normals.extend_from_slice(&[nx, ny, 0.0]);
-                indices.extend_from_slice(&[base, base + 2, base + 1]);
-                indices.extend_from_slice(&[base, base + 3, base + 2]);
-            } else {
-                positions.extend_from_slice(&[0.0, 0.0, -hz]);
-                normals.extend_from_slice(&[nx, ny, 0.0]);
-                positions.extend_from_slice(&[rmax as f32 * cp, rmax as f32 * sp, -hz]);
-                normals.extend_from_slice(&[nx, ny, 0.0]);
-                positions.extend_from_slice(&[rmax as f32 * cp, rmax as f32 * sp, hz]);
-                normals.extend_from_slice(&[nx, ny, 0.0]);
-                positions.extend_from_slice(&[0.0, 0.0, hz]);
-                normals.extend_from_slice(&[nx, ny, 0.0]);
-                indices.extend_from_slice(&[base, base + 2, base + 1]);
-                indices.extend_from_slice(&[base, base + 3, base + 2]);
-            }
-        }
-
-        // End phi face
-        {
-            let phi = startphi + deltaphi;
             let (sp, cp) = (phi.sin() as f32, phi.cos() as f32);
             let nx = sp;
             let ny = -cp;
@@ -203,6 +171,40 @@ pub fn tessellate_tube(
                 normals.extend_from_slice(&[nx, ny, 0.0]);
                 indices.extend_from_slice(&[base, base + 1, base + 2]);
                 indices.extend_from_slice(&[base, base + 2, base + 3]);
+            }
+        }
+
+        // End phi face: the solid lies at phi < endphi, so the outward normal
+        // is +phi_hat = (-sin(phi), cos(phi)).
+        {
+            let phi = startphi + deltaphi;
+            let (sp, cp) = (phi.sin() as f32, phi.cos() as f32);
+            let nx = -sp;
+            let ny = cp;
+            let base = positions.len() as u32 / 3;
+
+            if has_hole {
+                positions.extend_from_slice(&[rmin as f32 * cp, rmin as f32 * sp, -hz]);
+                normals.extend_from_slice(&[nx, ny, 0.0]);
+                positions.extend_from_slice(&[rmax as f32 * cp, rmax as f32 * sp, -hz]);
+                normals.extend_from_slice(&[nx, ny, 0.0]);
+                positions.extend_from_slice(&[rmax as f32 * cp, rmax as f32 * sp, hz]);
+                normals.extend_from_slice(&[nx, ny, 0.0]);
+                positions.extend_from_slice(&[rmin as f32 * cp, rmin as f32 * sp, hz]);
+                normals.extend_from_slice(&[nx, ny, 0.0]);
+                indices.extend_from_slice(&[base, base + 2, base + 1]);
+                indices.extend_from_slice(&[base, base + 3, base + 2]);
+            } else {
+                positions.extend_from_slice(&[0.0, 0.0, -hz]);
+                normals.extend_from_slice(&[nx, ny, 0.0]);
+                positions.extend_from_slice(&[rmax as f32 * cp, rmax as f32 * sp, -hz]);
+                normals.extend_from_slice(&[nx, ny, 0.0]);
+                positions.extend_from_slice(&[rmax as f32 * cp, rmax as f32 * sp, hz]);
+                normals.extend_from_slice(&[nx, ny, 0.0]);
+                positions.extend_from_slice(&[0.0, 0.0, hz]);
+                normals.extend_from_slice(&[nx, ny, 0.0]);
+                indices.extend_from_slice(&[base, base + 2, base + 1]);
+                indices.extend_from_slice(&[base, base + 3, base + 2]);
             }
         }
     }

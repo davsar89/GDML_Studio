@@ -63,6 +63,9 @@ pub fn tessellate_paraboloid(rlo: f64, rhi: f64, dz: f64, segments: u32) -> Tria
             let len = (nx * nx + ny * ny + nz * nz).sqrt();
             if len > 1e-12 {
                 nx /= len; ny /= len; nz /= len;
+            } else {
+                // Degenerate quad (e.g. apex ring): fall back to a unit normal.
+                nx = 0.0; ny = 0.0; nz = 1.0;
             }
 
             for (vx, vy, vz) in &verts {
