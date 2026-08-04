@@ -222,7 +222,7 @@ export default function Toolbar() {
       </button>
       {measurements.length > 0 && (
         <button onClick={() => useAppStore.getState().clearMeasurements()} style={btnStyle} title="Clear all measurements">
-          Clear (N)
+          Clear ({measurements.length})
         </button>
       )}
       {summary && (
