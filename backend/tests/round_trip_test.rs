@@ -417,6 +417,61 @@ fn loop_is_re_emitted_in_its_own_section() {
 }
 
 #[test]
+fn optical_material_properties_survive() {
+    // <property> is how an optical material binds a named <matrix>. Dropping
+    // these removed every optical property from the file while leaving the
+    // matrices they referenced behind — a silently non-functional export.
+    let src = r#"<?xml version="1.0" encoding="UTF-8"?>
+<gdml>
+  <define/>
+  <materials>
+    <isotope name="H1" N="1" Z="1"><atom value="1.008" unit="g/mole" type="A"/></isotope>
+    <element name="Hyd"><atom value="1.008" unit="g/mole"/></element>
+    <material name="Glass" state="solid">
+      <D value="2.5"/>
+      <MEE value="85.7" unit="eV"/>
+      <RL value="12.3" unit="cm"/>
+      <AL value="45.6" unit="cm"/>
+      <property name="RINDEX" ref="rindexMatrix"/>
+      <property name="ABSLENGTH" ref="abslenMatrix"/>
+      <atom value="20.0" unit="g/mole"/>
+    </material>
+  </materials>
+  <solids>
+    <box name="WorldBox" x="10" y="10" z="10" lunit="mm"/>
+  </solids>
+  <structure>
+    <volume name="World"><materialref ref="Glass"/><solidref ref="WorldBox"/></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+</gdml>"#;
+
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "optical.gdml".to_string()).unwrap();
+    let glass = doc
+        .materials
+        .materials
+        .iter()
+        .find(|m| m.name == "Glass")
+        .expect("Glass");
+    assert_eq!(glass.properties.len(), 2, "optical properties lost");
+    assert_eq!(glass.properties[0].name, "RINDEX");
+    assert_eq!(glass.properties[0].ref_name.as_deref(), Some("rindexMatrix"));
+    assert!(glass.rl.is_some(), "RL lost");
+    assert!(glass.al.is_some(), "AL lost");
+    assert_eq!(glass.atom_unit.as_deref(), Some("g/mole"), "atom unit lost");
+
+    let iso = &doc.materials.isotopes[0];
+    assert_eq!(iso.atom_unit.as_deref(), Some("g/mole"));
+    assert_eq!(iso.atom_type.as_deref(), Some("A"));
+    assert_eq!(
+        doc.materials.elements[0].atom_unit.as_deref(),
+        Some("g/mole")
+    );
+
+    assert_tokens_preserved(src, &serialize_gdml(&doc).unwrap());
+}
+
+#[test]
 fn export_is_idempotent_across_the_corpus() {
     for path in sample_files() {
         let name = path.file_name().unwrap().to_string_lossy().to_string();

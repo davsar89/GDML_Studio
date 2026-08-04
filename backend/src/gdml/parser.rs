@@ -293,6 +293,8 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                             n: get_attr(e, "N"),
                             z: get_attr(e, "Z"),
                             atom_value: None,
+                            atom_unit: None,
+                            atom_type: None,
                         });
                     }
                     b"element" if section == Section::Materials => {
@@ -304,6 +306,8 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                             formula,
                             z,
                             atom_value: None,
+                            atom_unit: None,
+                            atom_type: None,
                             fractions: Vec::new(),
                         });
                     }
@@ -700,6 +704,8 @@ fn read_element_body(
     materials: &mut MaterialSection,
 ) -> Result<()> {
     let mut atom_value = None;
+    let mut atom_unit = None;
+    let mut atom_type = None;
     let mut fractions = Vec::new();
     let mut buf = Vec::new();
 
@@ -708,7 +714,11 @@ fn read_element_body(
         match reader.read_event_into(&mut buf) {
             Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
                 match inner.local_name().as_ref() {
-                    b"atom" => atom_value = get_attr(inner, "value"),
+                    b"atom" => {
+                        atom_value = get_attr(inner, "value");
+                        atom_unit = get_attr(inner, "unit");
+                        atom_type = get_attr(inner, "type");
+                    }
                     b"fraction" => fractions.push(Fraction {
                         n: get_attr(inner, "n").unwrap_or_default(),
                         ref_name: get_attr(inner, "ref").unwrap_or_default(),
@@ -732,6 +742,8 @@ fn read_element_body(
         formula: attrs.formula,
         z: attrs.z,
         atom_value,
+        atom_unit,
+        atom_type,
         fractions,
     });
     Ok(())
@@ -759,6 +771,8 @@ fn read_isotope_body(
     materials: &mut MaterialSection,
 ) -> Result<()> {
     let mut atom_value = None;
+    let mut atom_unit = None;
+    let mut atom_type = None;
     let mut buf = Vec::new();
 
     loop {
@@ -767,6 +781,8 @@ fn read_isotope_body(
             Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
                 if inner.local_name().as_ref() == b"atom" {
                     atom_value = get_attr(inner, "value");
+                    atom_unit = get_attr(inner, "unit");
+                    atom_type = get_attr(inner, "type");
                 }
             }
             Ok(Event::End(ref inner)) => {
@@ -785,6 +801,8 @@ fn read_isotope_body(
         n: attrs.n,
         z: attrs.z,
         atom_value,
+        atom_unit,
+        atom_type,
     });
     Ok(())
 }
@@ -815,7 +833,12 @@ fn read_material_body(
     let mut temperature = None;
     let mut pressure = None;
     let mut mee = None;
+    let mut rl = None;
+    let mut al = None;
+    let mut properties = Vec::new();
     let mut atom_value = None;
+    let mut atom_unit = None;
+    let mut atom_type = None;
     let mut components = Vec::new();
     let mut buf = Vec::new();
 
@@ -852,8 +875,29 @@ fn read_material_body(
                             unit: get_attr(inner, "unit"),
                         });
                     }
+                    b"RL" => {
+                        rl = Some(PropertyValue {
+                            value: get_attr(inner, "value").unwrap_or_default(),
+                            unit: get_attr(inner, "unit"),
+                        });
+                    }
+                    b"AL" => {
+                        al = Some(PropertyValue {
+                            value: get_attr(inner, "value").unwrap_or_default(),
+                            unit: get_attr(inner, "unit"),
+                        });
+                    }
+                    b"property" => {
+                        properties.push(MaterialProperty {
+                            name: get_attr(inner, "name").unwrap_or_default(),
+                            ref_name: get_attr(inner, "ref"),
+                            values: get_attr(inner, "values"),
+                        });
+                    }
                     b"atom" => {
                         atom_value = get_attr(inner, "value");
+                        atom_unit = get_attr(inner, "unit");
+                        atom_type = get_attr(inner, "type");
                     }
                     b"fraction" => {
                         components.push(MaterialComponent::Fraction {
@@ -891,7 +935,12 @@ fn read_material_body(
         temperature,
         pressure,
         mee,
+        rl,
+        al,
+        properties,
         atom_value,
+        atom_unit,
+        atom_type,
         components,
     });
     Ok(())

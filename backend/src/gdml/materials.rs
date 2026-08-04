@@ -293,6 +293,12 @@ fn write_materials(
             writer.write_event(Event::Start(elem))?;
             let mut atom = BytesStart::new("atom");
             atom.push_attribute(("value", av.as_str()));
+            if let Some(ref u) = iso.atom_unit {
+                atom.push_attribute(("unit", u.as_str()));
+            }
+            if let Some(ref t) = iso.atom_type {
+                atom.push_attribute(("type", t.as_str()));
+            }
             writer.write_event(Event::Empty(atom))?;
             writer.write_event(Event::End(BytesEnd::new("isotope")))?;
         } else {
@@ -315,6 +321,12 @@ fn write_materials(
             if let Some(ref av) = el.atom_value {
                 let mut atom = BytesStart::new("atom");
                 atom.push_attribute(("value", av.as_str()));
+                if let Some(ref u) = el.atom_unit {
+                    atom.push_attribute(("unit", u.as_str()));
+                }
+                if let Some(ref t) = el.atom_type {
+                    atom.push_attribute(("type", t.as_str()));
+                }
                 writer.write_event(Event::Empty(atom))?;
             }
             for fr in &el.fractions {
@@ -381,9 +393,42 @@ fn write_materials(
             }
             writer.write_event(Event::Empty(me))?;
         }
+        if let Some(ref r) = mat.rl {
+            let mut e = BytesStart::new("RL");
+            e.push_attribute(("value", r.value.as_str()));
+            if let Some(ref u) = r.unit {
+                e.push_attribute(("unit", u.as_str()));
+            }
+            writer.write_event(Event::Empty(e))?;
+        }
+        if let Some(ref a) = mat.al {
+            let mut e = BytesStart::new("AL");
+            e.push_attribute(("value", a.value.as_str()));
+            if let Some(ref u) = a.unit {
+                e.push_attribute(("unit", u.as_str()));
+            }
+            writer.write_event(Event::Empty(e))?;
+        }
+        for prop in &mat.properties {
+            let mut e = BytesStart::new("property");
+            e.push_attribute(("name", prop.name.as_str()));
+            if let Some(ref r) = prop.ref_name {
+                e.push_attribute(("ref", r.as_str()));
+            }
+            if let Some(ref v) = prop.values {
+                e.push_attribute(("values", v.as_str()));
+            }
+            writer.write_event(Event::Empty(e))?;
+        }
         if let Some(ref av) = mat.atom_value {
             let mut atom = BytesStart::new("atom");
             atom.push_attribute(("value", av.as_str()));
+            if let Some(ref u) = mat.atom_unit {
+                atom.push_attribute(("unit", u.as_str()));
+            }
+            if let Some(ref t) = mat.atom_type {
+                atom.push_attribute(("type", t.as_str()));
+            }
             writer.write_event(Event::Empty(atom))?;
         }
         for comp in &mat.components {

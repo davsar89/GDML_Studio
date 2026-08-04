@@ -1551,7 +1551,12 @@ mod tests {
             temperature: None,
             pressure: None,
             mee: None,
+            rl: None,
+            al: None,
+            properties: Vec::new(),
             atom_value: None,
+            atom_unit: None,
+            atom_type: None,
             components: Vec::new(),
         }
     }

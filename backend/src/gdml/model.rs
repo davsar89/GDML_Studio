@@ -151,6 +151,24 @@ pub struct Isotope {
     pub n: Option<String>,
     pub z: Option<String>,
     pub atom_value: Option<String>,
+    /// `<atom unit="g/mole"/>` — read but previously discarded.
+    #[serde(default)]
+    pub atom_unit: Option<String>,
+    /// `<atom type="A"/>`.
+    #[serde(default)]
+    pub atom_type: Option<String>,
+}
+
+/// `<property name="RINDEX" ref="rindexMatrix"/>` — how an optical material
+/// binds a named `<matrix>`. Dropping these silently removes every optical
+/// property from the file while leaving the matrices they referenced behind.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaterialProperty {
+    pub name: String,
+    #[serde(default)]
+    pub ref_name: Option<String>,
+    #[serde(default)]
+    pub values: Option<String>,
 }
 
 /// A `<fraction n=".." ref=".."/>` entry used in isotope-defined elements.
@@ -166,6 +184,10 @@ pub struct Element {
     pub formula: Option<String>,
     pub z: Option<String>,
     pub atom_value: Option<String>,
+    #[serde(default)]
+    pub atom_unit: Option<String>,
+    #[serde(default)]
+    pub atom_type: Option<String>,
     /// Isotope composition for elements defined via `<fraction>` children.
     #[serde(default)]
     pub fractions: Vec<Fraction>,
@@ -193,6 +215,19 @@ pub struct Material {
     #[serde(default)]
     pub mee: Option<PropertyValue>,
     pub atom_value: Option<String>,
+    #[serde(default)]
+    pub atom_unit: Option<String>,
+    #[serde(default)]
+    pub atom_type: Option<String>,
+    /// `<property>` bindings — the optical property table.
+    #[serde(default)]
+    pub properties: Vec<MaterialProperty>,
+    /// `<RL value=".." unit=".."/>` radiation length.
+    #[serde(default)]
+    pub rl: Option<PropertyValue>,
+    /// `<AL value=".." unit=".."/>` absorption length.
+    #[serde(default)]
+    pub al: Option<PropertyValue>,
     pub components: Vec<MaterialComponent>,
 }
 

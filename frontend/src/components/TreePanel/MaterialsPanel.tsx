@@ -57,7 +57,12 @@ function MaterialsList({
       temperature: null,
       pressure: null,
       mee: null,
+      rl: null,
+      al: null,
+      properties: [],
       atom_value: null,
+      atom_unit: null,
+      atom_type: null,
       components: [],
     };
     newMat.name = generateDefaultMaterialName(newMat, materials);
@@ -597,6 +602,8 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
         formula: null,
         z: newZ || null,
         atom_value: newAtom || null,
+        atom_unit: null,
+        atom_type: null,
         fractions: [],
       });
       await refreshMaterials();

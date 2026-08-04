@@ -81,6 +81,13 @@ export interface Fraction {
 // item wholesale. Every field the backend models must appear here, and edit
 // paths must spread the original object rather than rebuild it field by field —
 // anything missing is silently dropped from the user's GDML on export.
+/** `<property name="RINDEX" ref="rindexMatrix"/>` — an optical property binding. */
+export interface MaterialProperty {
+  name: string;
+  ref_name: string | null;
+  values: string | null;
+}
+
 export interface MaterialInfo {
   name: string;
   formula: string | null;
@@ -93,7 +100,15 @@ export interface MaterialInfo {
   pressure: PropertyValue | null;
   /** `<MEE>` mean excitation energy. */
   mee: PropertyValue | null;
+  /** `<RL>` radiation length. */
+  rl: PropertyValue | null;
+  /** `<AL>` absorption length. */
+  al: PropertyValue | null;
+  /** `<property>` bindings — the optical property table. */
+  properties: MaterialProperty[];
   atom_value: string | null;
+  atom_unit: string | null;
+  atom_type: string | null;
   components: MaterialComponent[];
 }
 
@@ -102,6 +117,8 @@ export interface ElementInfo {
   formula: string | null;
   z: string | null;
   atom_value: string | null;
+  atom_unit: string | null;
+  atom_type: string | null;
   /** Isotope composition; empty for elements defined by Z/atom alone. */
   fractions: Fraction[];
 }

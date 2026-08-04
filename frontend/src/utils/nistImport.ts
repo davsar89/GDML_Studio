@@ -20,6 +20,8 @@ export async function importNistMaterial(nist: NistMaterial): Promise<MaterialIn
           formula: refNist.formula,
           z: refNist.z != null ? String(refNist.z) : null,
           atom_value: refNist.atom_value != null ? String(refNist.atom_value) : null,
+          atom_unit: null,
+          atom_type: null,
           fractions: [],
         });
       } catch {
@@ -45,7 +47,12 @@ export async function importNistMaterial(nist: NistMaterial): Promise<MaterialIn
     temperature: null,
     pressure: null,
     mee: null,
+    rl: null,
+    al: null,
+    properties: [],
     atom_value: nist.atom_value != null ? String(nist.atom_value) : null,
+    atom_unit: null,
+    atom_type: null,
     components,
   };
 
