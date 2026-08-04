@@ -257,8 +257,6 @@ fn export_drops_nothing_from_the_corpus() {
         "D:",       // DOCTYPE / internal entity declarations — not yet preserved
         "E:loop",   // <loop> is captured raw but re-emitted in the wrong section
         "E:atom",   // unit attribute not modelled
-        "E:multiUnionNode", // name attribute not modelled
-        "E:gdml",   // root attributes are hardcoded on write
         "E:setup",  // only one setup is kept
         "E:scaledSolid", // scaleref rewritten as an inline scale
         "E:scale",

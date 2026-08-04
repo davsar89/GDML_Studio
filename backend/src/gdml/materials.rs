@@ -100,13 +100,21 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     // XML declaration
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
 
-    // <gdml> root with namespace
+    // <gdml> root. Reproduce the source's own attributes when we captured them;
+    // fall back to the standard schema pair for documents built programmatically
+    // (add_material and the handler tests) which have no source to copy.
     let mut gdml = BytesStart::new("gdml");
-    gdml.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
-    gdml.push_attribute((
-        "xsi:noNamespaceSchemaLocation",
-        "http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd",
-    ));
+    if doc.root_attributes.is_empty() {
+        gdml.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
+        gdml.push_attribute((
+            "xsi:noNamespaceSchemaLocation",
+            "http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd",
+        ));
+    } else {
+        for (k, v) in &doc.root_attributes {
+            gdml.push_attribute((k.as_str(), v.as_str()));
+        }
+    }
     writer.write_event(Event::Start(gdml))?;
 
     // Preserved-verbatim elements are re-emitted into the section the schema
@@ -1023,7 +1031,10 @@ fn write_solids(
                 elem.push_attribute(("name", mu.name.as_str()));
                 writer.write_event(Event::Start(elem))?;
                 for node in &mu.nodes {
-                    let node_elem = BytesStart::new("multiUnionNode");
+                    let mut node_elem = BytesStart::new("multiUnionNode");
+                    if let Some(ref n) = node.name {
+                        node_elem.push_attribute(("name", n.as_str()));
+                    }
                     writer.write_event(Event::Start(node_elem))?;
                     let mut sref = BytesStart::new("solid");
                     sref.push_attribute(("ref", node.solid_ref.as_str()));

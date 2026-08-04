@@ -1517,6 +1517,7 @@ mod tests {
     fn base_doc(filename: &str, world_ref: &str) -> GdmlDocument {
         GdmlDocument {
             filename: filename.to_string(),
+            root_attributes: Vec::new(),
             defines: DefineSection::default(),
             materials: MaterialSection::default(),
             solids: SolidSection::default(),

@@ -27,6 +27,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
     let mut setup = None;
     // Elements recognized by name but not interpreted; preserved verbatim.
     let mut raw_unknown: Vec<RawElement> = Vec::new();
+    let mut root_attributes: Vec<(String, String)> = Vec::new();
     // Unsupported constructs that had to be dropped entirely (warn the user).
     let mut skipped_unsupported: Vec<String> = Vec::new();
 
@@ -60,6 +61,26 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"materials" => section = Section::Materials,
                     b"solids" => section = Section::Solids,
                     b"structure" => section = Section::Structure,
+                    // Capture the root's own attributes so the writer can
+                    // reproduce them instead of substituting a hardcoded pair.
+                    b"gdml" => {
+                        root_attributes = e
+                            .attributes()
+                            .filter_map(|a| a.ok())
+                            .map(|a| {
+                                // Unescape on read; the writer re-escapes, which
+                                // preserves the no-double-escape invariant that
+                                // `get_attr` documents.
+                                let raw = String::from_utf8_lossy(&a.value);
+                                (
+                                    String::from_utf8_lossy(a.key.as_ref()).to_string(),
+                                    quick_xml::escape::unescape(&raw)
+                                        .map(|c| c.into_owned())
+                                        .unwrap_or_else(|_| raw.into_owned()),
+                                )
+                            })
+                            .collect();
+                    }
                     b"constant" if section == Section::Define => {
                         parse_constant(e, &mut defines);
                     }
@@ -411,6 +432,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             world_ref: String::new(),
         }),
         raw_unknown,
+        root_attributes,
         skipped_unsupported,
     })
 }
@@ -1696,7 +1718,9 @@ fn read_multiunion_body(
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref inner)) => {
                 if inner.local_name().as_ref() == b"multiUnionNode" {
-                    let node = read_multiunion_node(reader)?;
+                    let node_name = get_attr(inner, "name");
+                    let mut node = read_multiunion_node(reader)?;
+                    node.name = node_name;
                     nodes.push(node);
                 }
             }
@@ -1805,6 +1829,7 @@ fn read_multiunion_node(reader: &mut Reader<&[u8]>) -> Result<MultiUnionNode> {
     }
 
     Ok(MultiUnionNode {
+        name: None,
         solid_ref,
         position,
         rotation,

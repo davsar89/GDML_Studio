@@ -15,6 +15,11 @@ pub struct GdmlDocument {
     /// being silently dropped.
     #[serde(default)]
     pub raw_unknown: Vec<RawElement>,
+    /// Attributes on the `<gdml>` root, captured verbatim. The writer used to
+    /// hardcode two xsi attributes, so anything else — most commonly
+    /// `xmlns:gdml`, present in 5 of the 10 shipped samples — was dropped.
+    #[serde(default)]
+    pub root_attributes: Vec<(String, String)>,
     /// Human-readable notes about unsupported constructs the parser had to
     /// skip entirely (e.g. `<divisionvol>` inside a volume). Surfaced as load
     /// warnings: these are NOT preserved and will be missing from a save.
@@ -657,6 +662,10 @@ pub struct ReflectedSolidDef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiUnionNode {
+    /// `<multiUnionNode name="..">`. Present in sample_data/solids.gdml and
+    /// dropped on export before this was modelled.
+    #[serde(default)]
+    pub name: Option<String>,
     pub solid_ref: String,
     pub position: Option<PlacementPos>,
     pub rotation: Option<PlacementRot>,
