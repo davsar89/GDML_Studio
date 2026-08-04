@@ -1022,10 +1022,27 @@ fn build_volume_node(
             let offset_val = engine.resolve_value(&replica.offset);
             let offset_unit = replica.offset_unit.as_deref().unwrap_or("mm");
             let offset_mm = crate::gdml::units::length_to_mm(offset_val, offset_unit);
-            if offset_mm.abs() > 1e-9 {
+            // Only Cartesian replication is implemented; rho/phi fall through to
+            // the z branch of the axis selector below, which would render a
+            // radial or angular stack as a z-stack with nothing said.
+            if let Some(ref axis) = replica.curvilinear_axis {
                 warnings.push(format!(
-                    "replicavol '{}': non-zero offset ({} mm) is ignored for Cartesian \
-                     replication axes (Geant4 rejects it).",
+                    "replicavol '{}': replication along {} is not supported; it is drawn \
+                     as a z-axis stack, so this part of the geometry is wrong.",
+                    replica.volume_ref, axis
+                ));
+            }
+
+            if offset_mm.abs() > 1e-9 {
+                // States what this viewer does, not what Geant4 does.
+                // G4GDMLReadStructure passes offset straight to
+                // G4ReflectionFactory::Replicate without validating it, and
+                // G4PVReplica.cc -- where any rejection would live -- is not
+                // among the vendored reference sources, so the earlier claim
+                // that "Geant4 rejects it" could not be substantiated.
+                warnings.push(format!(
+                    "replicavol '{}': non-zero offset ({} mm) is ignored; the stack is \
+                     drawn centred in its mother.",
                     replica.volume_ref, offset_mm
                 ));
             }
@@ -2030,6 +2047,7 @@ mod tests {
         let mut world = volume("World", "Vacuum");
         world.replica = Some(crate::gdml::model::ReplicaVol {
             volume_ref: "Slice".to_string(),
+            curvilinear_axis: None,
             number: "4".to_string(),
             direction: [Some("1".to_string()), None, None],
             width: "10".to_string(),

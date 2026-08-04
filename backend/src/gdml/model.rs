@@ -831,6 +831,13 @@ pub struct ReplicaVol {
     pub volume_ref: String,
     pub number: String,
     pub direction: [Option<String>; 3],
+    /// `"rho"` or `"phi"` when the source replicated along a curvilinear axis.
+    ///
+    /// Geant4's `AxisRead` accepts these alongside x/y/z, but only Cartesian
+    /// replication is implemented here — and the axis selector falls through to
+    /// z, so such a replica used to render as a z-stack with nothing said.
+    #[serde(default)]
+    pub curvilinear_axis: Option<String>,
     pub width: String,
     pub width_unit: Option<String>,
     pub offset: String,

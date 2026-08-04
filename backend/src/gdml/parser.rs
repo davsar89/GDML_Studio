@@ -2299,6 +2299,7 @@ fn read_boolean_solid_body(
 fn read_replicavol_body(reader: &mut Reader<&[u8]>, number: String) -> Result<ReplicaVol> {
     let mut volume_ref = String::new();
     let mut direction = [None, None, None];
+    let mut curvilinear_axis = None;
     let mut width = String::new();
     let mut width_unit = None;
     let mut offset = String::new();
@@ -2319,6 +2320,9 @@ fn read_replicavol_body(reader: &mut Reader<&[u8]>, number: String) -> Result<Re
                         direction[0] = get_attr(inner, "x");
                         direction[1] = get_attr(inner, "y");
                         direction[2] = get_attr(inner, "z");
+                        curvilinear_axis = get_attr(inner, "rho")
+                            .map(|_| "rho".to_string())
+                            .or_else(|| get_attr(inner, "phi").map(|_| "phi".to_string()));
                     }
                     b"width" if in_replicate => {
                         width = get_attr(inner, "value").unwrap_or_default();
@@ -2345,6 +2349,9 @@ fn read_replicavol_body(reader: &mut Reader<&[u8]>, number: String) -> Result<Re
                         direction[0] = get_attr(inner, "x");
                         direction[1] = get_attr(inner, "y");
                         direction[2] = get_attr(inner, "z");
+                        curvilinear_axis = get_attr(inner, "rho")
+                            .map(|_| "rho".to_string())
+                            .or_else(|| get_attr(inner, "phi").map(|_| "phi".to_string()));
                         reader.read_to_end(inner.to_end().name())?;
                     }
                     b"width" if in_replicate => {
@@ -2380,6 +2387,7 @@ fn read_replicavol_body(reader: &mut Reader<&[u8]>, number: String) -> Result<Re
         volume_ref,
         number,
         direction,
+        curvilinear_axis,
         width,
         width_unit,
         offset,
