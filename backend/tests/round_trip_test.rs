@@ -381,6 +381,42 @@ fn non_self_closed_leaf_children_are_read() {
 }
 
 #[test]
+fn loop_is_re_emitted_in_its_own_section() {
+    // <loop> is legal in <define>, <solids> and <structure>. The writer inferred
+    // the section from the tag name alone and always chose <define>, so a loop
+    // in solids or structure came back nested inside <define> — a file Geant4
+    // will not load. The user-facing warning meanwhile claimed the element was
+    // "preserved on save".
+    let src = doc_with(
+        r#"    <loop for="i" to="3" step="1"><box name="looped" x="1" y="1" z="1"/></loop>"#,
+        r#"    <loop for="j" to="2" step="1"><volume name="LV"><materialref ref="Vacuum"/><solidref ref="WorldBox"/></volume></loop>"#,
+    );
+    let out = round_trip(src.as_bytes(), "loop.gdml");
+
+    let in_section = |section: &str, needle: &str| -> bool {
+        let open = format!("<{section}>");
+        let close = format!("</{section}>");
+        match (out.find(&open), out.find(&close)) {
+            (Some(a), Some(b)) if a < b => out[a..b].contains(needle),
+            _ => false,
+        }
+    };
+
+    assert!(
+        in_section("solids", "<loop"),
+        "loop from <solids> not written back there:\n{out}"
+    );
+    assert!(
+        in_section("structure", "<loop"),
+        "loop from <structure> not written back there:\n{out}"
+    );
+    assert!(
+        !in_section("define", "<loop"),
+        "loop wrongly written into <define>, producing invalid GDML:\n{out}"
+    );
+}
+
+#[test]
 fn export_is_idempotent_across_the_corpus() {
     for path in sample_files() {
         let name = path.file_name().unwrap().to_string_lossy().to_string();

@@ -246,7 +246,11 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     | b"loop" | b"assembly" | b"matrix" | b"scale" => {
                         let raw_tag = String::from_utf8_lossy(tag).to_string();
                         let xml = capture_raw_subtree(&mut reader, e.clone().into_owned())?;
-                        raw_unknown.push(RawElement { tag: raw_tag, xml });
+                        raw_unknown.push(RawElement {
+                            tag: raw_tag,
+                            section: Some(section_key(section)),
+                            xml,
+                        });
                     }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();
@@ -374,7 +378,11 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     | b"loop" | b"assembly" | b"matrix" | b"scale" => {
                         let raw_tag = String::from_utf8_lossy(tag).to_string();
                         let xml = empty_element_to_string(e)?;
-                        raw_unknown.push(RawElement { tag: raw_tag, xml });
+                        raw_unknown.push(RawElement {
+                            tag: raw_tag,
+                            section: Some(section_key(section)),
+                            xml,
+                        });
                     }
                     b"setup" => {
                         let name = get_attr(e, "name").unwrap_or_default();

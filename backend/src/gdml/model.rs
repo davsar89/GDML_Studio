@@ -64,6 +64,17 @@ pub struct DocumentOrder {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawElement {
+    /// The section this element was captured from, so it can be re-emitted
+    /// there.
+    ///
+    /// The writer used to infer the section from the tag name alone. That is
+    /// right for every tag it handles except `<loop>`, which is legal in
+    /// `<define>`, `<solids>` *and* `<structure>` — so a loop in solids or
+    /// structure was re-emitted nested inside `<define>`, producing a file
+    /// Geant4 will not load. Recording the section is right by construction and
+    /// removes the whole class of bug.
+    #[serde(default)]
+    pub section: Option<String>,
     pub tag: String,
     pub xml: String,
 }

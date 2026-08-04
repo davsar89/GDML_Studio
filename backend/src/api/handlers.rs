@@ -378,11 +378,18 @@ fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
     tags.dedup();
     let mut warnings: Vec<String> = tags
         .into_iter()
-        .map(|t| {
-            format!(
+        .map(|t| match t {
+            // <loop> is a special case: unlike the other preserved tags it is
+            // partly rendered, because its body is read as if the loop wrapper
+            // were not there. The generic wording was wrong in both directions.
+            "loop" => "<loop> is preserved exactly as written on save, but it is NOT expanded: \
+                       only one iteration's worth of contents appears in the 3D view and in \
+                       the summary counts. The exported file is faithful; the preview is not."
+                .to_string(),
+            other => format!(
                 "<{}> elements are preserved on save but are not interpreted or rendered.",
-                t
-            )
+                other
+            ),
         })
         .collect();
     warnings.extend(doc.skipped_unsupported.iter().cloned());

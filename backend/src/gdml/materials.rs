@@ -78,12 +78,27 @@ pub fn search_nist_materials(query: &str, category: Option<&str>) -> Vec<&'stati
 
 /// The GDML section a preserved-verbatim element must be re-emitted into for
 /// the exported file to remain schema-valid.
+///
+/// Fallback only — used when the element carries no recorded section, i.e. for
+/// documents built programmatically rather than parsed. Guessing from the tag is
+/// correct for every tag here except `<loop>`, which is legal in three different
+/// sections; see [`RawElement::section`].
 fn raw_section_for_tag(tag: &str) -> &'static str {
     match tag {
         "loop" | "matrix" | "scale" => "define",
         "opticalsurface" => "solids",
         "skinsurface" | "bordersurface" | "assembly" => "structure",
         _ => "gdml", // e.g. <userinfo> lives directly under <gdml>
+    }
+}
+
+/// Which section a raw element should be written into.
+fn raw_section(raw: &RawElement) -> &str {
+    match raw.section.as_deref() {
+        // "root" means it sat directly under <gdml>, e.g. <userinfo>.
+        Some("root") => "gdml",
+        Some(s) => s,
+        None => raw_section_for_tag(&raw.tag),
     }
 }
 
@@ -126,7 +141,7 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     let raw_in = |section: &str| -> Vec<&RawElement> {
         doc.raw_unknown
             .iter()
-            .filter(|r| raw_section_for_tag(&r.tag) == section)
+            .filter(|r| raw_section(r) == section)
             .collect()
     };
 
