@@ -132,13 +132,43 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
     faceNormals.push(new THREE.Vector3().crossVectors(tmpAB, tmpAC).normalize());
   }
 
+  // --- Weld vertices by position ---
+  //
+  // Edges must be keyed by location, not by vertex index. Tessellated solids
+  // arrive fully unwelded — the backend emits three fresh vertices per facet, so
+  // every triangle has its own copies of its corners — and an index-keyed edge
+  // map therefore never pairs the two faces that share a geometric edge. Every
+  // edge then looked like a boundary edge, so *every* edge and vertex became a
+  // "feature": 71,328 candidates for the largest solid in
+  // pod_asm_tessellated.gdml, fed into the O(n·|out|) dedup below, which is
+  // roughly a billion distance comparisons and several seconds of frozen main
+  // thread on the click that places the first measurement point.
+  const WELD_DECIMALS = 4; // 0.1 µm at millimetre scale
+  const canonicalOf = new Int32Array(vertexCount);
+  const canonicalByPos = new Map<string, number>();
+  for (let i = 0; i < vertexCount; i++) {
+    const v = vertPositions[i];
+    const key = `${v.x.toFixed(WELD_DECIMALS)},${v.y.toFixed(WELD_DECIMALS)},${v.z.toFixed(
+      WELD_DECIMALS,
+    )}`;
+    const existing = canonicalByPos.get(key);
+    if (existing === undefined) {
+      canonicalByPos.set(key, i);
+      canonicalOf[i] = i;
+    } else {
+      canonicalOf[i] = existing;
+    }
+  }
+
   // --- Build edge → adjacent face indices map ---
   const edgeFaceMap = new Map<string, number[]>();
-  const edgeKey = (a: number, b: number) => (a < b ? `${a}-${b}` : `${b}-${a}`);
+  const edgeKey = (ra: number, rb: number) => (ra < rb ? `${ra}-${rb}` : `${rb}-${ra}`);
 
   for (let t = 0; t < triangles.length; t++) {
     const [ia, ib, ic] = triangles[t];
-    for (const [ea, eb] of [[ia, ib], [ib, ic], [ia, ic]] as [number, number][]) {
+    for (const [va, vb] of [[ia, ib], [ib, ic], [ia, ic]] as [number, number][]) {
+      const [ea, eb] = [canonicalOf[va], canonicalOf[vb]];
+      if (ea === eb) continue; // degenerate edge
       const key = edgeKey(ea, eb);
       let faces = edgeFaceMap.get(key);
       if (!faces) {

@@ -568,6 +568,30 @@ pub async fn get_summary(State(state): State<SharedState>) -> Result<Json<Value>
     })))
 }
 
+/// Scene graph without the mesh buffers.
+///
+/// Editing a material never re-tessellates — `tessellate_all_solids` runs only
+/// on upload — but node colour is derived from density, so the tree still has to
+/// be rebuilt after an edit. Serving it separately keeps a debounced keystroke
+/// from re-downloading every vertex in the document (~16 MB on the largest
+/// sample) and, on the client, from rebuilding every BufferGeometry and
+/// re-uploading the whole scene to the GPU.
+pub async fn get_scene(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
+    let state_r = state.read().await;
+    let loaded = state_r
+        .loaded
+        .as_ref()
+        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+
+    let mut scene_warnings = Vec::new();
+    let scene_graph = build_scene_graph(&loaded.document, &loaded.engine, &mut scene_warnings);
+
+    Ok(Json(json!({
+        "scene_graph": scene_graph,
+        "warnings": scene_warnings,
+    })))
+}
+
 pub async fn get_meshes(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
     let loaded = state_r
@@ -582,27 +606,46 @@ pub async fn get_meshes(State(state): State<SharedState>) -> Result<Json<Value>,
     let mut scene_warnings = Vec::new();
     let scene_graph = build_scene_graph(doc, engine, &mut scene_warnings);
 
-    // Serialize meshes
-    let meshes: HashMap<String, MeshData> = loaded
+    // Serialise the mesh buffers by reference. Cloning them and then handing the
+    // result to `json!` cost three copies: the clone, a serde_json::Value tree
+    // (one 32-byte Value per number, with every f32 widened to f64 -- so
+    // 12.34f32 came out as 12.340000152587891), and finally the response bytes.
+    // Peak on the largest shipped sample was ~50 MB for 3.7 MB of vertex data.
+    #[derive(Serialize)]
+    struct MeshesResponse<'a, T> {
+        meshes: HashMap<&'a str, MeshRef<'a>>,
+        scene_graph: T,
+        warnings: Vec<String>,
+    }
+    #[derive(Serialize)]
+    struct MeshRef<'a> {
+        positions: &'a [f32],
+        normals: &'a [f32],
+        indices: &'a [u32],
+    }
+
+    let meshes: HashMap<&str, MeshRef> = loaded
         .meshes
         .iter()
         .map(|(name, mesh)| {
             (
-                name.clone(),
-                MeshData {
-                    positions: mesh.positions.clone(),
-                    normals: mesh.normals.clone(),
-                    indices: mesh.indices.clone(),
+                name.as_str(),
+                MeshRef {
+                    positions: &mesh.positions,
+                    normals: &mesh.normals,
+                    indices: &mesh.indices,
                 },
             )
         })
         .collect();
 
-    Ok(Json(json!({
-        "meshes": meshes,
-        "scene_graph": scene_graph,
-        "warnings": scene_warnings,
-    })))
+    let body = serde_json::to_value(MeshesResponse {
+        meshes,
+        scene_graph,
+        warnings: scene_warnings,
+    })
+    .map_err(|e| ApiError::internal(&format!("Failed to serialize meshes: {}", e)))?;
+    Ok(Json(body))
 }
 
 pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
@@ -738,8 +781,9 @@ fn build_scene_graph(
         .collect();
 
     let mut visited = HashSet::new();
+    let mut budget = SceneBudget::default();
 
-    if let Some(world_vol) = vol_map.get(world_ref.as_str()) {
+    let root = if let Some(world_vol) = vol_map.get(world_ref.as_str()) {
         build_volume_node(
             world_vol,
             &vol_map,
@@ -751,6 +795,8 @@ fn build_scene_graph(
             &mut visited,
             format!("/{}", world_vol.name),
             warnings,
+            0,
+            &mut budget,
         )
     } else {
         SceneNode {
@@ -766,12 +812,45 @@ fn build_scene_graph(
             is_world: true,
             children: Vec::new(),
         }
+    };
+
+    if budget.truncated {
+        warnings.push(format!(
+            "Scene graph truncated at {} nodes / depth {}. This geometry expands \
+             multiplicatively (a volume placed in several mothers is re-expanded \
+             under each), so parts of the tree are not shown.",
+            MAX_SCENE_NODES, MAX_SCENE_DEPTH
+        ));
     }
+
+    root
+}
+
+/// Total nodes the scene graph may emit before it stops expanding.
+///
+/// `visited` is path-scoped — a volume is inserted on entry and removed once its
+/// children are built — which correctly detects cycles but means a volume
+/// reachable by two different paths is re-expanded along each. That is the
+/// intended behaviour (it is how repeated placements render), and real files
+/// stay small: the largest shipped sample produces about 4,400 nodes. But it is
+/// multiplicative and was unbounded, so 25 volumes each containing two physvols
+/// pointing at the next produce 2^25 nodes, each holding several strings, on
+/// every request. Hostile input rather than a real-file problem, but the replica
+/// count was already capped for exactly this reason and this was not.
+const MAX_SCENE_NODES: usize = 500_000;
+
+/// Maximum nesting depth, bounding recursion independently of the node count.
+const MAX_SCENE_DEPTH: u32 = 256;
+
+#[derive(Default)]
+struct SceneBudget {
+    nodes: usize,
+    truncated: bool,
 }
 
 // Recursion carries both immutable lookup tables and mutable accumulators. The
-// lookups belong in a context struct, which is worth doing when this function
-// gains its node/depth caps; bundling them now would churn the signature twice.
+// lookups belong in a context struct; that refactor is worth doing on its own
+// rather than bundled into a bug fix.
 #[allow(clippy::too_many_arguments)]
 fn build_volume_node(
     vol: &Volume,
@@ -784,7 +863,27 @@ fn build_volume_node(
     visited: &mut HashSet<String>,
     instance_id: String,
     warnings: &mut Vec<String>,
+    depth: u32,
+    budget: &mut SceneBudget,
 ) -> SceneNode {
+    budget.nodes += 1;
+    if budget.nodes > MAX_SCENE_NODES || depth > MAX_SCENE_DEPTH {
+        budget.truncated = true;
+        return SceneNode {
+            name: vol.name.clone(),
+            volume_name: vol.name.clone(),
+            solid_name: vol.solid_ref.clone(),
+            material_name: vol.material_ref.clone(),
+            instance_id,
+            color: None,
+            position,
+            rotation,
+            is_world,
+            density: None,
+            children: Vec::new(),
+        };
+    }
+
     visited.insert(vol.name.clone());
 
     let color = vol
@@ -844,6 +943,8 @@ fn build_volume_node(
                 visited,
                 child_instance_id,
                 warnings,
+                depth + 1,
+                budget,
             ))
         })
         .collect();
@@ -918,6 +1019,8 @@ fn build_volume_node(
                     visited,
                     replica_instance_id,
                     warnings,
+                    depth + 1,
+                    budget,
                 );
                 children.push(child_node);
             }

@@ -53,6 +53,19 @@ export async function getMeshes() {
   }>('/api/document/meshes');
 }
 
+/**
+ * Scene graph only. Editing a material never re-tessellates, so use this rather
+ * than `getMeshes` after an edit: it avoids re-downloading every vertex in the
+ * document and, because `setMeshes` is not called, avoids rebuilding every
+ * BufferGeometry and re-uploading the scene to the GPU.
+ */
+export async function getScene() {
+  return fetchJson<{
+    scene_graph: SceneNode;
+    warnings?: string[];
+  }>('/api/document/scene');
+}
+
 export async function getDefines() {
   return fetchJson<{ defines: DefineValue[] }>('/api/document/defines');
 }

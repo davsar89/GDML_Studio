@@ -10,6 +10,7 @@ pub fn create_router(state: SharedState) -> Router {
         .route("/api/files/upload-multi", post(handlers::upload_files))
         .route("/api/document/summary", get(handlers::get_summary))
         .route("/api/document/meshes", get(handlers::get_meshes))
+        .route("/api/document/scene", get(handlers::get_scene))
         .route("/api/document/defines", get(handlers::get_defines))
         .route("/api/document/materials", get(handlers::get_materials))
         .route("/api/document/solids", get(handlers::get_solids))

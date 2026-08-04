@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 # GDML Studio — build backend, run tests, start backend + frontend, open browser
-set -e
+set -euo pipefail
+
+# Kill whatever we started, however we exit.
+#
+# Defined and trapped before the first background launch: previously the trap was
+# registered ~45 lines later, leaving the backend unprotected during the
+# readiness wait. Ctrl+C happened to work anyway (a non-interactive shell has no
+# job control, so SIGINT from the terminal reaches the whole process group), but
+# a signal from outside the group, or `set -e` aborting mid-script, orphaned the
+# backend holding port 4001 -- and the next run then died on "Failed to bind".
+BACKEND_PID=""
+FRONTEND_PID=""
+cleanup() {
+    trap - INT TERM EXIT HUP
+    echo ""
+    echo "Shutting down..."
+    [ -n "$FRONTEND_PID" ] && kill "$FRONTEND_PID" 2>/dev/null || true
+    [ -n "$BACKEND_PID" ] && kill "$BACKEND_PID" 2>/dev/null || true
+    wait 2>/dev/null || true
+    echo "Done."
+}
+trap cleanup INT TERM EXIT HUP
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -61,7 +82,10 @@ npx tsc -b
 echo ""
 echo "=== Starting backend ==="
 cd "$SCRIPT_DIR/backend"
-cargo run --release &
+# Launch the built binary directly, not via `cargo run`: cargo does not exec the
+# binary, so $! would be the cargo wrapper and killing it would leave the server
+# alive on port 4001. The release build already happened above.
+"$SCRIPT_DIR/target/release/gdml-studio-backend" &
 BACKEND_PID=$!
 
 # Wait for backend to be ready
@@ -94,17 +118,5 @@ echo "  Backend:  http://127.0.0.1:4001"
 echo "  Frontend: http://localhost:5173"
 echo ""
 echo "Press Ctrl+C to stop both servers."
-
-# Trap Ctrl+C to kill both processes
-cleanup() {
-    echo ""
-    echo "Shutting down..."
-    kill $FRONTEND_PID 2>/dev/null
-    kill $BACKEND_PID 2>/dev/null
-    wait $FRONTEND_PID 2>/dev/null
-    wait $BACKEND_PID 2>/dev/null
-    echo "Done."
-}
-trap cleanup INT TERM
 
 wait

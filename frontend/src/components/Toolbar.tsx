@@ -88,7 +88,6 @@ export default function Toolbar() {
       store.setLoading(true);
       store.setError(null);
       store.setWarnings([]);
-      clearAllGeometries();
 
       try {
         // Read all selected files
@@ -123,6 +122,15 @@ export default function Toolbar() {
         // Measurements reference world coordinates of the previous document.
         store.setMeasureMode(false);
         store.clearMeasurements();
+
+        // Dispose the previous document's geometries here, not before the
+        // upload. The "Loading..." indicator is an overlay -- the Canvas stays
+        // mounted and the old scene keeps rendering -- so clearing first meant
+        // three.js re-uploaded buffers it had just disposed, and since the cache
+        // entry was gone the later releaseGeometry() no-op'd and those buffers
+        // were never freed again. Clearing here, immediately before the new
+        // scene graph replaces the old one, leaves no window to render into.
+        clearAllGeometries();
 
         store.setSummary(result);
         store.setWarnings([...(result.warnings ?? []), ...(meshData.warnings ?? [])]);

@@ -59,6 +59,11 @@ echo.
 
 echo === Building backend (release) ===
 cd backend
+REM Stop any backend left over from a previous run BEFORE building. Windows locks
+REM a running .exe, so link.exe cannot overwrite it and the build fails with
+REM access-denied -- and the script then exits below, never reaching the cleanup
+REM that would have unblocked it.
+taskkill /F /IM gdml-studio-backend.exe /T >nul 2>&1
 cargo build --release
 if errorlevel 1 (
     echo Backend build failed.
@@ -68,7 +73,6 @@ if errorlevel 1 (
 
 echo.
 echo === Running backend tests ===
-taskkill /F /IM gdml-studio-backend.exe /T >nul 2>&1
 cargo test
 if errorlevel 1 (
     echo Backend tests failed.
@@ -126,5 +130,15 @@ echo === GDML Studio is running ===
 echo   Backend:  http://127.0.0.1:4001
 echo   Frontend: http://localhost:5173
 echo.
-echo Close this window or press Ctrl+C to stop.
-pause
+echo Press any key to stop both servers.
+pause >nul
+
+REM `start` detaches both servers into their own consoles, so closing this window
+REM used to leave them running -- the backend then held port 4001 and locked its
+REM own .exe against the next build.
+echo.
+echo Shutting down...
+taskkill /F /IM gdml-studio-backend.exe /T >nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq GDML-Backend*" >nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq GDML-Frontend*" >nul 2>&1
+echo Done.
