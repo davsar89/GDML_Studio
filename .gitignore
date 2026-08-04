@@ -7,3 +7,6 @@ Thumbs.db
 
 # Local project notes
 CLAUDE.md
+
+# Claude Code local tooling config
+.claude/

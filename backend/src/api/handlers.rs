@@ -830,7 +830,51 @@ fn build_scene_graph(
         ));
     }
 
+    dedupe_warnings(warnings);
     root
+}
+
+/// Collapse repeats and cap the list.
+///
+/// Warnings here are raised per *instance* — `build_volume_node` runs once per
+/// placement — so a replicavol nested inside a 16x16 replica reports the same
+/// problem 256 times. pinhole_lab.gdml produced 277 warnings of which 4 were
+/// distinct, burying the panel and the two warnings that were actually about
+/// different volumes. Repeats are counted rather than dropped, since "256
+/// placements affected" is the useful part.
+///
+/// First-occurrence order is preserved so the output is deterministic.
+/// `EvalEngine::record_warning` already does the equivalent for evaluation
+/// warnings; this is the same treatment for scene-graph ones.
+fn dedupe_warnings(warnings: &mut Vec<String>) {
+    const MAX_WARNINGS: usize = 100;
+
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    let mut order: Vec<&str> = Vec::new();
+    for w in warnings.iter() {
+        if !counts.contains_key(w.as_str()) {
+            order.push(w.as_str());
+        }
+        *counts.entry(w.as_str()).or_insert(0) += 1;
+    }
+
+    let mut out: Vec<String> = order
+        .iter()
+        .take(MAX_WARNINGS)
+        .map(|w| match counts[w] {
+            1 => (*w).to_string(),
+            n => format!("{w} (x{n})"),
+        })
+        .collect();
+
+    if order.len() > MAX_WARNINGS {
+        out.push(format!(
+            "... and {} more distinct warnings, not shown.",
+            order.len() - MAX_WARNINGS
+        ));
+    }
+
+    *warnings = out;
 }
 
 /// Total nodes the scene graph may emit before it stops expanding.
@@ -1955,6 +1999,29 @@ mod tests {
         assert_eq!(graph.children.len(), 2);
         assert_eq!(graph.children[0].volume_name, graph.children[1].volume_name);
         assert_ne!(graph.children[0].instance_id, graph.children[1].instance_id);
+    }
+
+    #[test]
+    fn scene_warnings_are_deduped_with_counts() {
+        // Warnings are raised per placement, so a replicavol nested inside a
+        // 16x16 replica reported the same line 256 times. pinhole_lab.gdml
+        // produced 277 warnings of which 4 were distinct.
+        let mut w = vec![
+            "alpha".to_string(),
+            "beta".to_string(),
+            "alpha".to_string(),
+            "alpha".to_string(),
+        ];
+        dedupe_warnings(&mut w);
+        assert_eq!(w, vec!["alpha (x3)".to_string(), "beta".to_string()]);
+    }
+
+    #[test]
+    fn scene_warnings_are_capped() {
+        let mut w: Vec<String> = (0..150).map(|i| format!("w{i}")).collect();
+        dedupe_warnings(&mut w);
+        assert_eq!(w.len(), 101, "100 warnings plus the overflow note");
+        assert!(w.last().unwrap().contains("50 more"));
     }
 
     #[test]
