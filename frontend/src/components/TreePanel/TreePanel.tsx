@@ -41,15 +41,24 @@ export default function TreePanel() {
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: 8 }}>
+      {/*
+        `minHeight: 0` lets this flex child actually shrink, which is what gives
+        the scrollers below a bounded height. DefinesTree owns its own scroller
+        because it virtualises against it; the other two tabs get one here.
+      */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {tab === 'structure' && (
-          <>
+          <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 8 }}>
             <VolumeTree />
             <VolumeDetail />
-          </>
+          </div>
         )}
         {tab === 'defines' && <DefinesTree />}
-        {tab === 'materials' && <MaterialsPanel />}
+        {tab === 'materials' && (
+          <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 8 }}>
+            <MaterialsPanel />
+          </div>
+        )}
       </div>
     </div>
   );
