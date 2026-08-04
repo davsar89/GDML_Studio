@@ -80,7 +80,10 @@ echo.
 echo === Type-checking frontend ===
 cd /d "%SCRIPT_DIR%\frontend"
 call npm install --silent
-call npx tsc --noEmit
+REM Build mode is required: tsconfig.json is solution-style ("files": [] plus
+REM project references), so plain `tsc --noEmit` checks zero files and always
+REM exits 0. Matches the `tsc -b` in package.json's build script.
+call npx tsc -b
 if errorlevel 1 (
     echo Frontend type-check failed.
     pause

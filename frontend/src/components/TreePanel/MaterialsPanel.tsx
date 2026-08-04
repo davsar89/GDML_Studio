@@ -51,10 +51,12 @@ function MaterialsList({
       name: '',
       formula: null,
       z: null,
+      state: null,
       density: { value: '1.0', unit: 'g/cm3' },
       density_ref: null,
       temperature: null,
       pressure: null,
+      mee: null,
       atom_value: null,
       components: [],
     };
@@ -226,13 +228,11 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
   const zValid = z.trim() === '' || Number.isFinite(Number(z));
 
   const save = useCallback(async (overrides: Partial<MaterialInfo> = {}) => {
+    // Spread the original rather than listing fields: `update_material` replaces
+    // the stored material wholesale, so any field omitted here is erased from the
+    // document (and from the exported GDML). Only the edited fields are named.
     const updated: MaterialInfo = {
-      name: material.name,
-      components: material.components,
-      temperature: material.temperature,
-      pressure: material.pressure,
-      atom_value: material.atom_value,
-      density_ref: material.density_ref,
+      ...material,
       density: densityValid ? { value: densityVal, unit: densityUnit } : material.density,
       formula: formula || null,
       z: zValid ? z || null : material.z,
@@ -476,7 +476,11 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
   const handleApply = async (nist: NistMaterial) => {
     const oldName = material.name;
     try {
-      const updated = await importNistMaterial(nist);
+      const nistMat = await importNistMaterial(nist);
+      // The NIST database has no mean-excitation-energy column, and this is an
+      // update of an existing material rather than a fresh one — keep the MEE
+      // the document already had instead of erasing it.
+      const updated: MaterialInfo = { ...nistMat, mee: material.mee };
       await api.updateMaterial(oldName, updated);
       await refreshMaterialsAndMeshes();
       if (updated.name !== oldName) {
@@ -593,6 +597,7 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
         formula: null,
         z: newZ || null,
         atom_value: newAtom || null,
+        fractions: [],
       });
       await refreshMaterials();
       setAdding(false);

@@ -159,11 +159,13 @@ export default function Toolbar() {
     }
   };
 
+  // Downloads the document under its original filename. This does NOT touch the
+  // file the user opened — the backend never writes to disk, and the browser
+  // saves to the download directory (renaming rather than replacing on
+  // collision). The confirm this used to show warned about an overwrite that
+  // cannot happen; Save As performs the identical operation with no prompt.
   const handleSave = async () => {
     const fname = summary?.filename || 'output.gdml';
-    if (!window.confirm(`Download will overwrite your local copy of "${fname}". Continue?`)) {
-      return;
-    }
     try {
       const { gdml } = await api.exportGdml();
       downloadFile(gdml, fname);

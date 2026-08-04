@@ -20,7 +20,8 @@ The backend exposes a REST API that the frontend consumes. Communication is JSON
 ## Prerequisites
 
 - **Rust** stable toolchain — [install via rustup](https://rustup.rs/)
-- **Node.js** v18+ and **npm** — [install from nodejs.org](https://nodejs.org/)
+- **Node.js** v20.19+ or v22.12+, and **npm** — [install from nodejs.org](https://nodejs.org/)
+  (required by Vite 7; on Node 18 `npm install` only warns and the dev server then fails)
 
 ## Quick Start
 
@@ -88,10 +89,17 @@ Select a volume in the 3D scene or tree view to open the **Volume Detail** panel
 
 ### Save / Export
 
-The toolbar provides two export options:
+The toolbar provides two export options. Both **download** a GDML file through
+the browser — neither writes to the file you opened, and the backend never
+touches your filesystem. Your original file on disk is left untouched.
 
-- **Save** — overwrites the original GDML file with the current state (materials, elements, volumes)
-- **Save As** — saves to a new file path
+- **Save** — downloads the current state (materials, elements, volumes) using the original filename
+- **Save As** — same, but prompts for the filename first
+
+Because these are ordinary browser downloads, they land in your download
+directory, and your browser will typically rename rather than replace an
+existing file (`model (1).gdml`). To update the original, move the downloaded
+file over it yourself.
 
 ## Sample Files
 
@@ -99,10 +107,17 @@ GDML files are included in `sample_data/` for quick testing:
 
 | File | Size | Description |
 |------|------|-------------|
-| `sample_data/BgoDetModel_v2_00.gdml` | 158 KB | BGO detector model |
-| `sample_data/NaiDetModelWithMLI_v2_00.gdml` | 167 KB | NaI detector model with MLI |
-| `sample_data/fermi_simple_elements_satellite.gdml` | 7.7 KB | Fermi satellite simple geometry |
-| `sample_data/test_all_features.gdml` | 4 KB | Test file exercising all solid types |
+| `sample_data/BgoDetModel_v2_00.gdml` | 160 KB | BGO detector model |
+| `sample_data/NaiDetModelWithMLI_v2_00.gdml` | 169 KB | NaI detector model with MLI |
+| `sample_data/solids.gdml` | 15 KB | Widest solid-type coverage |
+| `sample_data/pinhole_lab.gdml` | 13 KB | Boolean/CSG-heavy geometry with nested replicas |
+| `sample_data/pod_asm.gdml` | 12 KB | POD assembly |
+| `sample_data/fermi_simple_elements_satellite.gdml` | 7.6 KB | Fermi satellite simple geometry |
+| `sample_data/test_all_features.gdml` | 6.5 KB | Test file exercising all solid types |
+| `sample_data/test_modular_mother.gdml` | 1.4 KB | Multi-file `<file>`-inclusion demo (with `test_modular_child.gdml`) |
+| `sample_data/pod_asm_tessellated.gdml` | **6.7 MB** | Tessellated POD assembly, 44,408 facets — slow to load |
+
+See [`sample_data/README.md`](sample_data/README.md) for the full list and file provenance.
 
 ## Running Tests
 
@@ -113,8 +128,13 @@ cargo test
 
 # Frontend type check
 cd frontend
-npx tsc --noEmit
+npx tsc -b
 ```
+
+> `tsc -b` (build mode) is required, not `tsc --noEmit`. `tsconfig.json` is a
+> solution-style config (`"files": []` plus project references), so a non-build
+> invocation resolves zero input files, checks nothing, and exits 0 regardless of
+> how many type errors exist.
 
 ## License
 

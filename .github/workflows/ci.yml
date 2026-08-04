@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  backend:
+    name: Backend (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace --release
+
+      # `cargo fmt --all -- --check` is deliberately not a gate yet: the tree has
+      # never been rustfmt-clean (113 hunks across 21 files at the time of
+      # writing), so enabling it here would fail on arrival. Run
+      # `cargo fmt --all` once as its own commit, then add the check below.
+      #
+      # - name: Format
+      #   run: cargo fmt --all -- --check
+
+  frontend:
+    name: Frontend (TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Vite 7 requires ^20.19.0 || >=22.12.0.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # Build mode, not `--noEmit`: tsconfig.json is solution-style
+      # ("files": [] plus project references), so a non-build invocation
+      # resolves zero input files and exits 0 however broken the code is.
+      - name: Type check
+        run: npx tsc -b
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build

@@ -191,7 +191,7 @@ pub fn tessellate_cut_tube(
                 positions.push(z as f32);
                 normals.push(nx as f32);
                 normals.push(ny as f32);
-                normals.push(0.0 as f32);
+                normals.push(0.0_f32);
             }
 
             if flip {

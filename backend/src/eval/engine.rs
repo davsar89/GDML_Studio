@@ -20,6 +20,12 @@ pub struct EvalEngine {
     warnings: std::sync::Mutex<Vec<String>>,
 }
 
+impl Default for EvalEngine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EvalEngine {
     pub fn new() -> Self {
         Self {

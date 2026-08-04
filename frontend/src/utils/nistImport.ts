@@ -20,6 +20,7 @@ export async function importNistMaterial(nist: NistMaterial): Promise<MaterialIn
           formula: refNist.formula,
           z: refNist.z != null ? String(refNist.z) : null,
           atom_value: refNist.atom_value != null ? String(refNist.atom_value) : null,
+          fractions: [],
         });
       } catch {
         // Element may already exist or ref not found — continue gracefully
@@ -38,10 +39,12 @@ export async function importNistMaterial(nist: NistMaterial): Promise<MaterialIn
     name: nist.name,
     formula: nist.formula,
     z: nist.z != null ? String(nist.z) : null,
+    state: nist.state || null,
     density: { value: String(nist.density), unit: 'g/cm3' },
     density_ref: null,
     temperature: null,
     pressure: null,
+    mee: null,
     atom_value: nist.atom_value != null ? String(nist.atom_value) : null,
     components,
   };

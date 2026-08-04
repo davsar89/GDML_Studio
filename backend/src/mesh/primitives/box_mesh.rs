@@ -1,5 +1,9 @@
 use crate::mesh::types::TriangleMesh;
 
+/// One box face: its outward normal, the shared vertex normal, and the four
+/// corners in counter-clockwise order.
+type BoxFace = ([f32; 3], [f32; 3], [[f32; 3]; 4]);
+
 /// Generate a box mesh centered at origin.
 /// GDML box x/y/z are FULL dimensions (not half), so we divide by 2.
 pub fn tessellate_box(x: f64, y: f64, z: f64) -> TriangleMesh {
@@ -12,7 +16,7 @@ pub fn tessellate_box(x: f64, y: f64, z: f64) -> TriangleMesh {
     let mut normals = Vec::with_capacity(24 * 3);
     let mut indices = Vec::with_capacity(12 * 3);
 
-    let faces: [([f32; 3], [f32; 3], [[f32; 3]; 4]); 6] = [
+    let faces: [BoxFace; 6] = [
         // +Z face
         (
             [0.0, 0.0, 1.0],

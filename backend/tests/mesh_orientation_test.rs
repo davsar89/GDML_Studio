@@ -210,6 +210,50 @@ fn sphere_shell_segment() {
     assert_normals_match_winding(&m, "sphere shell segment");
 }
 
+/// Volume of a solid spherical sector: dphi * r^3/3 * (cos(t0) - cos(t0+dt)).
+fn solid_sector_volume(r: f64, dphi: f64, t0: f64, dt: f64) -> f64 {
+    dphi * r.powi(3) / 3.0 * (t0.cos() - (t0 + dt).cos())
+}
+
+// The theta cap of a solid sphere is a CONE with its apex at the origin. It was
+// previously meshed as a flat disk at z = rmax*cos(theta), making the solid a
+// spherical zone rather than a sector. The resulting mesh stays closed and
+// consistently wound, so assert_closed_outward passes on it — only a volume
+// check catches this. The error vanishes at exactly theta = PI/2 (the cut plane
+// passes through the origin) and flips sign above it, so both a narrow and a
+// wide cut are pinned here. rmin = 0 is essential: the hollow branch was always
+// correct.
+
+#[test]
+fn sphere_solid_narrow_theta_cut() {
+    // Previously -60% (the disk sat above the missing cone).
+    let m = tessellate_sphere(0.0, 50.0, 0.0, 2.0 * PI, 0.0, PI / 4.0, SEG);
+    let expected = solid_sector_volume(50.0, 2.0 * PI, 0.0, PI / 4.0);
+    assert_volume(&m, expected, 0.02, "sphere solid narrow theta cut");
+    assert_normals_match_winding(&m, "sphere solid narrow theta cut");
+}
+
+#[test]
+fn sphere_solid_wide_theta_cut() {
+    // Past PI/2 the sign flips: previously +12.5%.
+    let m = tessellate_sphere(0.0, 50.0, 0.0, 2.0 * PI, 0.0, 2.0 * PI / 3.0, SEG);
+    let expected = solid_sector_volume(50.0, 2.0 * PI, 0.0, 2.0 * PI / 3.0);
+    assert_volume(&m, expected, 0.02, "sphere solid wide theta cut");
+    assert_normals_match_winding(&m, "sphere solid wide theta cut");
+}
+
+#[test]
+fn sphere_solid_theta_and_phi_cut() {
+    // Exercises the phi wedge face too: with rmin = 0 the wedge is a sector with
+    // its apex at the origin, not a strip against the z-axis. The two coincide
+    // only when theta spans the full 0..PI, which every prior test did.
+    let (t0, dt, dphi) = (PI / 6.0, PI / 2.0, PI / 2.0);
+    let m = tessellate_sphere(0.0, 50.0, 0.0, dphi, t0, dt, SEG);
+    let expected = solid_sector_volume(50.0, dphi, t0, dt);
+    assert_volume(&m, expected, 0.02, "sphere solid theta+phi cut");
+    assert_normals_match_winding(&m, "sphere solid theta+phi cut");
+}
+
 #[test]
 fn polycone_quarter() {
     // Two z-planes forming a quarter tube.

@@ -1,73 +1,49 @@
-# React + TypeScript + Vite
+# GDML Studio — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite, rendering GDML geometry with Three.js via
+[React Three Fiber](https://r3f.docs.pmnd.rs/). State lives in a single
+[Zustand](https://zustand.docs.pmnd.rs/) store.
 
-Currently, two official plugins are available:
+See the [root README](../README.md) for how to run the whole application. This
+file covers the frontend only.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Development
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Vite serves on `http://localhost:5173` and proxies `/api` to the Rust backend on
+`http://127.0.0.1:4001` (see [`vite.config.ts`](vite.config.ts)), so the backend
+must be running for anything to load.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Checks
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run lint
+npx tsc -b
+npm run build
 ```
+
+**Use `tsc -b`, not `tsc --noEmit`.** `tsconfig.json` is a solution-style config
+(`"files": []` plus project references), so a non-build invocation resolves zero
+input files, checks nothing, and exits 0 no matter how many type errors exist.
+
+## Layout
+
+| Path | Contents |
+|------|----------|
+| `src/api/client.ts` | Typed wrappers over the backend REST API |
+| `src/store/` | Zustand store and the TypeScript mirrors of the backend's JSON shapes |
+| `src/components/Viewport/` | R3F canvas, scene graph, geometry cache, measurement tools |
+| `src/components/TreePanel/` | Volume tree, volume detail, material and element editors |
+| `src/utils/` | NIST material import, post-edit refresh helpers |
+
+### A note on `src/store/types.ts`
+
+`MaterialInfo` and `ElementInfo` are POSTed back to the backend, which replaces
+the stored item **wholesale**. Every field the backend models must appear in
+these interfaces, and edit paths must spread the original object rather than
+rebuild it field by field — any field omitted from the payload is silently
+dropped from the document and from the exported GDML.

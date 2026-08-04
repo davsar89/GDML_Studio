@@ -246,33 +246,31 @@ fn add_phi_wedge_face(
             }
         }
     } else {
-        // Triangle fan from polar axis to outer surface along theta.
-        // For a solid sphere, the "inner edge" collapses to the z-axis (r=0),
-        // which means points at (0, 0, r*cos(theta)). We use a strip with
-        // center-axis vertices paired with outer vertices.
+        // Solid sphere (rmin = 0): the wedge's inner boundary collapses to the
+        // single point r=0, so the face is a circular sector with its apex at the
+        // origin — not a strip against the z-axis. The two coincide only when
+        // theta spans the full 0..PI (the z-axis diameter *is* the sector edge);
+        // under a theta cut, a z-axis strip omits the triangles nearest r=0.
+        // Fan from the origin, which is the rmin -> 0 limit of the branch above.
+        positions.extend_from_slice(&[0.0, 0.0, 0.0]);
+        normals.extend_from_slice(&[nx, ny, 0.0]);
+
+        let ro = rmax as f32;
         for j in 0..=theta_seg {
             let theta = starttheta + theta_step * j as f64;
             let st = theta.sin() as f32;
             let ct = theta.cos() as f32;
 
-            // Center axis vertex (r=0 -> point on z-axis)
-            let ro = rmax as f32;
-            positions.extend_from_slice(&[0.0, 0.0, ro * ct]);
-            normals.extend_from_slice(&[nx, ny, 0.0]);
-
-            // Outer vertex
             positions.extend_from_slice(&[ro * st * cp, ro * st * sp, ro * ct]);
             normals.extend_from_slice(&[nx, ny, 0.0]);
         }
 
         for j in 0..theta_seg {
-            let b = base + j * 2;
+            let (outer_j, outer_next) = (base + 1 + j, base + 2 + j);
             if is_start {
-                indices.extend_from_slice(&[b, b + 3, b + 1]);
-                indices.extend_from_slice(&[b, b + 2, b + 3]);
+                indices.extend_from_slice(&[base, outer_next, outer_j]);
             } else {
-                indices.extend_from_slice(&[b, b + 1, b + 3]);
-                indices.extend_from_slice(&[b, b + 3, b + 2]);
+                indices.extend_from_slice(&[base, outer_j, outer_next]);
             }
         }
     }
@@ -350,13 +348,18 @@ fn add_theta_cap(
             }
         }
     } else {
-        // Disk cap: fan from center (on z-axis) to outer edge
+        // Solid sphere (rmin = 0): the theta surface is the CONE swept by
+        // r in [0, rmax] at this theta, whose apex is the ORIGIN — not a flat
+        // disk at z = rmax*cos(theta). Placing the apex on the z-axis instead
+        // makes the solid a spherical zone rather than a sector: measured
+        // -60% volume at deltatheta=45 deg and +12.5% at 120 deg, with the error
+        // vanishing only at theta=90 deg where the cut plane passes through the
+        // origin. This is the rmin -> 0 limit of the annular branch above.
+        //
+        // The apex is duplicated per phi step so each copy carries the cone
+        // normal at its own phi: a cone's normal genuinely varies around the
+        // apex, so a single shared vertex could not hold a correct one.
         let ro = rmax as f32;
-        let center_nz = sign * -(st as f32);
-
-        // Center vertex at the pole of the cone (on z-axis at this theta's z)
-        positions.extend_from_slice(&[0.0, 0.0, ro * ct as f32]);
-        normals.extend_from_slice(&[0.0, 0.0, center_nz]);
 
         for i in 0..=phi_seg {
             let phi = startphi + phi_step * i as f64;
@@ -367,6 +370,11 @@ fn add_theta_cap(
             let ny = sign * ct as f32 * sp;
             let nz = sign * -(st as f32);
 
+            // Apex vertex (r = 0)
+            positions.extend_from_slice(&[0.0, 0.0, 0.0]);
+            normals.extend_from_slice(&[nx, ny, nz]);
+
+            // Outer vertex
             positions.extend_from_slice(&[
                 ro * st as f32 * cp,
                 ro * st as f32 * sp,
@@ -375,11 +383,14 @@ fn add_theta_cap(
             normals.extend_from_slice(&[nx, ny, nz]);
         }
 
+        // Same winding as the annular branch, minus the quad half that
+        // degenerates to zero area once both inner vertices sit at the origin.
         for i in 0..phi_seg {
+            let b = base + i * 2;
             if is_start {
-                indices.extend_from_slice(&[base, base + 1 + i, base + 2 + i]);
+                indices.extend_from_slice(&[b, b + 1, b + 3]);
             } else {
-                indices.extend_from_slice(&[base, base + 2 + i, base + 1 + i]);
+                indices.extend_from_slice(&[b, b + 3, b + 1]);
             }
         }
     }

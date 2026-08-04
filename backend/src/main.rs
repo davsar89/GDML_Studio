@@ -3,7 +3,6 @@ use axum::http::{HeaderName, Method};
 use std::net::SocketAddr;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
-use tracing_subscriber;
 
 use gdml_studio_backend::api;
 use gdml_studio_backend::config;

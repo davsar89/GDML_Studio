@@ -702,6 +702,10 @@ fn build_scene_graph(
     }
 }
 
+// Recursion carries both immutable lookup tables and mutable accumulators. The
+// lookups belong in a context struct, which is worth doing when this function
+// gains its node/depth caps; bundling them now would churn the signature twice.
+#[allow(clippy::too_many_arguments)]
 fn build_volume_node(
     vol: &Volume,
     vol_map: &HashMap<&str, &Volume>,

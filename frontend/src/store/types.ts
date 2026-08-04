@@ -71,14 +71,28 @@ export interface MaterialComponent {
   Composite?: { n: string; ref_name: string };
 }
 
+/** A `<fraction n=".." ref=".."/>` entry in an isotope-defined element. */
+export interface Fraction {
+  n: string;
+  ref_name: string;
+}
+
+// These interfaces are POSTed back to the backend, which replaces the stored
+// item wholesale. Every field the backend models must appear here, and edit
+// paths must spread the original object rather than rebuild it field by field —
+// anything missing is silently dropped from the user's GDML on export.
 export interface MaterialInfo {
   name: string;
   formula: string | null;
   z: string | null;
+  /** GDML `state="solid|liquid|gas"`. */
+  state: string | null;
   density: MaterialDensity | null;
   density_ref: string | null;
   temperature: PropertyValue | null;
   pressure: PropertyValue | null;
+  /** `<MEE>` mean excitation energy. */
+  mee: PropertyValue | null;
   atom_value: string | null;
   components: MaterialComponent[];
 }
@@ -88,6 +102,8 @@ export interface ElementInfo {
   formula: string | null;
   z: string | null;
   atom_value: string | null;
+  /** Isotope composition; empty for elements defined by Z/atom alone. */
+  fractions: Fraction[];
 }
 
 export interface NistComponent {

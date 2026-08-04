@@ -38,14 +38,21 @@ export default function MeasureInteraction() {
 
   // Cursor style
   useEffect(() => {
-    const unsubscribe = useAppStore.subscribe((state) => {
-      gl.domElement.style.cursor = state.measureMode ? 'crosshair' : '';
-    });
-    // Set initial
-    gl.domElement.style.cursor = useAppStore.getState().measureMode ? 'crosshair' : '';
+    const canvas = gl.domElement;
+    const applyCursor = (measureMode: boolean) => {
+      // React Compiler treats values returned from hooks as immutable, and the
+      // canvas reaches us via useThree(). Styling it imperatively is the only
+      // way to drive the cursor on an R3F canvas, so the rule is opted out of
+      // here rather than worked around.
+      // eslint-disable-next-line react-hooks/immutability
+      canvas.style.cursor = measureMode ? 'crosshair' : '';
+    };
+
+    const unsubscribe = useAppStore.subscribe((state) => applyCursor(state.measureMode));
+    applyCursor(useAppStore.getState().measureMode);
     return () => {
       unsubscribe();
-      gl.domElement.style.cursor = '';
+      applyCursor(false);
     };
   }, [gl]);
 

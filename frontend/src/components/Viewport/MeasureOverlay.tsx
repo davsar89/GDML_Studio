@@ -103,14 +103,22 @@ function DashedLine({ start, end, color = LINE_COLOR, depthTest = false }: {
   color?: number;
   depthTest?: boolean;
 }) {
+  // Destructure before the memo so the closure reads six scalars rather than the
+  // two tuples. Callers pass fresh arrays each render, so depending on the tuples
+  // would rebuild the geometry every frame; depending on `start[0]`-style member
+  // expressions instead makes React Compiler infer `start`/`end` and bail out of
+  // optimizing this component entirely.
+  const [sx, sy, sz] = start;
+  const [ex, ey, ez] = end;
+
   const geometry = useMemo(() => {
     const geom = new THREE.BufferGeometry();
     geom.setAttribute(
       'position',
-      new THREE.Float32BufferAttribute([...start, ...end], 3),
+      new THREE.Float32BufferAttribute([sx, sy, sz, ex, ey, ez], 3),
     );
     return geom;
-  }, [start[0], start[1], start[2], end[0], end[1], end[2]]);
+  }, [sx, sy, sz, ex, ey, ez]);
 
   const material = useMemo(
     () =>

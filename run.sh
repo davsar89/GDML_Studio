@@ -53,7 +53,10 @@ echo ""
 echo "=== Type-checking frontend ==="
 cd "$SCRIPT_DIR/frontend"
 npm install --silent
-npx tsc --noEmit
+# Build mode is required: tsconfig.json is solution-style ("files": [] plus
+# project references), so plain `tsc --noEmit` checks zero files and always
+# exits 0. Matches the `tsc -b` in package.json's build script.
+npx tsc -b
 
 echo ""
 echo "=== Starting backend ==="

@@ -7,6 +7,12 @@ pub struct TriangleMesh {
     pub indices: Vec<u32>,
 }
 
+impl Default for TriangleMesh {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TriangleMesh {
     pub fn new() -> Self {
         Self {
