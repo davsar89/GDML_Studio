@@ -253,19 +253,26 @@ fn export_drops_nothing_from_the_corpus() {
     // Known gaps are listed explicitly so the test fails when one is fixed and
     // the exemption becomes stale, rather than silently passing forever.
     const KNOWN_DROPPED: &[&str] = &[
-        "C:",       // XML comments — not yet preserved
-        "D:",       // DOCTYPE / internal entity declarations — not yet preserved
-        "E:loop",   // <loop> is captured raw but re-emitted in the wrong section
-        "E:atom",   // unit attribute not modelled
-        "E:setup",  // only one setup is kept
-        "E:scaledSolid", // scaleref rewritten as an inline scale
-        "E:scale",
-        "E:solidref",
+        // XML comments. The single largest remaining gap: 155 across 7 of the 10
+        // samples (64 in pinhole_lab.gdml alone), all deleted on save.
+        // Preserving them requires the writer to interleave with parsed content
+        // rather than emit typed collections in a fixed order.
+        "C:",
+        // DOCTYPE and internal ENTITY declarations. quick-xml does not expand
+        // entities, so `&size;` also survives verbatim into an expression and
+        // then fails to evaluate. No shipped sample uses either.
+        "D:",
         // A <materials><define> block is folded into the top-level <define>, so
-        // files with both end up with one. Schema-legal, but it moves content.
+        // a file with both ends up with one. Schema-legal, but it moves content.
         "E:define",
         "/define",
     ];
+    // Everything previously exempted here — loop, physvol, auxiliary, atom,
+    // multiUnionNode, gdml, setup, scaledSolid, scale, solidref — is now either
+    // fixed or provably unexercised by any sample. Constructs still unmodelled
+    // (atom's unit/type, a second <setup>, <scaleref>, material
+    // <property>/<RL>/<AL>) will fail this test the moment a sample uses one,
+    // which is the intent.
 
     let mut failures = Vec::new();
 
