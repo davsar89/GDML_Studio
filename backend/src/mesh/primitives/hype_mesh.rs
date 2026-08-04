@@ -21,7 +21,11 @@ pub fn tessellate_hype(
     let mut indices: Vec<u32> = Vec::new();
 
     if rmax <= 0.0 || hz <= 0.0 {
-        return TriangleMesh { positions, normals, indices };
+        return TriangleMesh {
+            positions,
+            normals,
+            indices,
+        };
     }
 
     let phi_seg = segments.max(3); // guard divisor against 0 (defense in depth)
@@ -44,8 +48,11 @@ pub fn tessellate_hype(
     let has_inner = rmin > 1e-10;
 
     // Generate a surface of revolution (outer or inner)
-    let gen_surface = |r_fn: &dyn Fn(f64) -> f64, flip: bool,
-                       positions: &mut Vec<f32>, normals: &mut Vec<f32>, indices: &mut Vec<u32>| {
+    let gen_surface = |r_fn: &dyn Fn(f64) -> f64,
+                       flip: bool,
+                       positions: &mut Vec<f32>,
+                       normals: &mut Vec<f32>,
+                       indices: &mut Vec<u32>| {
         for j in 0..z_seg {
             let z0 = -hz + j as f64 * dz;
             let z1 = -hz + (j + 1) as f64 * dz;
@@ -72,21 +79,35 @@ pub fn tessellate_hype(
                 ];
 
                 // Compute face normal from cross product
-                let u = [verts[1].0 - verts[0].0, verts[1].1 - verts[0].1, verts[1].2 - verts[0].2];
-                let v = [verts[3].0 - verts[0].0, verts[3].1 - verts[0].1, verts[3].2 - verts[0].2];
+                let u = [
+                    verts[1].0 - verts[0].0,
+                    verts[1].1 - verts[0].1,
+                    verts[1].2 - verts[0].2,
+                ];
+                let v = [
+                    verts[3].0 - verts[0].0,
+                    verts[3].1 - verts[0].1,
+                    verts[3].2 - verts[0].2,
+                ];
                 let mut nx = u[1] * v[2] - u[2] * v[1];
                 let mut ny = u[2] * v[0] - u[0] * v[2];
                 let mut nz = u[0] * v[1] - u[1] * v[0];
                 let len = (nx * nx + ny * ny + nz * nz).sqrt();
                 if len > 1e-12 {
-                    nx /= len; ny /= len; nz /= len;
+                    nx /= len;
+                    ny /= len;
+                    nz /= len;
                 } else {
                     // Degenerate quad: fall back to a unit normal so the GPU
                     // never receives a zero-length vector.
-                    nx = 0.0; ny = 0.0; nz = 1.0;
+                    nx = 0.0;
+                    ny = 0.0;
+                    nz = 1.0;
                 }
                 if flip {
-                    nx = -nx; ny = -ny; nz = -nz;
+                    nx = -nx;
+                    ny = -ny;
+                    nz = -nz;
                 }
 
                 for (vx, vy, vz) in &verts {
@@ -99,11 +120,19 @@ pub fn tessellate_hype(
                 }
 
                 if !flip {
-                    indices.push(base); indices.push(base + 1); indices.push(base + 2);
-                    indices.push(base); indices.push(base + 2); indices.push(base + 3);
+                    indices.push(base);
+                    indices.push(base + 1);
+                    indices.push(base + 2);
+                    indices.push(base);
+                    indices.push(base + 2);
+                    indices.push(base + 3);
                 } else {
-                    indices.push(base); indices.push(base + 2); indices.push(base + 1);
-                    indices.push(base); indices.push(base + 3); indices.push(base + 2);
+                    indices.push(base);
+                    indices.push(base + 2);
+                    indices.push(base + 1);
+                    indices.push(base);
+                    indices.push(base + 3);
+                    indices.push(base + 2);
                 }
             }
         }
@@ -118,8 +147,11 @@ pub fn tessellate_hype(
     }
 
     // Top and bottom annular caps
-    let gen_cap = |z: f64, is_top: bool,
-                   positions: &mut Vec<f32>, normals: &mut Vec<f32>, indices: &mut Vec<u32>| {
+    let gen_cap = |z: f64,
+                   is_top: bool,
+                   positions: &mut Vec<f32>,
+                   normals: &mut Vec<f32>,
+                   indices: &mut Vec<u32>| {
         let r_out = r_outer(z);
         let r_in = r_inner(z);
         let nz_val: f32 = if is_top { 1.0 } else { -1.0 };
@@ -151,11 +183,19 @@ pub fn tessellate_hype(
             }
 
             if is_top {
-                indices.push(base); indices.push(base + 1); indices.push(base + 2);
-                indices.push(base); indices.push(base + 2); indices.push(base + 3);
+                indices.push(base);
+                indices.push(base + 1);
+                indices.push(base + 2);
+                indices.push(base);
+                indices.push(base + 2);
+                indices.push(base + 3);
             } else {
-                indices.push(base); indices.push(base + 2); indices.push(base + 1);
-                indices.push(base); indices.push(base + 3); indices.push(base + 2);
+                indices.push(base);
+                indices.push(base + 2);
+                indices.push(base + 1);
+                indices.push(base);
+                indices.push(base + 3);
+                indices.push(base + 2);
             }
         }
     };
@@ -163,5 +203,9 @@ pub fn tessellate_hype(
     gen_cap(-hz, false, &mut positions, &mut normals, &mut indices);
     gen_cap(hz, true, &mut positions, &mut normals, &mut indices);
 
-    TriangleMesh { positions, normals, indices }
+    TriangleMesh {
+        positions,
+        normals,
+        indices,
+    }
 }

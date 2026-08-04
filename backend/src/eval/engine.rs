@@ -532,7 +532,9 @@ mod tests {
         // warning; defines now match.
         let mut defines = DefineSection::default();
         defines.constants.push(constant("good", "10"));
-        defines.constants.push(constant("bad", "nonexistent_symbol*2"));
+        defines
+            .constants
+            .push(constant("bad", "nonexistent_symbol*2"));
 
         let mut engine = EvalEngine::new();
         engine
@@ -594,7 +596,10 @@ mod tests {
 
     #[test]
     fn rewrite_is_idempotent_and_targeted() {
-        assert_eq!(rewrite_math_functions("sin(x)+cos(y)"), "math::sin(x)+math::cos(y)");
+        assert_eq!(
+            rewrite_math_functions("sin(x)+cos(y)"),
+            "math::sin(x)+math::cos(y)"
+        );
         assert_eq!(rewrite_math_functions("math::sin(x)"), "math::sin(x)");
         // bare evalexpr builtins must NOT be namespaced
         assert_eq!(rewrite_math_functions("max(1,2)"), "max(1,2)");

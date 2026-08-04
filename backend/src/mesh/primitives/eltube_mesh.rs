@@ -11,7 +11,11 @@ pub fn tessellate_eltube(dx: f64, dy: f64, dz: f64, segments: u32) -> TriangleMe
     let mut indices: Vec<u32> = Vec::new();
 
     if dx <= 0.0 || dy <= 0.0 || dz <= 0.0 {
-        return TriangleMesh { positions, normals, indices };
+        return TriangleMesh {
+            positions,
+            normals,
+            indices,
+        };
     }
 
     let seg = segments.max(3); // guard divisor against 0 (defense in depth)
@@ -38,7 +42,11 @@ pub fn tessellate_eltube(dx: f64, dy: f64, dz: f64, segments: u32) -> TriangleMe
             let nx = c / dx;
             let ny = s / dy;
             let len = (nx * nx + ny * ny).sqrt();
-            if len > 1e-12 { [nx / len, ny / len, 0.0] } else { [1.0, 0.0, 0.0] }
+            if len > 1e-12 {
+                [nx / len, ny / len, 0.0]
+            } else {
+                [1.0, 0.0, 0.0]
+            }
         };
 
         let n0 = norm(c0, s0);
@@ -125,5 +133,9 @@ pub fn tessellate_eltube(dx: f64, dy: f64, dz: f64, segments: u32) -> TriangleMe
         }
     }
 
-    TriangleMesh { positions, normals, indices }
+    TriangleMesh {
+        positions,
+        normals,
+        indices,
+    }
 }

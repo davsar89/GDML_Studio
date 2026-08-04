@@ -152,7 +152,12 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     write_comments(&mut writer, &doc.order, "root", Some("solids"))?;
     write_solids(&mut writer, &doc.solids, &raw_in("solids"), &doc.order)?;
     write_comments(&mut writer, &doc.order, "root", Some("structure"))?;
-    write_structure(&mut writer, &doc.structure, &raw_in("structure"), &doc.order)?;
+    write_structure(
+        &mut writer,
+        &doc.structure,
+        &raw_in("structure"),
+        &doc.order,
+    )?;
     write_comments(&mut writer, &doc.order, "root", Some("setup"))?;
     write_setup(&mut writer, &doc.setup)?;
 

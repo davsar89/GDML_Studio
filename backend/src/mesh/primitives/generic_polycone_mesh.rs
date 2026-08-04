@@ -115,7 +115,8 @@ pub fn tessellate_generic_polycone(
             // interpolates per phi step.
             let (fnr_x, fnr_y) = match sides {
                 Some(_) => {
-                    let mid = phi_at(k.min(steps.saturating_sub(1))) + deltaphi / (2.0 * steps as f64);
+                    let mid =
+                        phi_at(k.min(steps.saturating_sub(1))) + deltaphi / (2.0 * steps as f64);
                     (nr * mid.cos(), nr * mid.sin())
                 }
                 None => (nr * cp, nr * sp),

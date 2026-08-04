@@ -3,7 +3,12 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
-use super::primitives::{arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, generic_polycone_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_box_mesh, twisted_trap_mesh, twisted_tubs_mesh, xtru_mesh};
+use super::primitives::{
+    arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh,
+    generic_polycone_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh,
+    torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_box_mesh, twisted_trap_mesh,
+    twisted_tubs_mesh, xtru_mesh,
+};
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
@@ -28,8 +33,7 @@ pub fn tessellate_all_solids(
     for solid in &solids.solids {
         let name = solid.name().to_string();
         match solid {
-            Solid::Boolean(_) | Solid::Scaled(_) | Solid::Reflected(_) | Solid::MultiUnion(_) => {
-            } // skip for phase 2
+            Solid::Boolean(_) | Solid::Scaled(_) | Solid::Reflected(_) | Solid::MultiUnion(_) => {} // skip for phase 2
             _ => match tessellate_solid(solid, engine, segments) {
                 Ok(mesh) => {
                     meshes.insert(name, mesh);
@@ -60,8 +64,7 @@ pub fn tessellate_all_solids(
                         meshes.insert(mu.name.clone(), mesh);
                     }
                     Err(e) => {
-                        let msg =
-                            format!("Failed to tessellate multiUnion '{}': {}", mu.name, e);
+                        let msg = format!("Failed to tessellate multiUnion '{}': {}", mu.name, e);
                         tracing::warn!("{}", msg);
                         warnings.push(msg);
                     }
@@ -102,8 +105,7 @@ pub fn tessellate_all_solids(
                         meshes.insert(ss.name.clone(), mesh);
                     }
                     Err(e) => {
-                        let msg =
-                            format!("Failed to tessellate scaled solid '{}': {}", ss.name, e);
+                        let msg = format!("Failed to tessellate scaled solid '{}': {}", ss.name, e);
                         tracing::warn!("{}", msg);
                         warnings.push(msg);
                     }
@@ -466,8 +468,7 @@ fn resolve_operand(
             Ok(mesh)
         }
         Solid::Scaled(ss) => {
-            let mesh =
-                tessellate_scaled_solid(ss, solid_map, meshes, engine, segments, resolving)?;
+            let mesh = tessellate_scaled_solid(ss, solid_map, meshes, engine, segments, resolving)?;
             meshes.insert(name.to_string(), mesh.clone());
             Ok(mesh)
         }
@@ -710,14 +711,38 @@ fn tessellate_arb8_solid(s: &Arb8Solid, engine: &EvalEngine) -> Result<TriangleM
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let dz = resolve_with_lunit(engine, &s.dz, lunit);
     let vertices: [[f64; 2]; 8] = [
-        [resolve_with_lunit(engine, &s.v1x, lunit), resolve_with_lunit(engine, &s.v1y, lunit)],
-        [resolve_with_lunit(engine, &s.v2x, lunit), resolve_with_lunit(engine, &s.v2y, lunit)],
-        [resolve_with_lunit(engine, &s.v3x, lunit), resolve_with_lunit(engine, &s.v3y, lunit)],
-        [resolve_with_lunit(engine, &s.v4x, lunit), resolve_with_lunit(engine, &s.v4y, lunit)],
-        [resolve_with_lunit(engine, &s.v5x, lunit), resolve_with_lunit(engine, &s.v5y, lunit)],
-        [resolve_with_lunit(engine, &s.v6x, lunit), resolve_with_lunit(engine, &s.v6y, lunit)],
-        [resolve_with_lunit(engine, &s.v7x, lunit), resolve_with_lunit(engine, &s.v7y, lunit)],
-        [resolve_with_lunit(engine, &s.v8x, lunit), resolve_with_lunit(engine, &s.v8y, lunit)],
+        [
+            resolve_with_lunit(engine, &s.v1x, lunit),
+            resolve_with_lunit(engine, &s.v1y, lunit),
+        ],
+        [
+            resolve_with_lunit(engine, &s.v2x, lunit),
+            resolve_with_lunit(engine, &s.v2y, lunit),
+        ],
+        [
+            resolve_with_lunit(engine, &s.v3x, lunit),
+            resolve_with_lunit(engine, &s.v3y, lunit),
+        ],
+        [
+            resolve_with_lunit(engine, &s.v4x, lunit),
+            resolve_with_lunit(engine, &s.v4y, lunit),
+        ],
+        [
+            resolve_with_lunit(engine, &s.v5x, lunit),
+            resolve_with_lunit(engine, &s.v5y, lunit),
+        ],
+        [
+            resolve_with_lunit(engine, &s.v6x, lunit),
+            resolve_with_lunit(engine, &s.v6y, lunit),
+        ],
+        [
+            resolve_with_lunit(engine, &s.v7x, lunit),
+            resolve_with_lunit(engine, &s.v7y, lunit),
+        ],
+        [
+            resolve_with_lunit(engine, &s.v8x, lunit),
+            resolve_with_lunit(engine, &s.v8y, lunit),
+        ],
     ];
     Ok(arb8_mesh::tessellate_arb8(dz, vertices))
 }
@@ -768,7 +793,12 @@ fn tessellate_twisted_tubs_solid(
     ));
 
     Ok(twisted_tubs_mesh::tessellate_twisted_tubs(
-        rmin, rmax, zlen, phi, twist_angle, segments,
+        rmin,
+        rmax,
+        zlen,
+        phi,
+        twist_angle,
+        segments,
     ))
 }
 
@@ -783,7 +813,9 @@ fn tessellate_twisted_box_solid(
     let x = resolve_with_lunit(engine, &s.x, lunit);
     let y = resolve_with_lunit(engine, &s.y, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    Ok(twisted_box_mesh::tessellate_twisted_box(phi_twist, x, y, z, segments))
+    Ok(twisted_box_mesh::tessellate_twisted_box(
+        phi_twist, x, y, z, segments,
+    ))
 }
 
 fn tessellate_twisted_trap_solid(
@@ -833,13 +865,12 @@ fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Re
     let mut normals = Vec::new();
     let mut indices = Vec::new();
 
-    let lookup = |name: &str| -> Result<[f64; 3]> {
-        engine
-            .position_values
-            .get(name)
-            .copied()
-            .ok_or_else(|| anyhow::anyhow!("Tessellated vertex '{}' not found in defines", name))
-    };
+    let lookup =
+        |name: &str| -> Result<[f64; 3]> {
+            engine.position_values.get(name).copied().ok_or_else(|| {
+                anyhow::anyhow!("Tessellated vertex '{}' not found in defines", name)
+            })
+        };
 
     for facet in &s.facets {
         match facet {
@@ -1052,7 +1083,13 @@ fn tessellate_orb_solid(s: &OrbSolid, engine: &EvalEngine, segments: u32) -> Res
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let r = resolve_with_lunit(engine, &s.r, lunit);
     Ok(sphere_mesh::tessellate_sphere(
-        0.0, r, 0.0, 2.0 * PI, 0.0, PI, segments,
+        0.0,
+        r,
+        0.0,
+        2.0 * PI,
+        0.0,
+        PI,
+        segments,
     ))
 }
 
@@ -1169,7 +1206,11 @@ fn tessellate_tet_solid(s: &TetSolid, engine: &EvalEngine) -> Result<TriangleMes
         }
     }
 
-    Ok(TriangleMesh { positions, normals, indices })
+    Ok(TriangleMesh {
+        positions,
+        normals,
+        indices,
+    })
 }
 
 fn tessellate_polycone_solid(
@@ -1245,7 +1286,9 @@ fn tessellate_hype_solid(
     let outst = resolve_opt_with_aunit(engine, &s.outst, aunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
     let hz = z * 0.5; // Geant4 convention: z is full length, halved for constructor
-    Ok(hype_mesh::tessellate_hype(rmin, rmax, inst, outst, hz, segments))
+    Ok(hype_mesh::tessellate_hype(
+        rmin, rmax, inst, outst, hz, segments,
+    ))
 }
 
 fn tessellate_elcone_solid(
@@ -1271,7 +1314,9 @@ fn tessellate_paraboloid_solid(
     let rlo = resolve_with_lunit(engine, &s.rlo, lunit);
     let rhi = resolve_with_lunit(engine, &s.rhi, lunit);
     let dz = resolve_with_lunit(engine, &s.dz, lunit);
-    Ok(paraboloid_mesh::tessellate_paraboloid(rlo, rhi, dz, segments))
+    Ok(paraboloid_mesh::tessellate_paraboloid(
+        rlo, rhi, dz, segments,
+    ))
 }
 
 fn tessellate_generic_polyhedra_solid(

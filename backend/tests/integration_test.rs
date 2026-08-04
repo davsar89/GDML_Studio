@@ -570,7 +570,12 @@ fn raw_elements_round_trip_into_correct_sections() {
     let doc = parse_gdml_from_bytes(gdml.as_bytes(), "t.gdml".to_string()).unwrap();
     let tags: Vec<&str> = doc.raw_unknown.iter().map(|r| r.tag.as_str()).collect();
     for expected in ["matrix", "opticalsurface", "assembly", "skinsurface"] {
-        assert!(tags.contains(&expected), "expected '{}' preserved, got {:?}", expected, tags);
+        assert!(
+            tags.contains(&expected),
+            "expected '{}' preserved, got {:?}",
+            expected,
+            tags
+        );
     }
 
     let xml = serialize_gdml(&doc).unwrap();
@@ -585,10 +590,22 @@ fn raw_elements_round_trip_into_correct_sections() {
             None => false,
         }
     };
-    assert!(in_section("<matrix", "<define>", "</define>"), "matrix not inside <define>:\n{xml}");
-    assert!(in_section("<opticalsurface", "<solids>", "</solids>"), "opticalsurface not inside <solids>:\n{xml}");
-    assert!(in_section("<assembly", "<structure>", "</structure>"), "assembly not inside <structure>:\n{xml}");
-    assert!(in_section("<skinsurface", "<structure>", "</structure>"), "skinsurface not inside <structure>:\n{xml}");
+    assert!(
+        in_section("<matrix", "<define>", "</define>"),
+        "matrix not inside <define>:\n{xml}"
+    );
+    assert!(
+        in_section("<opticalsurface", "<solids>", "</solids>"),
+        "opticalsurface not inside <solids>:\n{xml}"
+    );
+    assert!(
+        in_section("<assembly", "<structure>", "</structure>"),
+        "assembly not inside <structure>:\n{xml}"
+    );
+    assert!(
+        in_section("<skinsurface", "<structure>", "</structure>"),
+        "skinsurface not inside <structure>:\n{xml}"
+    );
 
     // Re-parsing the export preserves the same elements again (stable round-trip).
     let doc2 = parse_gdml_from_bytes(xml.as_bytes(), "t2.gdml".to_string()).unwrap();
@@ -630,7 +647,9 @@ fn unsupported_volume_constructs_produce_warnings() {
 
     let doc = parse_gdml_from_bytes(gdml.as_bytes(), "t.gdml".to_string()).unwrap();
     assert!(
-        doc.skipped_unsupported.iter().any(|w| w.contains("divisionvol")),
+        doc.skipped_unsupported
+            .iter()
+            .any(|w| w.contains("divisionvol")),
         "expected divisionvol warning, got {:?}",
         doc.skipped_unsupported
     );
@@ -641,7 +660,12 @@ fn unsupported_volume_constructs_produce_warnings() {
     );
     // The divisionvol's volumeref must not leak into the volume as a solidref
     // or physvol entry.
-    let world = doc.structure.volumes.iter().find(|v| v.name == "WorldLV").unwrap();
+    let world = doc
+        .structure
+        .volumes
+        .iter()
+        .find(|v| v.name == "WorldLV")
+        .unwrap();
     assert_eq!(world.physvols.len(), 1);
     assert_eq!(world.solid_ref, "world_box");
 }

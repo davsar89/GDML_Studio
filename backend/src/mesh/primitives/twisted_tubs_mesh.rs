@@ -19,7 +19,10 @@ fn emit_quad(
     positions: &mut Vec<f32>,
     normals: &mut Vec<f32>,
     indices: &mut Vec<u32>,
-    p0: [f32; 3], p1: [f32; 3], p2: [f32; 3], p3: [f32; 3],
+    p0: [f32; 3],
+    p1: [f32; 3],
+    p2: [f32; 3],
+    p3: [f32; 3],
     flip: bool,
 ) {
     let n = if flip {
@@ -67,9 +70,7 @@ pub fn tessellate_twisted_tubs(
     let mut normals = Vec::new();
     let mut indices = Vec::new();
 
-    let twist_at = |z: f64| -> f64 {
-        twist_angle * (z + hz as f64) / (2.0 * hz as f64)
-    };
+    let twist_at = |z: f64| -> f64 { twist_angle * (z + hz as f64) / (2.0 * hz as f64) };
 
     let rmax_f = rmax as f32;
     let rmin_f = rmin as f32;
@@ -95,7 +96,16 @@ pub fn tessellate_twisted_tubs(
             let p2 = [rmax_f * a2.cos(), rmax_f * a2.sin(), z1 as f32];
             let p3 = [rmax_f * a3.cos(), rmax_f * a3.sin(), z1 as f32];
 
-            emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, false);
+            emit_quad(
+                &mut positions,
+                &mut normals,
+                &mut indices,
+                p0,
+                p1,
+                p2,
+                p3,
+                false,
+            );
         }
     }
 
@@ -121,7 +131,16 @@ pub fn tessellate_twisted_tubs(
                 let p2 = [rmin_f * a2.cos(), rmin_f * a2.sin(), z1 as f32];
                 let p3 = [rmin_f * a3.cos(), rmin_f * a3.sin(), z1 as f32];
 
-                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, true);
+                emit_quad(
+                    &mut positions,
+                    &mut normals,
+                    &mut indices,
+                    p0,
+                    p1,
+                    p2,
+                    p3,
+                    true,
+                );
             }
         }
     }
@@ -136,10 +155,26 @@ pub fn tessellate_twisted_tubs(
 
                 let base = (positions.len() / 3) as u32;
                 let verts = [
-                    [rmin_f * (phi0 as f32).cos(), rmin_f * (phi0 as f32).sin(), hz],
-                    [rmax_f * (phi0 as f32).cos(), rmax_f * (phi0 as f32).sin(), hz],
-                    [rmax_f * (phi1 as f32).cos(), rmax_f * (phi1 as f32).sin(), hz],
-                    [rmin_f * (phi1 as f32).cos(), rmin_f * (phi1 as f32).sin(), hz],
+                    [
+                        rmin_f * (phi0 as f32).cos(),
+                        rmin_f * (phi0 as f32).sin(),
+                        hz,
+                    ],
+                    [
+                        rmax_f * (phi0 as f32).cos(),
+                        rmax_f * (phi0 as f32).sin(),
+                        hz,
+                    ],
+                    [
+                        rmax_f * (phi1 as f32).cos(),
+                        rmax_f * (phi1 as f32).sin(),
+                        hz,
+                    ],
+                    [
+                        rmin_f * (phi1 as f32).cos(),
+                        rmin_f * (phi1 as f32).sin(),
+                        hz,
+                    ],
                 ];
                 let n = [0.0f32, 0.0, 1.0];
                 for v in &verts {
@@ -155,7 +190,11 @@ pub fn tessellate_twisted_tubs(
             normals.extend_from_slice(&[0.0, 0.0, 1.0]);
             for i in 0..=phi_segs {
                 let phi = i as f64 * dphi + tw;
-                positions.extend_from_slice(&[rmax_f * (phi as f32).cos(), rmax_f * (phi as f32).sin(), hz]);
+                positions.extend_from_slice(&[
+                    rmax_f * (phi as f32).cos(),
+                    rmax_f * (phi as f32).sin(),
+                    hz,
+                ]);
                 normals.extend_from_slice(&[0.0, 0.0, 1.0]);
             }
             for i in 0..phi_segs {
@@ -173,10 +212,26 @@ pub fn tessellate_twisted_tubs(
 
                 let base = (positions.len() / 3) as u32;
                 let verts = [
-                    [rmin_f * (phi0 as f32).cos(), rmin_f * (phi0 as f32).sin(), -hz],
-                    [rmax_f * (phi0 as f32).cos(), rmax_f * (phi0 as f32).sin(), -hz],
-                    [rmax_f * (phi1 as f32).cos(), rmax_f * (phi1 as f32).sin(), -hz],
-                    [rmin_f * (phi1 as f32).cos(), rmin_f * (phi1 as f32).sin(), -hz],
+                    [
+                        rmin_f * (phi0 as f32).cos(),
+                        rmin_f * (phi0 as f32).sin(),
+                        -hz,
+                    ],
+                    [
+                        rmax_f * (phi0 as f32).cos(),
+                        rmax_f * (phi0 as f32).sin(),
+                        -hz,
+                    ],
+                    [
+                        rmax_f * (phi1 as f32).cos(),
+                        rmax_f * (phi1 as f32).sin(),
+                        -hz,
+                    ],
+                    [
+                        rmin_f * (phi1 as f32).cos(),
+                        rmin_f * (phi1 as f32).sin(),
+                        -hz,
+                    ],
                 ];
                 let n = [0.0f32, 0.0, -1.0];
                 for v in &verts {
@@ -192,7 +247,11 @@ pub fn tessellate_twisted_tubs(
             normals.extend_from_slice(&[0.0, 0.0, -1.0]);
             for i in 0..=phi_segs {
                 let phi = i as f64 * dphi;
-                positions.extend_from_slice(&[rmax_f * (phi as f32).cos(), rmax_f * (phi as f32).sin(), -hz]);
+                positions.extend_from_slice(&[
+                    rmax_f * (phi as f32).cos(),
+                    rmax_f * (phi as f32).sin(),
+                    -hz,
+                ]);
                 normals.extend_from_slice(&[0.0, 0.0, -1.0]);
             }
             for i in 0..phi_segs {
@@ -217,13 +276,31 @@ pub fn tessellate_twisted_tubs(
                 let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
                 let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
                 let p3 = [rmin_f * a1.cos(), rmin_f * a1.sin(), z1 as f32];
-                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, false);
+                emit_quad(
+                    &mut positions,
+                    &mut normals,
+                    &mut indices,
+                    p0,
+                    p1,
+                    p2,
+                    p3,
+                    false,
+                );
             } else {
                 let p0 = [0.0, 0.0, z0 as f32];
                 let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
                 let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
                 let p3 = [0.0, 0.0, z1 as f32];
-                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, false);
+                emit_quad(
+                    &mut positions,
+                    &mut normals,
+                    &mut indices,
+                    p0,
+                    p1,
+                    p2,
+                    p3,
+                    false,
+                );
             }
         }
 
@@ -241,13 +318,31 @@ pub fn tessellate_twisted_tubs(
                 let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
                 let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
                 let p3 = [rmin_f * a1.cos(), rmin_f * a1.sin(), z1 as f32];
-                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, true);
+                emit_quad(
+                    &mut positions,
+                    &mut normals,
+                    &mut indices,
+                    p0,
+                    p1,
+                    p2,
+                    p3,
+                    true,
+                );
             } else {
                 let p0 = [0.0, 0.0, z0 as f32];
                 let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
                 let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
                 let p3 = [0.0, 0.0, z1 as f32];
-                emit_quad(&mut positions, &mut normals, &mut indices, p0, p1, p2, p3, true);
+                emit_quad(
+                    &mut positions,
+                    &mut normals,
+                    &mut indices,
+                    p0,
+                    p1,
+                    p2,
+                    p3,
+                    true,
+                );
             }
         }
     }

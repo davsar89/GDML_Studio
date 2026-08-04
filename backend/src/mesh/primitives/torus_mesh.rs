@@ -27,7 +27,11 @@ pub fn tessellate_torus(
     let full_ring = (deltaphi - 2.0 * PI).abs() < 1e-6;
 
     // Generate a surface of revolution for a given tube radius
-    let gen_surface = |r: f64, outward: bool, positions: &mut Vec<f32>, normals: &mut Vec<f32>, indices: &mut Vec<u32>| {
+    let gen_surface = |r: f64,
+                       outward: bool,
+                       positions: &mut Vec<f32>,
+                       normals: &mut Vec<f32>,
+                       indices: &mut Vec<u32>| {
         let base = (positions.len() / 3) as u32;
 
         // Generate vertices
@@ -75,11 +79,19 @@ pub fn tessellate_torus(
                 let d = base + (i + 1) * stride + j;
 
                 if outward {
-                    indices.push(a); indices.push(c); indices.push(b);
-                    indices.push(a); indices.push(d); indices.push(c);
+                    indices.push(a);
+                    indices.push(c);
+                    indices.push(b);
+                    indices.push(a);
+                    indices.push(d);
+                    indices.push(c);
                 } else {
-                    indices.push(a); indices.push(b); indices.push(c);
-                    indices.push(a); indices.push(c); indices.push(d);
+                    indices.push(a);
+                    indices.push(b);
+                    indices.push(c);
+                    indices.push(a);
+                    indices.push(c);
+                    indices.push(d);
                 }
             }
         }
@@ -95,7 +107,11 @@ pub fn tessellate_torus(
 
     // End caps (if not a full ring)
     if !full_ring {
-        let gen_cap = |phi: f64, flip: bool, positions: &mut Vec<f32>, normals: &mut Vec<f32>, indices: &mut Vec<u32>| {
+        let gen_cap = |phi: f64,
+                       flip: bool,
+                       positions: &mut Vec<f32>,
+                       normals: &mut Vec<f32>,
+                       indices: &mut Vec<u32>| {
             let cos_phi = phi.cos();
             let sin_phi = phi.sin();
             // Outward normal is tangent to the ring direction: -phi_hat at the
@@ -145,11 +161,19 @@ pub fn tessellate_torus(
                 let i1 = base + (i + 1) * 2 + 1;
 
                 if flip {
-                    indices.push(o0); indices.push(i0); indices.push(o1);
-                    indices.push(o1); indices.push(i0); indices.push(i1);
+                    indices.push(o0);
+                    indices.push(i0);
+                    indices.push(o1);
+                    indices.push(o1);
+                    indices.push(i0);
+                    indices.push(i1);
                 } else {
-                    indices.push(o0); indices.push(o1); indices.push(i0);
-                    indices.push(o1); indices.push(i1); indices.push(i0);
+                    indices.push(o0);
+                    indices.push(o1);
+                    indices.push(i0);
+                    indices.push(o1);
+                    indices.push(i1);
+                    indices.push(i0);
                 }
             }
         };
@@ -157,7 +181,13 @@ pub fn tessellate_torus(
         // Start cap (at startphi)
         gen_cap(startphi, false, &mut positions, &mut normals, &mut indices);
         // End cap (at startphi + deltaphi)
-        gen_cap(startphi + deltaphi, true, &mut positions, &mut normals, &mut indices);
+        gen_cap(
+            startphi + deltaphi,
+            true,
+            &mut positions,
+            &mut normals,
+            &mut indices,
+        );
     }
 
     TriangleMesh {

@@ -23,12 +23,12 @@ use gdml_studio_backend::mesh::primitives::{
     cut_tube_mesh::tessellate_cut_tube, elcone_mesh::tessellate_elcone,
     ellipsoid_mesh::tessellate_ellipsoid, eltube_mesh::tessellate_eltube,
     generic_polycone_mesh::tessellate_generic_polycone, hype_mesh::tessellate_hype,
-    paraboloid_mesh::tessellate_paraboloid,
-    polycone_mesh::tessellate_polycone, polyhedra_mesh::tessellate_polyhedra,
-    sphere_mesh::tessellate_sphere, torus_mesh::tessellate_torus, trap_mesh::tessellate_trap,
-    trd_mesh::tessellate_trd, tube_mesh::tessellate_tube,
-    twisted_box_mesh::tessellate_twisted_box, twisted_trap_mesh::tessellate_twisted_trap,
-    twisted_tubs_mesh::tessellate_twisted_tubs, xtru_mesh::tessellate_xtru,
+    paraboloid_mesh::tessellate_paraboloid, polycone_mesh::tessellate_polycone,
+    polyhedra_mesh::tessellate_polyhedra, sphere_mesh::tessellate_sphere,
+    torus_mesh::tessellate_torus, trap_mesh::tessellate_trap, trd_mesh::tessellate_trd,
+    tube_mesh::tessellate_tube, twisted_box_mesh::tessellate_twisted_box,
+    twisted_trap_mesh::tessellate_twisted_trap, twisted_tubs_mesh::tessellate_twisted_tubs,
+    xtru_mesh::tessellate_xtru,
 };
 use gdml_studio_backend::mesh::types::TriangleMesh;
 
@@ -131,7 +131,10 @@ fn assert_closed_outward(mesh: &TriangleMesh, name: &str) {
     assert!(mesh.triangle_count() > 0, "{name}: empty mesh");
     let v1 = signed_volume_about(mesh, [0.0, 0.0, 0.0]);
     let v2 = signed_volume_about(mesh, [137.0, -89.0, 53.0]);
-    assert!(v1 > 0.0, "{name}: signed volume {v1:.4} not positive (inverted winding?)");
+    assert!(
+        v1 > 0.0,
+        "{name}: signed volume {v1:.4} not positive (inverted winding?)"
+    );
     let rel = (v1 - v2).abs() / v1.abs();
     assert!(
         rel < 0.01,
@@ -260,7 +263,12 @@ fn polycone_quarter() {
     // Two z-planes forming a quarter tube.
     let planes = [(-10.0, 0.0, 10.0), (10.0, 0.0, 10.0)];
     let m = tessellate_polycone(&planes, 0.0, PI / 2.0, SEG);
-    assert_volume(&m, 0.5 * (PI / 2.0) * 100.0 * 20.0, 0.01, "polycone quarter");
+    assert_volume(
+        &m,
+        0.5 * (PI / 2.0) * 100.0 * 20.0,
+        0.01,
+        "polycone quarter",
+    );
     assert_normals_match_winding(&m, "polycone quarter");
 }
 
@@ -374,21 +382,36 @@ fn cut_tube_quarter_straight_cuts() {
         [0.0, 0.0, 1.0],
         SEG,
     );
-    assert_volume(&m, 0.5 * (PI / 2.0) * 100.0 * 20.0, 0.01, "cut_tube quarter");
+    assert_volume(
+        &m,
+        0.5 * (PI / 2.0) * 100.0 * 20.0,
+        0.01,
+        "cut_tube quarter",
+    );
     assert_normals_match_winding(&m, "cut_tube quarter");
 }
 
 #[test]
 fn twisted_tubs_quarter_no_twist() {
     let m = tessellate_twisted_tubs(0.0, 10.0, 20.0, PI / 2.0, 0.0, SEG);
-    assert_volume(&m, 0.5 * (PI / 2.0) * 100.0 * 20.0, 0.01, "twisted_tubs quarter");
+    assert_volume(
+        &m,
+        0.5 * (PI / 2.0) * 100.0 * 20.0,
+        0.01,
+        "twisted_tubs quarter",
+    );
     assert_normals_match_winding(&m, "twisted_tubs quarter");
 }
 
 #[test]
 fn ellipsoid_full_and_cut() {
     let m = tessellate_ellipsoid(5.0, 8.0, 10.0, -10.0, 10.0, SEG);
-    assert_volume(&m, (4.0 / 3.0) * PI * 5.0 * 8.0 * 10.0, 0.02, "ellipsoid full");
+    assert_volume(
+        &m,
+        (4.0 / 3.0) * PI * 5.0 * 8.0 * 10.0,
+        0.02,
+        "ellipsoid full",
+    );
     assert_normals_match_winding(&m, "ellipsoid full");
 
     // Cut ellipsoid: V = pi*a*b * [(z2 - z1) - (z2^3 - z1^3)/(3 c^2)]
@@ -427,8 +450,14 @@ fn twisted_box_volume() {
 
 #[test]
 fn remaining_primitives_closed_and_outward() {
-    assert_closed_outward(&tessellate_hype(3.0, 6.0, 0.2, 0.3, 20.0, SEG), "hype hollow");
-    assert_closed_outward(&tessellate_hype(0.0, 6.0, 0.0, 0.3, 20.0, SEG), "hype solid");
+    assert_closed_outward(
+        &tessellate_hype(3.0, 6.0, 0.2, 0.3, 20.0, SEG),
+        "hype hollow",
+    );
+    assert_closed_outward(
+        &tessellate_hype(0.0, 6.0, 0.0, 0.3, 20.0, SEG),
+        "hype solid",
+    );
     assert_closed_outward(&tessellate_paraboloid(2.0, 5.0, 10.0, SEG), "paraboloid");
     assert_closed_outward(&tessellate_elcone(0.5, 0.8, 10.0, 5.0, SEG), "elcone");
     assert_closed_outward(
@@ -436,7 +465,9 @@ fn remaining_primitives_closed_and_outward() {
         "trap",
     );
     assert_closed_outward(
-        &tessellate_twisted_trap(0.4, 20.0, 0.1, 0.2, 12.0, 10.0, 8.0, 10.0, 9.0, 7.0, 0.05, SEG),
+        &tessellate_twisted_trap(
+            0.4, 20.0, 0.1, 0.2, 12.0, 10.0, 8.0, 10.0, 9.0, 7.0, 0.05, SEG,
+        ),
         "twisted_trap",
     );
     // arb8 as a simple box: 4 bottom + 4 top vertices, dz is the half-length.

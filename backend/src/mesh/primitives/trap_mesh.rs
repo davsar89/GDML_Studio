@@ -46,18 +46,50 @@ pub fn tessellate_trap(
     // Bottom face (z = -dz): center at (-x_shift, -y_shift, -dz)
     let bx = -x_shift;
     let by = -y_shift;
-    let v0 = [(bx - dy1 * tan_a1 - dx1) as f32, (by - dy1) as f32, (-dz) as f32];
-    let v1 = [(bx - dy1 * tan_a1 + dx1) as f32, (by - dy1) as f32, (-dz) as f32];
-    let v2 = [(bx + dy1 * tan_a1 + dx2) as f32, (by + dy1) as f32, (-dz) as f32];
-    let v3 = [(bx + dy1 * tan_a1 - dx2) as f32, (by + dy1) as f32, (-dz) as f32];
+    let v0 = [
+        (bx - dy1 * tan_a1 - dx1) as f32,
+        (by - dy1) as f32,
+        (-dz) as f32,
+    ];
+    let v1 = [
+        (bx - dy1 * tan_a1 + dx1) as f32,
+        (by - dy1) as f32,
+        (-dz) as f32,
+    ];
+    let v2 = [
+        (bx + dy1 * tan_a1 + dx2) as f32,
+        (by + dy1) as f32,
+        (-dz) as f32,
+    ];
+    let v3 = [
+        (bx + dy1 * tan_a1 - dx2) as f32,
+        (by + dy1) as f32,
+        (-dz) as f32,
+    ];
 
     // Top face (z = +dz): center at (+x_shift, +y_shift, +dz)
     let tx = x_shift;
     let ty = y_shift;
-    let v4 = [(tx - dy2 * tan_a2 - dx3) as f32, (ty - dy2) as f32, dz as f32];
-    let v5 = [(tx - dy2 * tan_a2 + dx3) as f32, (ty - dy2) as f32, dz as f32];
-    let v6 = [(tx + dy2 * tan_a2 + dx4) as f32, (ty + dy2) as f32, dz as f32];
-    let v7 = [(tx + dy2 * tan_a2 - dx4) as f32, (ty + dy2) as f32, dz as f32];
+    let v4 = [
+        (tx - dy2 * tan_a2 - dx3) as f32,
+        (ty - dy2) as f32,
+        dz as f32,
+    ];
+    let v5 = [
+        (tx - dy2 * tan_a2 + dx3) as f32,
+        (ty - dy2) as f32,
+        dz as f32,
+    ];
+    let v6 = [
+        (tx + dy2 * tan_a2 + dx4) as f32,
+        (ty + dy2) as f32,
+        dz as f32,
+    ];
+    let v7 = [
+        (tx + dy2 * tan_a2 - dx4) as f32,
+        (ty + dy2) as f32,
+        dz as f32,
+    ];
 
     // Same face layout as trd_mesh
     let mut positions = Vec::with_capacity(24 * 3);

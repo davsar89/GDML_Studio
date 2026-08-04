@@ -18,7 +18,10 @@ fn emit_quad(
     positions: &mut Vec<f32>,
     normals: &mut Vec<f32>,
     indices: &mut Vec<u32>,
-    p0: [f32; 3], p1: [f32; 3], p2: [f32; 3], p3: [f32; 3],
+    p0: [f32; 3],
+    p1: [f32; 3],
+    p2: [f32; 3],
+    p3: [f32; 3],
     flip: bool,
 ) {
     let n = if flip {
@@ -71,9 +74,9 @@ pub fn tessellate_twisted_box(
         // Rotated: (x*cos - y*sin, x*sin + y*cos)
         [
             [(-hx) * ct - (-hy) * st, (-hx) * st + (-hy) * ct, zf],
-            [hx * ct - (-hy) * st,    hx * st + (-hy) * ct,    zf],
-            [hx * ct - hy * st,       hx * st + hy * ct,       zf],
-            [(-hx) * ct - hy * st,    (-hx) * st + hy * ct,    zf],
+            [hx * ct - (-hy) * st, hx * st + (-hy) * ct, zf],
+            [hx * ct - hy * st, hx * st + hy * ct, zf],
+            [(-hx) * ct - hy * st, (-hx) * st + hy * ct, zf],
         ]
     };
 
@@ -86,31 +89,79 @@ pub fn tessellate_twisted_box(
         let top = corners_at(z1);
 
         // Side 0 (-Y): bot[0]->bot[1] to top[0]->top[1]
-        emit_quad(&mut positions, &mut normals, &mut indices,
-            bot[0], bot[1], top[1], top[0], false);
+        emit_quad(
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            bot[0],
+            bot[1],
+            top[1],
+            top[0],
+            false,
+        );
         // Side 1 (+X): bot[1]->bot[2] to top[1]->top[2]
-        emit_quad(&mut positions, &mut normals, &mut indices,
-            bot[1], bot[2], top[2], top[1], false);
+        emit_quad(
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            bot[1],
+            bot[2],
+            top[2],
+            top[1],
+            false,
+        );
         // Side 2 (+Y): bot[2]->bot[3] to top[2]->top[3]
-        emit_quad(&mut positions, &mut normals, &mut indices,
-            bot[2], bot[3], top[3], top[2], false);
+        emit_quad(
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            bot[2],
+            bot[3],
+            top[3],
+            top[2],
+            false,
+        );
         // Side 3 (-X): bot[3]->bot[0] to top[3]->top[0]
-        emit_quad(&mut positions, &mut normals, &mut indices,
-            bot[3], bot[0], top[0], top[3], false);
+        emit_quad(
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            bot[3],
+            bot[0],
+            top[0],
+            top[3],
+            false,
+        );
     }
 
     // Top cap (z = +hz)
     {
         let c = corners_at(hz as f64);
-        emit_quad(&mut positions, &mut normals, &mut indices,
-            c[0], c[1], c[2], c[3], false);
+        emit_quad(
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            c[0],
+            c[1],
+            c[2],
+            c[3],
+            false,
+        );
     }
 
     // Bottom cap (z = -hz)
     {
         let c = corners_at(-(hz as f64));
-        emit_quad(&mut positions, &mut normals, &mut indices,
-            c[3], c[2], c[1], c[0], false);
+        emit_quad(
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            c[3],
+            c[2],
+            c[1],
+            c[0],
+            false,
+        );
     }
 
     TriangleMesh {

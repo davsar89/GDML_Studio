@@ -238,7 +238,12 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"volume" if section == Section::Structure => {
                         let vol_name = get_attr(e, "name").unwrap_or_default();
-                        read_volume_body(&mut reader, vol_name, &mut structure, &mut skipped_unsupported)?;
+                        read_volume_body(
+                            &mut reader,
+                            vol_name,
+                            &mut structure,
+                            &mut skipped_unsupported,
+                        )?;
                     }
                     // Recognized-but-uninterpreted constructs: preserve verbatim so
                     // they survive a load -> save round-trip (and warn the user).
@@ -1253,10 +1258,7 @@ fn extract_polycone_attrs(e: &BytesStart) -> PolyconeAttrs {
     }
 }
 
-fn read_polycone_body(
-    reader: &mut Reader<&[u8]>,
-    attrs: PolyconeAttrs,
-) -> Result<PolyconeSolid> {
+fn read_polycone_body(reader: &mut Reader<&[u8]>, attrs: PolyconeAttrs) -> Result<PolyconeSolid> {
     let mut zplanes = Vec::new();
     let mut buf = Vec::new();
 
@@ -1340,10 +1342,7 @@ fn read_generic_polycone_body(
 
 // ─── Polyhedra parser ────────────────────────────────────────────────────────
 
-fn read_polyhedra_body(
-    reader: &mut Reader<&[u8]>,
-    e: &BytesStart,
-) -> Result<PolyhedraSolid> {
+fn read_polyhedra_body(reader: &mut Reader<&[u8]>, e: &BytesStart) -> Result<PolyhedraSolid> {
     let name = get_attr(e, "name").unwrap_or_default();
     let numsides = get_attr_or(e, "numsides", "6");
     let startphi = get_attr(e, "startphi");
@@ -1502,10 +1501,7 @@ fn read_xtru_body(reader: &mut Reader<&[u8]>, attrs: XtruAttrs) -> Result<XtruSo
 
 // ─── Tessellated parser ──────────────────────────────────────────────────────
 
-fn read_tessellated_body(
-    reader: &mut Reader<&[u8]>,
-    name: String,
-) -> Result<TessellatedSolid> {
+fn read_tessellated_body(reader: &mut Reader<&[u8]>, name: String) -> Result<TessellatedSolid> {
     let mut facets = Vec::new();
     let mut buf = Vec::new();
 
@@ -1873,10 +1869,7 @@ fn parse_reflected_solid(e: &BytesStart, solids: &mut SolidSection) {
     }));
 }
 
-fn read_multiunion_body(
-    reader: &mut Reader<&[u8]>,
-    name: String,
-) -> Result<MultiUnionSolid> {
+fn read_multiunion_body(reader: &mut Reader<&[u8]>, name: String) -> Result<MultiUnionSolid> {
     let mut nodes = Vec::new();
     let mut buf = Vec::new();
 
@@ -2003,10 +1996,7 @@ fn read_multiunion_node(reader: &mut Reader<&[u8]>) -> Result<MultiUnionNode> {
     })
 }
 
-fn read_scaled_solid_body(
-    reader: &mut Reader<&[u8]>,
-    name: String,
-) -> Result<ScaledSolidDef> {
+fn read_scaled_solid_body(reader: &mut Reader<&[u8]>, name: String) -> Result<ScaledSolidDef> {
     let mut solid_ref = String::new();
     let mut scale_x = "1".to_string();
     let mut scale_y = "1".to_string();

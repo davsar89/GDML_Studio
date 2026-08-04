@@ -56,9 +56,9 @@ async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], config::port()));
     tracing::info!("GDML Studio backend starting on http://{}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap_or_else(|e| {
-        panic!("Failed to bind {addr}: {e} (is the port already in use?)")
-    });
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .unwrap_or_else(|e| panic!("Failed to bind {addr}: {e} (is the port already in use?)"));
     if let Err(e) = axum::serve(listener, app).await {
         tracing::error!("Server stopped with error: {}", e);
     }

@@ -90,7 +90,10 @@ fn canonicalize(xml: &str) -> Vec<String> {
                 }
             }
             Ok(Event::End(e)) => {
-                out.push(format!("/{}", String::from_utf8_lossy(e.local_name().as_ref())));
+                out.push(format!(
+                    "/{}",
+                    String::from_utf8_lossy(e.local_name().as_ref())
+                ));
             }
             Ok(Event::Comment(e)) => {
                 out.push(format!("C:{}", String::from_utf8_lossy(&e).trim()));
@@ -455,7 +458,10 @@ fn optical_material_properties_survive() {
         .expect("Glass");
     assert_eq!(glass.properties.len(), 2, "optical properties lost");
     assert_eq!(glass.properties[0].name, "RINDEX");
-    assert_eq!(glass.properties[0].ref_name.as_deref(), Some("rindexMatrix"));
+    assert_eq!(
+        glass.properties[0].ref_name.as_deref(),
+        Some("rindexMatrix")
+    );
     assert!(glass.rl.is_some(), "RL lost");
     assert!(glass.al.is_some(), "AL lost");
     assert_eq!(glass.atom_unit.as_deref(), Some("g/mole"), "atom unit lost");
@@ -506,8 +512,7 @@ fn export_drops_nothing_from_the_corpus() {
         "D:",
         // A <materials><define> block is folded into the top-level <define>, so
         // a file with both ends up with one. Schema-legal, but it moves content.
-        "E:define",
-        "/define",
+        "E:define", "/define",
     ];
     // Everything previously exempted here — loop, physvol, auxiliary, atom,
     // multiUnionNode, gdml, setup, scaledSolid, scale, solidref — is now either

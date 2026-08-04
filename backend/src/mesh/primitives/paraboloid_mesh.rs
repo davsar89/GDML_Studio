@@ -15,15 +15,27 @@ pub fn tessellate_paraboloid(rlo: f64, rhi: f64, dz: f64, segments: u32) -> Tria
     let mut indices: Vec<u32> = Vec::new();
 
     if dz <= 0.0 || (rlo <= 0.0 && rhi <= 0.0) {
-        return TriangleMesh { positions, normals, indices };
+        return TriangleMesh {
+            positions,
+            normals,
+            indices,
+        };
     }
 
     let k1 = (rhi * rhi + rlo * rlo) / 2.0;
-    let k2 = if dz > 1e-12 { (rhi * rhi - rlo * rlo) / (2.0 * dz) } else { 0.0 };
+    let k2 = if dz > 1e-12 {
+        (rhi * rhi - rlo * rlo) / (2.0 * dz)
+    } else {
+        0.0
+    };
 
     let r_at = |z: f64| -> f64 {
         let r2 = k1 + k2 * z;
-        if r2 > 0.0 { r2.sqrt() } else { 0.0 }
+        if r2 > 0.0 {
+            r2.sqrt()
+        } else {
+            0.0
+        }
     };
 
     let phi_seg = segments.max(3); // guard divisor against 0 (defense in depth)
@@ -55,17 +67,29 @@ pub fn tessellate_paraboloid(rlo: f64, rhi: f64, dz: f64, segments: u32) -> Tria
                 (rad1 * c0, rad1 * s0, z1),
             ];
 
-            let u = [verts[1].0 - verts[0].0, verts[1].1 - verts[0].1, verts[1].2 - verts[0].2];
-            let v = [verts[3].0 - verts[0].0, verts[3].1 - verts[0].1, verts[3].2 - verts[0].2];
+            let u = [
+                verts[1].0 - verts[0].0,
+                verts[1].1 - verts[0].1,
+                verts[1].2 - verts[0].2,
+            ];
+            let v = [
+                verts[3].0 - verts[0].0,
+                verts[3].1 - verts[0].1,
+                verts[3].2 - verts[0].2,
+            ];
             let mut nx = u[1] * v[2] - u[2] * v[1];
             let mut ny = u[2] * v[0] - u[0] * v[2];
             let mut nz = u[0] * v[1] - u[1] * v[0];
             let len = (nx * nx + ny * ny + nz * nz).sqrt();
             if len > 1e-12 {
-                nx /= len; ny /= len; nz /= len;
+                nx /= len;
+                ny /= len;
+                nz /= len;
             } else {
                 // Degenerate quad (e.g. apex ring): fall back to a unit normal.
-                nx = 0.0; ny = 0.0; nz = 1.0;
+                nx = 0.0;
+                ny = 0.0;
+                nz = 1.0;
             }
 
             for (vx, vy, vz) in &verts {
@@ -77,23 +101,33 @@ pub fn tessellate_paraboloid(rlo: f64, rhi: f64, dz: f64, segments: u32) -> Tria
                 normals.push(nz as f32);
             }
 
-            indices.push(base); indices.push(base + 1); indices.push(base + 2);
-            indices.push(base); indices.push(base + 2); indices.push(base + 3);
+            indices.push(base);
+            indices.push(base + 1);
+            indices.push(base + 2);
+            indices.push(base);
+            indices.push(base + 2);
+            indices.push(base + 3);
         }
     }
 
     // Bottom cap at z = -dz
     if rlo > 1e-10 {
         let center_idx = (positions.len() / 3) as u32;
-        positions.push(0.0); positions.push(0.0); positions.push(-dz as f32);
-        normals.push(0.0); normals.push(0.0); normals.push(-1.0);
+        positions.push(0.0);
+        positions.push(0.0);
+        positions.push(-dz as f32);
+        normals.push(0.0);
+        normals.push(0.0);
+        normals.push(-1.0);
 
         for i in 0..=phi_seg {
             let phi = i as f64 * dphi;
             positions.push((rlo * phi.cos()) as f32);
             positions.push((rlo * phi.sin()) as f32);
             positions.push(-dz as f32);
-            normals.push(0.0); normals.push(0.0); normals.push(-1.0);
+            normals.push(0.0);
+            normals.push(0.0);
+            normals.push(-1.0);
         }
         for i in 0..phi_seg {
             indices.push(center_idx);
@@ -105,15 +139,21 @@ pub fn tessellate_paraboloid(rlo: f64, rhi: f64, dz: f64, segments: u32) -> Tria
     // Top cap at z = +dz
     if rhi > 1e-10 {
         let center_idx = (positions.len() / 3) as u32;
-        positions.push(0.0); positions.push(0.0); positions.push(dz as f32);
-        normals.push(0.0); normals.push(0.0); normals.push(1.0);
+        positions.push(0.0);
+        positions.push(0.0);
+        positions.push(dz as f32);
+        normals.push(0.0);
+        normals.push(0.0);
+        normals.push(1.0);
 
         for i in 0..=phi_seg {
             let phi = i as f64 * dphi;
             positions.push((rhi * phi.cos()) as f32);
             positions.push((rhi * phi.sin()) as f32);
             positions.push(dz as f32);
-            normals.push(0.0); normals.push(0.0); normals.push(1.0);
+            normals.push(0.0);
+            normals.push(0.0);
+            normals.push(1.0);
         }
         for i in 0..phi_seg {
             indices.push(center_idx);
@@ -122,5 +162,9 @@ pub fn tessellate_paraboloid(rlo: f64, rhi: f64, dz: f64, segments: u32) -> Tria
         }
     }
 
-    TriangleMesh { positions, normals, indices }
+    TriangleMesh {
+        positions,
+        normals,
+        indices,
+    }
 }

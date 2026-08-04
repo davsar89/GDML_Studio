@@ -813,8 +813,7 @@ mod tests {
             let a = p(mesh.indices[tri * 3] as usize);
             let b = p(mesh.indices[tri * 3 + 1] as usize);
             let c = p(mesh.indices[tri * 3 + 2] as usize);
-            total += (a[0] * (b[1] * c[2] - b[2] * c[1])
-                - a[1] * (b[0] * c[2] - b[2] * c[0])
+            total += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
                 + a[2] * (b[0] * c[1] - b[1] * c[0]))
                 / 6.0;
         }
@@ -873,7 +872,12 @@ mod tests {
     fn intersect_half_overlap_has_correct_volume() {
         let a = box_mesh::tessellate_box(100.0, 100.0, 100.0);
         let b = transform_mesh(&a, [50.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
-        assert_volume(&intersect(&a, &b), 500_000.0, 0.01, "box & half-overlap box");
+        assert_volume(
+            &intersect(&a, &b),
+            500_000.0,
+            0.01,
+            "box & half-overlap box",
+        );
     }
 
     #[test]
@@ -920,7 +924,12 @@ mod tests {
 
             let s = subtract(&a, &b);
             assert!(mesh_is_finite(&s), "offset {}: non-finite mesh", offset);
-            assert_volume(&s, 500_000.0, 0.02, &format!("coplanar subtract @ {}", offset));
+            assert_volume(
+                &s,
+                500_000.0,
+                0.02,
+                &format!("coplanar subtract @ {}", offset),
+            );
         }
     }
 

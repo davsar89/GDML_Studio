@@ -133,7 +133,10 @@ pub fn tessellate_xtru(
 }
 
 fn transform_vertex(v: (f64, f64), x_offset: f64, y_offset: f64, scale: f64) -> (f32, f32) {
-    ((v.0 * scale + x_offset) as f32, (v.1 * scale + y_offset) as f32)
+    (
+        (v.0 * scale + x_offset) as f32,
+        (v.1 * scale + y_offset) as f32,
+    )
 }
 
 pub(crate) fn polygon_signed_area(vertices: &[(f64, f64)]) -> f64 {

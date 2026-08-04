@@ -19,7 +19,11 @@ pub fn tessellate_polyhedra(
     let mut indices: Vec<u32> = Vec::new();
 
     if planes.len() < 2 || numsides < 3 {
-        return TriangleMesh { positions, normals, indices };
+        return TriangleMesh {
+            positions,
+            normals,
+            indices,
+        };
     }
 
     // Matches G4Polycone::Create: a non-positive or over-full sweep means a
@@ -47,7 +51,11 @@ pub fn tessellate_polyhedra(
 
     // Generate polygon vertices at each z-plane for a given radius type
     let polygon_verts = |r_apothem: f64, z: f64| -> Vec<[f64; 3]> {
-        let r = if r_apothem > 1e-12 { r_apothem / cos_half } else { 0.0 };
+        let r = if r_apothem > 1e-12 {
+            r_apothem / cos_half
+        } else {
+            0.0
+        };
         (0..=n)
             .map(|i| {
                 let phi = startphi + deltaphi * (i as f64) / (n as f64);
@@ -57,7 +65,10 @@ pub fn tessellate_polyhedra(
     };
 
     // Generate side walls between adjacent z-planes for outer or inner surface
-    let gen_walls = |is_outer: bool, positions: &mut Vec<f32>, normals: &mut Vec<f32>, indices: &mut Vec<u32>| {
+    let gen_walls = |is_outer: bool,
+                     positions: &mut Vec<f32>,
+                     normals: &mut Vec<f32>,
+                     indices: &mut Vec<u32>| {
         for p in 0..planes.len() - 1 {
             let (z0, rmin0, rmax0) = planes[p];
             let (z1, rmin1, rmax1) = planes[p + 1];
@@ -83,10 +94,14 @@ pub fn tessellate_polyhedra(
                 let mut nz = u[0] * v[1] - u[1] * v[0];
                 let len = (nx * nx + ny * ny + nz * nz).sqrt();
                 if len > 1e-12 {
-                    nx /= len; ny /= len; nz /= len;
+                    nx /= len;
+                    ny /= len;
+                    nz /= len;
                 }
                 if !is_outer {
-                    nx = -nx; ny = -ny; nz = -nz;
+                    nx = -nx;
+                    ny = -ny;
+                    nz = -nz;
                 }
 
                 for vtx in &[v00, v01, v11, v10] {
@@ -99,11 +114,19 @@ pub fn tessellate_polyhedra(
                 }
 
                 if is_outer {
-                    indices.push(base); indices.push(base + 1); indices.push(base + 2);
-                    indices.push(base); indices.push(base + 2); indices.push(base + 3);
+                    indices.push(base);
+                    indices.push(base + 1);
+                    indices.push(base + 2);
+                    indices.push(base);
+                    indices.push(base + 2);
+                    indices.push(base + 3);
                 } else {
-                    indices.push(base); indices.push(base + 2); indices.push(base + 1);
-                    indices.push(base); indices.push(base + 3); indices.push(base + 2);
+                    indices.push(base);
+                    indices.push(base + 2);
+                    indices.push(base + 1);
+                    indices.push(base);
+                    indices.push(base + 3);
+                    indices.push(base + 2);
                 }
             }
         }
@@ -119,7 +142,11 @@ pub fn tessellate_polyhedra(
     }
 
     // End caps (bottom and top annular polygons)
-    let gen_cap = |plane_idx: usize, is_top: bool, positions: &mut Vec<f32>, normals: &mut Vec<f32>, indices: &mut Vec<u32>| {
+    let gen_cap = |plane_idx: usize,
+                   is_top: bool,
+                   positions: &mut Vec<f32>,
+                   normals: &mut Vec<f32>,
+                   indices: &mut Vec<u32>| {
         let (z, rmin, rmax) = planes[plane_idx];
         let outer_verts = polygon_verts(rmax, z);
         let inner_verts = polygon_verts(rmin, z);
@@ -143,21 +170,39 @@ pub fn tessellate_polyhedra(
             }
 
             if is_top {
-                indices.push(base); indices.push(base + 1); indices.push(base + 2);
-                indices.push(base); indices.push(base + 2); indices.push(base + 3);
+                indices.push(base);
+                indices.push(base + 1);
+                indices.push(base + 2);
+                indices.push(base);
+                indices.push(base + 2);
+                indices.push(base + 3);
             } else {
-                indices.push(base); indices.push(base + 2); indices.push(base + 1);
-                indices.push(base); indices.push(base + 3); indices.push(base + 2);
+                indices.push(base);
+                indices.push(base + 2);
+                indices.push(base + 1);
+                indices.push(base);
+                indices.push(base + 3);
+                indices.push(base + 2);
             }
         }
     };
 
     gen_cap(0, false, &mut positions, &mut normals, &mut indices);
-    gen_cap(planes.len() - 1, true, &mut positions, &mut normals, &mut indices);
+    gen_cap(
+        planes.len() - 1,
+        true,
+        &mut positions,
+        &mut normals,
+        &mut indices,
+    );
 
     // Phi-cut faces (if not full circle)
     if !full_circle {
-        let gen_phi_face = |phi: f64, flip: bool, positions: &mut Vec<f32>, normals: &mut Vec<f32>, indices: &mut Vec<u32>| {
+        let gen_phi_face = |phi: f64,
+                            flip: bool,
+                            positions: &mut Vec<f32>,
+                            normals: &mut Vec<f32>,
+                            indices: &mut Vec<u32>| {
             let cos_phi = phi.cos();
             let sin_phi = phi.sin();
             let nx = if flip { sin_phi } else { -sin_phi };
@@ -190,11 +235,19 @@ pub fn tessellate_polyhedra(
                 }
 
                 if flip {
-                    indices.push(base); indices.push(base + 1); indices.push(base + 2);
-                    indices.push(base); indices.push(base + 2); indices.push(base + 3);
+                    indices.push(base);
+                    indices.push(base + 1);
+                    indices.push(base + 2);
+                    indices.push(base);
+                    indices.push(base + 2);
+                    indices.push(base + 3);
                 } else {
-                    indices.push(base); indices.push(base + 2); indices.push(base + 1);
-                    indices.push(base); indices.push(base + 3); indices.push(base + 2);
+                    indices.push(base);
+                    indices.push(base + 2);
+                    indices.push(base + 1);
+                    indices.push(base);
+                    indices.push(base + 3);
+                    indices.push(base + 2);
                 }
             }
         };
@@ -202,7 +255,13 @@ pub fn tessellate_polyhedra(
         // flip=true at the start face: outward is -phi_hat (solid lies at larger
         // phi); flip=false (+phi_hat) at the end face.
         gen_phi_face(startphi, true, &mut positions, &mut normals, &mut indices);
-        gen_phi_face(startphi + deltaphi, false, &mut positions, &mut normals, &mut indices);
+        gen_phi_face(
+            startphi + deltaphi,
+            false,
+            &mut positions,
+            &mut normals,
+            &mut indices,
+        );
     }
 
     TriangleMesh {

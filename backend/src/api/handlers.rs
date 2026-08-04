@@ -1011,8 +1011,8 @@ fn build_volume_node(
                 let mut pos = [0.0_f64; 3];
                 // Geant4 centers the replica stack in the mother
                 // (G4ReplicaNavigation): x_n = -width*(N-1)/2 + n*width.
-                pos[axis] = -width_mm * 0.5 * (number.saturating_sub(1) as f64)
-                    + (n as f64) * width_mm;
+                pos[axis] =
+                    -width_mm * 0.5 * (number.saturating_sub(1) as f64) + (n as f64) * width_mm;
                 let replica_instance_id =
                     format!("{}/replica[{}]:{}", instance_id, n, replica.volume_ref);
                 let child_node = build_volume_node(

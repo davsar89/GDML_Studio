@@ -9,19 +9,17 @@ use std::f64::consts::PI;
 ///
 /// At height z, the elliptical cross-section has semi-axes:
 ///   rx(z) = dx * (zmax - z), ry(z) = dy * (zmax - z)
-pub fn tessellate_elcone(
-    dx: f64,
-    dy: f64,
-    zmax: f64,
-    zcut: f64,
-    segments: u32,
-) -> TriangleMesh {
+pub fn tessellate_elcone(dx: f64, dy: f64, zmax: f64, zcut: f64, segments: u32) -> TriangleMesh {
     let mut positions: Vec<f32> = Vec::new();
     let mut normals: Vec<f32> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
 
     if dx <= 0.0 || dy <= 0.0 || zmax <= 0.0 || zcut <= 0.0 {
-        return TriangleMesh { positions, normals, indices };
+        return TriangleMesh {
+            positions,
+            normals,
+            indices,
+        };
     }
 
     let zcut = zcut.min(zmax);
@@ -60,8 +58,16 @@ pub fn tessellate_elcone(
             ];
 
             // Face normal from cross product
-            let u = [verts[1].0 - verts[0].0, verts[1].1 - verts[0].1, verts[1].2 - verts[0].2];
-            let v = [verts[3].0 - verts[0].0, verts[3].1 - verts[0].1, verts[3].2 - verts[0].2];
+            let u = [
+                verts[1].0 - verts[0].0,
+                verts[1].1 - verts[0].1,
+                verts[1].2 - verts[0].2,
+            ];
+            let v = [
+                verts[3].0 - verts[0].0,
+                verts[3].1 - verts[0].1,
+                verts[3].2 - verts[0].2,
+            ];
             let mut nx = u[1] * v[2] - u[2] * v[1];
             let mut ny = u[2] * v[0] - u[0] * v[2];
             let mut nz = u[0] * v[1] - u[1] * v[0];
@@ -152,5 +158,9 @@ pub fn tessellate_elcone(
         }
     }
 
-    TriangleMesh { positions, normals, indices }
+    TriangleMesh {
+        positions,
+        normals,
+        indices,
+    }
 }
