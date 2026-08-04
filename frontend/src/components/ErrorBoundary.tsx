@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { useAppStore } from '../store';
 
 interface Props {
   children: ReactNode;
@@ -23,6 +24,16 @@ export default class ErrorBoundary extends Component<Props, State> {
     console.error('Unhandled UI error:', error, info);
   }
 
+  // Clearing `error` alone re-renders the same children against the same store
+  // state that just threw, so getDerivedStateFromError catches again and the
+  // message comes straight back -- the button appeared to do nothing. Drop the
+  // loaded document first: `reset()` disposes the geometries and returns every
+  // slice to its empty state, which is a state the tree is known to render.
+  handleRetry = () => {
+    useAppStore.getState().reset();
+    this.setState({ error: null });
+  };
+
   render() {
     const { error } = this.state;
     if (error) {
@@ -40,9 +51,15 @@ export default class ErrorBoundary extends Component<Props, State> {
         >
           <h2 style={{ marginTop: 0 }}>Something went wrong</h2>
           <p style={{ whiteSpace: 'pre-wrap' }}>{error.message}</p>
-          <button onClick={() => this.setState({ error: null })} style={{ marginTop: 12 }}>
-            Try again
-          </button>
+          <p style={{ color: '#8899aa' }}>
+            &ldquo;Try again&rdquo; closes the current document and returns to the
+            empty view. Any unsaved edits are lost.
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button onClick={this.handleRetry}>Try again</button>
+            {/* Fallback for an error in code `reset()` cannot clear. */}
+            <button onClick={() => window.location.reload()}>Reload page</button>
+          </div>
         </div>
       );
     }
