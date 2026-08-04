@@ -204,20 +204,28 @@ function MaterialEditor({
           </button>
         )}
       </div>
-      <MaterialFields
-        key={[
-          mat.name,
-          mat.density?.value || '',
-          mat.density?.unit || '',
-          mat.formula || '',
-          mat.z || '',
-        ].join('|')}
-        material={mat}
-      />
+      {/*
+        Keyed on the name only. Keying on the field values too meant the
+        component's own save remounted it -- the POST came back, the store
+        updated, the key changed, and the inputs re-initialised from a snapshot
+        that predated whatever had been typed while the request was in flight.
+        MaterialFields re-syncs itself from the prop instead; see fieldsOf.
+      */}
+      <MaterialFields key={mat.name} material={mat} />
       <ComponentsList material={mat} materials={materials} elements={elements} />
       <NistMaterialPicker material={mat} />
     </div>
   );
+}
+
+/** The four fields MaterialFields owns, projected out of a material. */
+function fieldsOf(m: MaterialInfo) {
+  return {
+    densityVal: m.density?.value || '',
+    densityUnit: m.density?.unit || 'g/cm3',
+    formula: m.formula || '',
+    z: m.z || '',
+  };
 }
 
 function MaterialFields({ material }: { material: MaterialInfo }) {
@@ -226,6 +234,9 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
   const [formula, setFormula] = useState(material.formula || '');
   const [z, setZ] = useState(material.z || '');
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // What our own save last POSTed. Used to tell our echo apart from an edit
+  // made somewhere else; see the re-sync block below.
+  const [lastSent, setLastSent] = useState(() => fieldsOf(material));
 
   // GDML density/Z values are xs:double; refuse to persist non-numeric input
   // (the field shows red and the previous valid value is kept on save).
@@ -243,6 +254,11 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
       z: zValid ? z || null : material.z,
       ...overrides,
     };
+    // Record before awaiting: the refresh this triggers has to be recognisable
+    // as our own echo even while the request is still in flight. If the POST
+    // fails, this holds a value that was never persisted -- correct, because
+    // the next refresh will then differ and pull the server's truth back in.
+    setLastSent(fieldsOf(updated));
     try {
       await api.updateMaterial(material.name, updated);
       await refreshMaterialsAndMeshes();
@@ -259,6 +275,38 @@ function MaterialFields({ material }: { material: MaterialInfo }) {
   useEffect(() => {
     saveRef.current = save;
   }, [save]);
+
+  // Re-sync the inputs when the material is changed by something other than
+  // this component -- the NIST picker replaces density, formula and Z wholesale,
+  // and without this the fields would keep showing the old values.
+  //
+  // Most refreshes are just the echo of our own save coming back, and adopting
+  // those would discard anything typed while the POST was in flight. Comparing
+  // against what we last sent separates the two cases: identical means it's our
+  // echo, so ignore it; different means an external write, so take it.
+  //
+  // Done during render rather than in an effect -- React's documented "adjusting
+  // state when a prop changes" pattern. React re-runs this component
+  // immediately without committing, so no painted frame ever shows the stale
+  // value, and the `material !== prevMaterial` guard stops it re-entering.
+  // An effect would commit the stale render first, producing a visible flash.
+  const [prevMaterial, setPrevMaterial] = useState(material);
+  if (material !== prevMaterial) {
+    setPrevMaterial(material);
+    const incoming = fieldsOf(material);
+    if (
+      incoming.densityVal !== lastSent.densityVal ||
+      incoming.densityUnit !== lastSent.densityUnit ||
+      incoming.formula !== lastSent.formula ||
+      incoming.z !== lastSent.z
+    ) {
+      setLastSent(incoming);
+      setDensityVal(incoming.densityVal);
+      setDensityUnit(incoming.densityUnit);
+      setFormula(incoming.formula);
+      setZ(incoming.z);
+    }
+  }
 
   const scheduleSave = useCallback((overrides?: Partial<MaterialInfo>) => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
