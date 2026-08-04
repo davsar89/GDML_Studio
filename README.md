@@ -126,15 +126,21 @@ See [`sample_data/README.md`](sample_data/README.md) for the full list and file 
 cd backend
 cargo test
 
-# Frontend type check
+# Frontend type check, lint and tests
 cd frontend
 npx tsc -b
+npm run lint
+npm test
 ```
 
 > `tsc -b` (build mode) is required, not `tsc --noEmit`. `tsconfig.json` is a
 > solution-style config (`"files": []` plus project references), so a non-build
 > invocation resolves zero input files, checks nothing, and exits 0 regardless of
 > how many type errors exist.
+
+Frontend tests run under Vitest in jsdom. They deliberately cover no `Viewport/`
+code — three.js needs a WebGL context jsdom does not provide — so the 3D
+rendering path is still only verified by loading a file in the browser.
 
 ## License
 
