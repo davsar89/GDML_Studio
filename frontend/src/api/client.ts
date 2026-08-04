@@ -41,10 +41,6 @@ export async function uploadFiles(
   });
 }
 
-export async function getSummary() {
-  return fetchJson<DocumentSummary>('/api/document/summary');
-}
-
 export async function getMeshes() {
   return fetchJson<{
     meshes: Record<string, MeshData>;
@@ -74,10 +70,6 @@ export async function getMaterials() {
   return fetchJson<{ elements: ElementInfo[]; materials: MaterialInfo[] }>(
     '/api/document/materials',
   );
-}
-
-export async function getSolids() {
-  return fetchJson<Record<string, unknown>>('/api/document/solids');
 }
 
 export async function getStructure() {
@@ -132,14 +124,6 @@ export async function deleteMaterial(name: string) {
 }
 
 // ─── Element CRUD ───────────────────────────────────────────────────────────
-
-export async function updateElement(name: string, element: ElementInfo) {
-  return fetchJson<{ ok: boolean }>('/api/document/elements/update', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, element }),
-  });
-}
 
 export async function addElement(element: ElementInfo) {
   return fetchJson<{ ok: boolean }>('/api/document/elements/add', {
