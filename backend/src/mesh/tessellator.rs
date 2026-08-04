@@ -641,6 +641,48 @@ fn resolve_opt_with_aunit(engine: &EvalEngine, expr: &Option<String>, aunit: &st
     }
 }
 
+/// Resolve a `deltaphi` opening angle under Geant4's full-circle rule.
+///
+/// `G4Polycone.cc:232` treats an opening angle that is non-positive, or at or
+/// above a full turn, as "nonsense value as representing no phi opening" and
+/// sweeps the complete revolution:
+///
+/// ```text
+/// if ( (phiTotal <= 0) || (phiTotal > twopi*(1-DBL_EPSILON)) )
+/// { phiIsOpen = false; startPhi = 0.; endPhi = twopi; }
+/// ```
+///
+/// The 2*pi default used to be applied only when the attribute was absent, so
+/// an explicit `deltaphi="0"` -- legal GDML, and a solid object in Geant4 --
+/// reached the meshers as a zero-width sweep. `polycone_mesh`, `polyhedra_mesh`
+/// and `generic_polycone_mesh` already normalised it themselves; tube, cone,
+/// sphere, torus, cuttube and twistedtubs did not, and tessellated to nothing.
+/// Doing it here covers every phi-swept solid from one place.
+///
+/// Geant4 also forces `startPhi` to 0 inside that branch. That is deliberately
+/// not reproduced: for the revolved solids it is geometrically inert (a full
+/// turn sweeps the same surface wherever it starts), and for the faceted ones
+/// -- polyhedra, genericPolyhedra -- it would rotate the facets to a different
+/// orientation, which `G4Polyhedra.cc` is not vendored to confirm.
+///
+/// The rule is quoted from the one vendored source that states it. Geant4 puts
+/// the other solids through an equivalent phi check, so applying it beyond
+/// polycone is consistent but inferred rather than proven.
+fn resolve_delta_phi(engine: &EvalEngine, expr: &Option<String>, aunit: &str) -> f64 {
+    const TWO_PI: f64 = 2.0 * PI;
+    let raw = match expr {
+        Some(e) => resolve_with_aunit(engine, e, aunit),
+        None => TWO_PI,
+    };
+    // A non-finite angle is nonsense by the same reading, and would otherwise
+    // propagate NaN through every vertex of the mesh.
+    if !raw.is_finite() || raw <= 0.0 || raw > TWO_PI * (1.0 - f64::EPSILON) {
+        TWO_PI
+    } else {
+        raw
+    }
+}
+
 fn tessellate_box_solid(s: &BoxSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let x = resolve_with_lunit(engine, &s.x, lunit);
@@ -660,10 +702,7 @@ fn tessellate_tube_solid(
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = match &s.deltaphi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
-    };
+    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     Ok(tube_mesh::tessellate_tube(
         rmin, rmax, z, startphi, deltaphi, segments,
     ))
@@ -682,10 +721,7 @@ fn tessellate_cone_solid(
     let rmax2 = resolve_with_lunit(engine, &s.rmax2, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = match &s.deltaphi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
-    };
+    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     Ok(cone_mesh::tessellate_cone(
         rmin1, rmax1, rmin2, rmax2, z, startphi, deltaphi, segments,
     ))
@@ -701,10 +737,7 @@ fn tessellate_sphere_solid(
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = match &s.deltaphi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
-    };
+    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     let starttheta = resolve_opt_with_aunit(engine, &s.starttheta, aunit);
     let deltatheta = match &s.deltatheta {
         Some(expr) => resolve_with_aunit(engine, expr, aunit),
@@ -984,10 +1017,7 @@ fn tessellate_polyhedra_solid(s: &PolyhedraSolid, engine: &EvalEngine) -> Result
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = match &s.deltaphi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
-    };
+    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     // Clamp sides: 0/1/2 are degenerate and an unbounded value blows up memory.
     let numsides = (resolve(engine, &s.numsides) as u32).clamp(3, 512);
 
@@ -1018,10 +1048,7 @@ fn tessellate_cut_tube_solid(
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = match &s.deltaphi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
-    };
+    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     let low_norm = [
         resolve_opt(engine, &s.low_x),
         resolve_opt(engine, &s.low_y),
@@ -1088,10 +1115,7 @@ fn tessellate_torus_solid(
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let rtor = resolve_with_lunit(engine, &s.rtor, lunit);
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = match &s.deltaphi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
-    };
+    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     Ok(torus_mesh::tessellate_torus(
         rmin, rmax, rtor, startphi, deltaphi, segments,
     ))
@@ -1239,10 +1263,7 @@ fn tessellate_polycone_solid(
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = match &s.deltaphi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
-    };
+    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
 
     let planes: Vec<(f64, f64, f64)> = s
         .zplanes
@@ -1268,10 +1289,7 @@ fn tessellate_generic_polycone_solid(
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = match &s.deltaphi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
-    };
+    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
 
     // The rzpoints are a closed contour in the (r,z) half-plane, revolved about
     // z -- not a list of z-planes.
@@ -1344,10 +1362,7 @@ fn tessellate_generic_polyhedra_solid(
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = match &s.deltaphi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
-    };
+    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     // Clamp sides: 0/1/2 are degenerate and an unbounded value blows up memory.
     let numsides = (resolve(engine, &s.numsides) as u32).clamp(3, 512);
 

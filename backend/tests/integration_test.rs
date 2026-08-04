@@ -669,3 +669,129 @@ fn unsupported_volume_constructs_produce_warnings() {
     assert_eq!(world.physvols.len(), 1);
     assert_eq!(world.solid_ref, "world_box");
 }
+
+/// Signed volume by the divergence theorem, summed about `o`.
+fn signed_volume_about(mesh: &gdml_studio_backend::mesh::types::TriangleMesh, o: [f64; 3]) -> f64 {
+    let v = |i: usize| -> [f64; 3] {
+        [
+            mesh.positions[i * 3] as f64 - o[0],
+            mesh.positions[i * 3 + 1] as f64 - o[1],
+            mesh.positions[i * 3 + 2] as f64 - o[2],
+        ]
+    };
+    let mut vol = 0.0;
+    for t in 0..mesh.triangle_count() {
+        let a = v(mesh.indices[t * 3] as usize);
+        let b = v(mesh.indices[t * 3 + 1] as usize);
+        let c = v(mesh.indices[t * 3 + 2] as usize);
+        vol += (a[1] * b[2] - a[2] * b[1]) * c[0]
+            + (a[2] * b[0] - a[0] * b[2]) * c[1]
+            + (a[0] * b[1] - a[1] * b[0]) * c[2];
+    }
+    vol / 6.0
+}
+
+/// Tessellate a `<solids>` fragment through the real parse -> evaluate -> mesh
+/// path and return the named mesh.
+fn mesh_from_solids(solids: &str, name: &str) -> gdml_studio_backend::mesh::types::TriangleMesh {
+    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
+    let src = format!(
+        r#"<?xml version="1.0"?>
+<gdml>
+  <define/>
+  <materials>
+    <material name="Air" Z="7"><D value="0.0012"/><atom value="14"/></material>
+  </materials>
+  <solids>
+{solids}
+  </solids>
+  <structure>
+    <volume name="World"><materialref ref="Air"/><solidref ref="{name}"/></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+</gdml>"#
+    );
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
+    let mut engine = EvalEngine::new();
+    engine.evaluate_all(&doc.defines).unwrap();
+    let (meshes, _) = tessellate_all_solids(&doc.solids, &engine, 128).unwrap();
+    meshes
+        .get(name)
+        .unwrap_or_else(|| panic!("no mesh for '{name}'"))
+        .clone()
+}
+
+#[test]
+fn explicit_zero_deltaphi_sweeps_a_full_circle() {
+    // G4Polycone.cc:232 reads a non-positive or >= 2*pi opening angle as
+    // "nonsense value as representing no phi opening" -- a complete revolution.
+    // The 2*pi default was only applied when the attribute was ABSENT, so an
+    // explicit deltaphi="0" reached the meshers as a zero-width sweep.
+    //
+    // polycone/polyhedra already normalised this inside their own meshers; the
+    // solids below did not, and each one tessellated to an empty or degenerate
+    // mesh. Normalising in the tessellator now covers all of them uniformly.
+    let pi = std::f64::consts::PI;
+    let cases: Vec<(&str, String, f64)> = vec![
+        (
+            "T",
+            r#"    <tube name="T" rmin="0" rmax="10" z="20" deltaphi="0" aunit="rad" lunit="mm"/>"#
+                .to_string(),
+            pi * 100.0 * 20.0,
+        ),
+        (
+            "C",
+            r#"    <cone name="C" rmin1="0" rmax1="10" rmin2="0" rmax2="5" z="20" deltaphi="0" aunit="rad" lunit="mm"/>"#
+                .to_string(),
+            (20.0 * 2.0 * pi / 6.0) * (100.0 + 50.0 + 25.0),
+        ),
+        (
+            "S",
+            r#"    <sphere name="S" rmin="0" rmax="10" deltaphi="0" deltatheta="180" aunit="deg" lunit="mm"/>"#
+                .to_string(),
+            (4.0 / 3.0) * pi * 1000.0,
+        ),
+        (
+            "TO",
+            r#"    <torus name="TO" rmin="0" rmax="3" rtor="10" deltaphi="0" aunit="rad" lunit="mm"/>"#
+                .to_string(),
+            pi * 9.0 * 10.0 * 2.0 * pi,
+        ),
+    ];
+
+    for (name, xml, expected) in cases {
+        let mesh = mesh_from_solids(&xml, name);
+        assert!(
+            mesh.triangle_count() > 0,
+            "{name}: deltaphi=0 produced an empty mesh"
+        );
+        // Two reference points: a face with inverted winding whose plane passes
+        // through the first would otherwise cancel out.
+        for o in [[0.0, 0.0, 0.0], [137.0, -89.0, 53.0]] {
+            let vol = signed_volume_about(&mesh, o);
+            let rel = (vol - expected).abs() / expected.abs();
+            assert!(
+                rel < 0.02,
+                "{name}: volume about {o:?} = {vol:.3}, expected {expected:.3} (rel {rel:.4})"
+            );
+        }
+    }
+}
+
+#[test]
+fn negative_and_oversized_deltaphi_also_sweep_a_full_circle() {
+    // The same G4 branch covers phiTotal < 0 and phiTotal >= 2*pi.
+    let expected = std::f64::consts::PI * 100.0 * 20.0;
+    for delta in ["-1.5", "7.0", "6.283185307179586"] {
+        let xml = format!(
+            r#"    <tube name="T" rmin="0" rmax="10" z="20" deltaphi="{delta}" aunit="rad" lunit="mm"/>"#
+        );
+        let mesh = mesh_from_solids(&xml, "T");
+        let vol = signed_volume_about(&mesh, [0.0, 0.0, 0.0]);
+        let rel = (vol - expected).abs() / expected.abs();
+        assert!(
+            rel < 0.02,
+            "deltaphi={delta}: volume {vol:.3}, expected {expected:.3} (rel {rel:.4})"
+        );
+    }
+}
