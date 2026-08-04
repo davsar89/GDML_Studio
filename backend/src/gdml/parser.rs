@@ -28,6 +28,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
     // Elements recognized by name but not interpreted; preserved verbatim.
     let mut raw_unknown: Vec<RawElement> = Vec::new();
     let mut root_attributes: Vec<(String, String)> = Vec::new();
+    // Names of defines seen inside <materials><define>, so the writer can put
+    // them back there instead of folding them into the top-level block.
+    let mut materials_define: Option<Vec<String>> = None;
     let mut order = DocumentOrder::default();
     // Comments seen since the last element; they anchor to whatever comes next.
     let mut pending_comments: Vec<String> = Vec::new();
@@ -49,6 +52,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"define" => {
                         if section == Section::Materials {
                             section = Section::MaterialsDefine;
+                            // Present-but-empty is meaningful: it still has to
+                            // round-trip as an empty <define/>.
+                            materials_define.get_or_insert_with(Vec::new);
                         } else {
                             section = Section::Define;
                         }
@@ -77,30 +83,48 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                             })
                             .collect();
                     }
-                    b"constant" if section == Section::Define => {
+                    b"constant"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_constant(e, &mut defines);
                     }
                     b"quantity"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_quantity(e, &mut defines);
                     }
-                    b"variable" if section == Section::Define => {
+                    b"variable"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_variable(e, &mut defines);
                     }
-                    b"expression" if section == Section::Define => {
+                    b"expression"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
                         let name = get_attr(e, "name").unwrap_or_default();
                         let text = reader.read_text(e.name()).unwrap_or_default().to_string();
                         let text = collapse_spaces(&text);
                         defines.expressions.push(Expression { name, value: text });
                     }
-                    b"position" if section == Section::Define => {
+                    b"position"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_position(e, &mut defines);
                     }
-                    b"scale" if section == Section::Define => {
+                    b"scale"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_scale(e, &mut defines);
                     }
-                    b"rotation" if section == Section::Define => {
+                    b"rotation"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_rotation(e, &mut defines);
                     }
                     b"isotope" if section == Section::Materials => {
@@ -278,24 +302,45 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                 let tag = local.as_ref();
                 anchor_pending_comments(&mut pending_comments, &mut order, section, e, tag);
                 match tag {
-                    b"constant" if section == Section::Define => {
+                    // A self-closed <define/> inside <materials>: no items, but
+                    // the element itself still has to survive the round trip.
+                    b"define" if section == Section::Materials => {
+                        materials_define.get_or_insert_with(Vec::new);
+                    }
+                    b"constant"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_constant(e, &mut defines);
                     }
                     b"quantity"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_quantity(e, &mut defines);
                     }
-                    b"variable" if section == Section::Define => {
+                    b"variable"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_variable(e, &mut defines);
                     }
-                    b"position" if section == Section::Define => {
+                    b"position"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_position(e, &mut defines);
                     }
-                    b"scale" if section == Section::Define => {
+                    b"scale"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_scale(e, &mut defines);
                     }
-                    b"rotation" if section == Section::Define => {
+                    b"rotation"
+                        if section == Section::Define || section == Section::MaterialsDefine =>
+                    {
+                        note_materials_define(section, &mut materials_define, e);
                         parse_rotation(e, &mut defines);
                     }
                     b"isotope" if section == Section::Materials => {
@@ -534,6 +579,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             order
         },
         root_attributes,
+        materials_define,
         skipped_unsupported,
     })
 }
@@ -593,6 +639,17 @@ enum Section {
     MaterialsDefine,
     Solids,
     Structure,
+}
+
+/// Record a define's name when it came from the nested `<materials><define>`
+/// rather than the top-level block, so the writer can put it back there.
+fn note_materials_define(section: Section, slot: &mut Option<Vec<String>>, e: &BytesStart) {
+    if section != Section::MaterialsDefine {
+        return;
+    }
+    if let (Some(names), Some(name)) = (slot.as_mut(), get_attr(e, "name")) {
+        names.push(name);
+    }
 }
 
 /// Name of the section a comment belongs to, for [`CommentAnchor::section`].

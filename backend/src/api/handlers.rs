@@ -1586,6 +1586,7 @@ mod tests {
         GdmlDocument {
             filename: filename.to_string(),
             root_attributes: Vec::new(),
+            materials_define: None,
             order: Default::default(),
             defines: DefineSection::default(),
             materials: MaterialSection::default(),

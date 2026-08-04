@@ -31,6 +31,17 @@ pub struct GdmlDocument {
     /// `xmlns:gdml`, present in 5 of the 10 shipped samples — was dropped.
     #[serde(default)]
     pub root_attributes: Vec<(String, String)>,
+    /// Names of the defines that appeared inside `<materials><define>` rather
+    /// than the top-level `<define>`.
+    ///
+    /// GDML allows a `<define>` block nested in `<materials>`; both large
+    /// samples use one to carry `universe_mean_density`. Defines are global
+    /// whichever block they sit in, so everything is parsed into
+    /// [`Self::defines`] as before and this only records where each item came
+    /// from, letting the writer put it back. `None` means the source had no
+    /// nested block; `Some(vec![])` means it had an empty one.
+    #[serde(default)]
+    pub materials_define: Option<Vec<String>>,
     /// Human-readable notes about unsupported constructs the parser had to
     /// skip entirely (e.g. `<divisionvol>` inside a volume). Surfaced as load
     /// warnings: these are NOT preserved and will be missing from a save.

@@ -152,9 +152,22 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     };
 
     write_comments(&mut writer, &doc.order, "root", Some("define"))?;
-    write_defines(&mut writer, &doc.defines, &raw_in("define"), &doc.order)?;
+    let nested_defines = doc.materials_define.clone().unwrap_or_default();
+    write_defines(
+        &mut writer,
+        &doc.defines,
+        &raw_in("define"),
+        &doc.order,
+        &nested_defines,
+    )?;
     write_comments(&mut writer, &doc.order, "root", Some("materials"))?;
-    write_materials(&mut writer, &doc.materials, &doc.order)?;
+    write_materials(
+        &mut writer,
+        &doc.materials,
+        &doc.order,
+        &doc.defines,
+        doc.materials_define.as_ref(),
+    )?;
     write_comments(&mut writer, &doc.order, "root", Some("solids"))?;
     write_solids(&mut writer, &doc.solids, &raw_in("solids"), &doc.order)?;
     write_comments(&mut writer, &doc.order, "root", Some("structure"))?;
@@ -195,15 +208,64 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     Ok(String::from_utf8(result)?)
 }
 
+/// The top-level `<define>` block: every define except those the source kept in
+/// the nested `<materials><define>`.
 fn write_defines(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     defines: &DefineSection,
     raws: &[&RawElement],
     order: &DocumentOrder,
+    nested: &[String],
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("define")))?;
+    write_define_items(writer, defines, order, &|name| {
+        !nested.iter().any(|n| n == name)
+    })?;
 
+    // Preserved-verbatim define-section elements (<matrix>, <loop>) go last so
+    // anything they reference is already defined.
+    for raw in raws {
+        write_raw(writer, raw)?;
+    }
+
+    write_comments(writer, order, "define", None)?;
+    writer.write_event(Event::End(BytesEnd::new("define")))?;
+    Ok(())
+}
+
+/// The `<define>` nested inside `<materials>`, holding only what came from
+/// there. Emitted even when empty, because a present-but-empty block is part of
+/// the source's shape.
+fn write_materials_define(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    defines: &DefineSection,
+    order: &DocumentOrder,
+    nested: &[String],
+) -> Result<()> {
+    if nested.is_empty() {
+        writer.write_event(Event::Empty(BytesStart::new("define")))?;
+        return Ok(());
+    }
+    writer.write_event(Event::Start(BytesStart::new("define")))?;
+    write_define_items(writer, defines, order, &|name| {
+        nested.iter().any(|n| n == name)
+    })?;
+    writer.write_event(Event::End(BytesEnd::new("define")))?;
+    Ok(())
+}
+
+/// Write the define items `include` selects. Shared by both blocks so the two
+/// cannot drift apart in which attributes they emit.
+fn write_define_items(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    defines: &DefineSection,
+    order: &DocumentOrder,
+    include: &dyn Fn(&str) -> bool,
+) -> Result<()> {
     for c in &defines.constants {
+        if !include(&c.name) {
+            continue;
+        }
         write_comments(writer, order, "define", Some(&c.name))?;
         let mut elem = BytesStart::new("constant");
         elem.push_attribute(("name", c.name.as_str()));
@@ -212,6 +274,9 @@ fn write_defines(
     }
 
     for q in &defines.quantities {
+        if !include(&q.name) {
+            continue;
+        }
         write_comments(writer, order, "define", Some(&q.name))?;
         let mut elem = BytesStart::new("quantity");
         elem.push_attribute(("name", q.name.as_str()));
@@ -226,6 +291,9 @@ fn write_defines(
     }
 
     for v in &defines.variables {
+        if !include(&v.name) {
+            continue;
+        }
         write_comments(writer, order, "define", Some(&v.name))?;
         let mut elem = BytesStart::new("variable");
         elem.push_attribute(("name", v.name.as_str()));
@@ -234,6 +302,9 @@ fn write_defines(
     }
 
     for e in &defines.expressions {
+        if !include(&e.name) {
+            continue;
+        }
         write_comments(writer, order, "define", Some(&e.name))?;
         let mut elem = BytesStart::new("expression");
         elem.push_attribute(("name", e.name.as_str()));
@@ -243,6 +314,9 @@ fn write_defines(
     }
 
     for p in &defines.positions {
+        if !include(&p.name) {
+            continue;
+        }
         write_comments(writer, order, "define", Some(&p.name))?;
         let mut elem = BytesStart::new("position");
         elem.push_attribute(("name", p.name.as_str()));
@@ -262,6 +336,9 @@ fn write_defines(
     }
 
     for r in &defines.rotations {
+        if !include(&r.name) {
+            continue;
+        }
         write_comments(writer, order, "define", Some(&r.name))?;
         let mut elem = BytesStart::new("rotation");
         elem.push_attribute(("name", r.name.as_str()));
@@ -281,6 +358,9 @@ fn write_defines(
     }
 
     for s in &defines.scales {
+        if !include(&s.name) {
+            continue;
+        }
         write_comments(writer, order, "define", Some(&s.name))?;
         let mut elem = BytesStart::new("scale");
         elem.push_attribute(("name", s.name.as_str()));
@@ -296,14 +376,6 @@ fn write_defines(
         writer.write_event(Event::Empty(elem))?;
     }
 
-    // Preserved-verbatim define-section elements (<matrix>, <loop>) go last so
-    // anything they reference is already defined.
-    for raw in raws {
-        write_raw(writer, raw)?;
-    }
-
-    write_comments(writer, order, "define", None)?;
-    writer.write_event(Event::End(BytesEnd::new("define")))?;
     Ok(())
 }
 
@@ -311,8 +383,17 @@ fn write_materials(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     materials: &MaterialSection,
     order: &DocumentOrder,
+    defines: &DefineSection,
+    nested: Option<&Vec<String>>,
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("materials")))?;
+
+    // GDML allows a <define> nested here; both large samples use one for
+    // universe_mean_density. Defines are global wherever they sit, so the
+    // parser puts them all in one list -- this replays where they came from.
+    if let Some(names) = nested {
+        write_materials_define(writer, defines, order, names)?;
+    }
 
     for iso in &materials.isotopes {
         write_comments(writer, order, "materials", Some(&iso.name))?;

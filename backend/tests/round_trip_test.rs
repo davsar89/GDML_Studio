@@ -659,19 +659,14 @@ fn export_drops_nothing_from_the_corpus() {
     // The net that catches regressions in constructs with no dedicated fixture.
     // Known gaps are listed explicitly so the test fails when one is fixed and
     // the exemption becomes stale, rather than silently passing forever.
-    const KNOWN_DROPPED: &[&str] = &[
-        // A <materials><define> block is folded into the top-level <define>, so
-        // a file with both ends up with one. Schema-legal, and nothing inside is
-        // lost — only the enclosing element moves — so this is the last
-        // structural difference the corpus still shows.
-        "E:define", "/define",
-    ];
+    // No exemptions. Every construct any sample uses now survives export.
+    const KNOWN_DROPPED: &[&str] = &[];
     // Everything previously exempted here — loop, physvol, auxiliary, atom,
-    // multiUnionNode, gdml, setup, scaledSolid, scale, solidref — is now either
-    // fixed or provably unexercised by any sample. Constructs still unmodelled
-    // (atom's unit/type, a second <setup>, <scaleref>, material
-    // <property>/<RL>/<AL>) will fail this test the moment a sample uses one,
-    // which is the intent.
+    // multiUnionNode, gdml, setup, scaledSolid, scale, solidref, and finally
+    // the nested <materials><define> — is now either fixed or provably
+    // unexercised by any sample. Constructs still unmodelled (atom's unit/type,
+    // a second <setup>, <scaleref>, material <property>/<RL>/<AL>) will fail
+    // this test the moment a sample uses one, which is the intent.
 
     let mut failures = Vec::new();
 
@@ -701,5 +696,119 @@ fn export_drops_nothing_from_the_corpus() {
         failures.is_empty(),
         "export dropped content that was in the source:\n  {}",
         failures.join("\n  ")
+    );
+}
+
+#[test]
+fn nested_materials_define_stays_in_materials() {
+    // GDML allows a <define> inside <materials>; BgoDetModel and
+    // NaiDetModelWithMLI both use one for universe_mean_density. Defines are
+    // global wherever they sit, so everything is parsed into one list -- but
+    // folding them all into the top-level block on save rewrote the file's
+    // shape, which was the corpus detector's last standing exemption.
+    let src = r#"<?xml version="1.0" encoding="UTF-8"?>
+<gdml>
+  <define>
+    <constant name="top_level" value="1"/>
+  </define>
+  <materials>
+    <define>
+      <quantity type="density" name="universe_mean_density" value="1.e-25" unit="g/cm3"/>
+      <constant name="nested_const" value="7"/>
+    </define>
+    <material name="Vacuum" state="gas"><D value="1e-25"/><atom value="1.008"/></material>
+  </materials>
+  <solids>
+    <box name="WorldBox" x="10" y="10" z="10" lunit="mm"/>
+  </solids>
+  <structure>
+    <volume name="World"><materialref ref="Vacuum"/><solidref ref="WorldBox"/></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+</gdml>"#;
+
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
+
+    // A <constant> in the nested block used to be dropped outright: the parser
+    // only accepted <quantity> there, and every other arm required the
+    // top-level section.
+    assert!(
+        doc.defines
+            .constants
+            .iter()
+            .any(|c| c.name == "nested_const"),
+        "a <constant> inside <materials><define> was dropped"
+    );
+    assert_eq!(
+        doc.materials_define.as_deref(),
+        Some(
+            &[
+                "universe_mean_density".to_string(),
+                "nested_const".to_string()
+            ][..]
+        ),
+        "nested define membership not recorded"
+    );
+
+    let xml = serialize_gdml(&doc).unwrap();
+    let materials_block = xml
+        .split("<materials")
+        .nth(1)
+        .and_then(|s| s.split("</materials>").next())
+        .expect("no <materials> block in export");
+
+    assert!(
+        materials_block.contains("universe_mean_density"),
+        "nested quantity was hoisted out of <materials>:\n{xml}"
+    );
+    assert!(
+        materials_block.contains("nested_const"),
+        "nested constant was hoisted out of <materials>:\n{xml}"
+    );
+    assert!(
+        !materials_block.contains("top_level"),
+        "a top-level define was pulled into <materials>:\n{xml}"
+    );
+    // Exactly one of each: nothing duplicated across the two blocks.
+    assert_eq!(
+        xml.matches("universe_mean_density").count(),
+        1,
+        "nested quantity emitted twice:\n{xml}"
+    );
+    assert_eq!(
+        xml.matches("top_level").count(),
+        1,
+        "top-level define emitted twice:\n{xml}"
+    );
+
+    // And it survives a second trip. Compared as a set: the writer emits each
+    // typed collection in turn (all constants, then all quantities, ...), so a
+    // block mixing kinds comes back permuted. That reordering is pre-existing
+    // and applies to the top-level <define> just the same — `evaluate_all`
+    // topologically sorts, so it is harmless here, and it is not something this
+    // change introduced.
+    let doc2 = parse_gdml_from_bytes(xml.as_bytes(), "t2.gdml".to_string()).unwrap();
+    let mut a = doc.materials_define.clone().unwrap();
+    let mut b = doc2.materials_define.clone().unwrap();
+    a.sort();
+    b.sort();
+    assert_eq!(a, b, "nested define membership changed on the second trip");
+}
+
+#[test]
+fn a_document_without_a_nested_define_does_not_grow_one() {
+    let src = doc_with("", "");
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
+    assert_eq!(doc.materials_define, None);
+
+    let xml = serialize_gdml(&doc).unwrap();
+    let materials_block = xml
+        .split("<materials")
+        .nth(1)
+        .and_then(|s| s.split("</materials>").next())
+        .expect("no <materials> block in export");
+    assert!(
+        !materials_block.contains("<define"),
+        "export invented a <define> inside <materials>:\n{xml}"
     );
 }
