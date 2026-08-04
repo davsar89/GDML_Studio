@@ -591,6 +591,12 @@ fn write_solids(
             Solid::Tessellated(ts) => {
                 let mut elem = BytesStart::new("tessellated");
                 elem.push_attribute(("name", ts.name.as_str()));
+                if let Some(u) = &ts.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
+                if let Some(u) = &ts.aunit {
+                    elem.push_attribute(("aunit", u.as_str()));
+                }
                 writer.write_event(Event::Start(elem))?;
                 for facet in &ts.facets {
                     match facet {

@@ -455,6 +455,13 @@ pub enum TessellatedFacet {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TessellatedSolid {
     pub name: String,
+    /// `lunit`/`aunit` are inert for tessellated solids — vertices are resolved
+    /// through named `<position>` defines, which already carry their own units —
+    /// but they are written in real files and were dropped on export.
+    #[serde(default)]
+    pub lunit: Option<String>,
+    #[serde(default)]
+    pub aunit: Option<String>,
     pub facets: Vec<TessellatedFacet>,
 }
 

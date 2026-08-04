@@ -174,7 +174,11 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"tessellated" if section == Section::Solids => {
                         let name = get_attr(e, "name").unwrap_or_default();
-                        let solid = read_tessellated_body(&mut reader, name)?;
+                        let lunit = get_attr(e, "lunit");
+                        let aunit = get_attr(e, "aunit");
+                        let mut solid = read_tessellated_body(&mut reader, name)?;
+                        solid.lunit = lunit;
+                        solid.aunit = aunit;
                         solids.solids.push(Solid::Tessellated(solid));
                     }
                     b"polyhedra" if section == Section::Solids => {
@@ -1358,7 +1362,12 @@ fn read_tessellated_body(
         }
     }
 
-    Ok(TessellatedSolid { name, facets })
+    Ok(TessellatedSolid {
+        name,
+        lunit: None,
+        aunit: None,
+        facets,
+    })
 }
 
 // ─── Structure parser ────────────────────────────────────────────────────────
