@@ -67,6 +67,14 @@ pub struct DocumentOrder {
     pub anchors: Vec<CommentAnchor>,
     /// Comments after `</gdml>`.
     pub epilog: Vec<String>,
+    /// The `<!DOCTYPE ...>` declaration, verbatim and including any internal
+    /// subset, so it is not deleted on save.
+    ///
+    /// quick-xml counts `<`/`>` within the internal subset, so
+    /// `<!DOCTYPE gdml [<!ENTITY size "10">]>` arrives intact. Entity
+    /// *references* are not expanded — see the note in the parser.
+    #[serde(default)]
+    pub doctype: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -115,6 +115,12 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     // XML declaration
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
 
+    if let Some(ref dt) = doc.order.doctype {
+        // `from_escaped` writes the body verbatim; write_event wraps it as
+        // `<!DOCTYPE ... >`.
+        writer.write_event(Event::DocType(BytesText::from_escaped(dt)))?;
+    }
+
     for text in &doc.order.prolog {
         writer.write_event(Event::Comment(BytesText::from_escaped(text)))?;
     }

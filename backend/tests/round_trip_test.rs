@@ -567,6 +567,76 @@ fn scaleref_is_resolved_and_not_rewritten() {
 }
 
 #[test]
+fn doctype_survives_and_entities_are_reported() {
+    // The declaration must round-trip -- losing it permanently breaks any file
+    // that uses entity-based includes. References are deliberately not expanded
+    // (see the parser), so the user is told rather than left with silent zeros.
+    let src = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gdml [<!ENTITY size "10">]>
+<gdml>
+  <define/>
+  <materials>
+    <material name="Vacuum" state="gas"><D value="1e-25"/><atom value="1.008"/></material>
+  </materials>
+  <solids>
+    <box name="WorldBox" x="10" y="10" z="10" lunit="mm"/>
+  </solids>
+  <structure>
+    <volume name="World"><materialref ref="Vacuum"/><solidref ref="WorldBox"/></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+</gdml>"#;
+
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "dt.gdml".to_string()).unwrap();
+    assert!(doc.order.doctype.is_some(), "DOCTYPE dropped");
+    assert!(
+        doc.skipped_unsupported
+            .iter()
+            .any(|w| w.contains("entities")),
+        "no warning about unexpanded entities: {:?}",
+        doc.skipped_unsupported
+    );
+
+    let out = serialize_gdml(&doc).unwrap();
+    assert!(
+        out.contains("<!DOCTYPE gdml"),
+        "DOCTYPE not written:\n{out}"
+    );
+    assert!(
+        out.contains(r#"<!ENTITY size "10">"#),
+        "subset lost:\n{out}"
+    );
+}
+
+#[test]
+fn external_entity_is_refused_loudly() {
+    // Resolving a SYSTEM entity server-side on an upload endpoint is XXE. The
+    // file still loads -- it is mostly renderable -- but the omission is stated.
+    let src = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE gdml [<!ENTITY sub SYSTEM "sub.gdml">]>
+<gdml>
+  <define/>
+  <materials>
+    <material name="Vacuum" state="gas"><D value="1e-25"/><atom value="1.008"/></material>
+  </materials>
+  <solids><box name="WorldBox" x="10" y="10" z="10" lunit="mm"/></solids>
+  <structure>
+    <volume name="World"><materialref ref="Vacuum"/><solidref ref="WorldBox"/></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+</gdml>"#;
+
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "xxe.gdml".to_string()).unwrap();
+    assert!(
+        doc.skipped_unsupported
+            .iter()
+            .any(|w| w.contains("EXTERNAL entity")),
+        "external entity not reported: {:?}",
+        doc.skipped_unsupported
+    );
+}
+
+#[test]
 fn export_is_idempotent_across_the_corpus() {
     for path in sample_files() {
         let name = path.file_name().unwrap().to_string_lossy().to_string();
@@ -590,17 +660,10 @@ fn export_drops_nothing_from_the_corpus() {
     // Known gaps are listed explicitly so the test fails when one is fixed and
     // the exemption becomes stale, rather than silently passing forever.
     const KNOWN_DROPPED: &[&str] = &[
-        // XML comments. The single largest remaining gap: 155 across 7 of the 10
-        // samples (64 in pinhole_lab.gdml alone), all deleted on save.
-        // Preserving them requires the writer to interleave with parsed content
-        // rather than emit typed collections in a fixed order.
-
-        // DOCTYPE and internal ENTITY declarations. quick-xml does not expand
-        // entities, so `&size;` also survives verbatim into an expression and
-        // then fails to evaluate. No shipped sample uses either.
-        "D:",
         // A <materials><define> block is folded into the top-level <define>, so
-        // a file with both ends up with one. Schema-legal, but it moves content.
+        // a file with both ends up with one. Schema-legal, and nothing inside is
+        // lost — only the enclosing element moves — so this is the last
+        // structural difference the corpus still shows.
         "E:define", "/define",
     ];
     // Everything previously exempted here — loop, physvol, auxiliary, atom,

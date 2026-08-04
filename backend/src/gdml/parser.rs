@@ -461,6 +461,39 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     order.prolog.push(text);
                 }
             }
+            // Preserve the DOCTYPE rather than deleting it. Entity references
+            // are deliberately NOT expanded:
+            //
+            // - internal literal entities could be substituted, but doing so
+            //   would bake the value into the exported file and destroy the
+            //   declaration's purpose;
+            // - external `SYSTEM` entities pull in another file, and resolving
+            //   those server-side on an upload endpoint is textbook XXE. The
+            //   sanctioned mechanism for modular geometry here is
+            //   `<physvol><file/></physvol>` plus multi-file upload.
+            //
+            // So the declaration round-trips, and a file that actually uses
+            // `&name;` gets a warning instead of silent misbehaviour.
+            Ok(Event::DocType(ref e)) => {
+                let text = String::from_utf8_lossy(e).to_string();
+                if text.contains("SYSTEM") || text.contains("PUBLIC") {
+                    skipped_unsupported.push(
+                        "This file declares an EXTERNAL entity in its <!DOCTYPE>. Its contents \
+                         are NOT loaded: geometry defined in the referenced file is missing from \
+                         the view and from the export. Use \"Open File(s)\" with multiple files \
+                         and <physvol><file/></physvol> instead."
+                            .to_string(),
+                    );
+                } else if text.contains("<!ENTITY") {
+                    skipped_unsupported.push(
+                        "This file declares entities in its <!DOCTYPE>. The declaration is \
+                         preserved, but entity references such as &name; are NOT expanded, so \
+                         any dimension written that way evaluates as 0."
+                            .to_string(),
+                    );
+                }
+                order.doctype = Some(text);
+            }
             Ok(Event::Eof) => break,
             Err(e) => {
                 return Err(anyhow::anyhow!(
