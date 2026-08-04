@@ -1206,7 +1206,7 @@ fn read_polycone_body(
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
+            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
                 if inner.local_name().as_ref() == b"zplane" {
                     zplanes.push(ZPlane {
                         rmin: get_attr(inner, "rmin"),
@@ -1252,7 +1252,7 @@ fn read_generic_polycone_body(
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
+            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
                 if inner.local_name().as_ref() == b"rzpoint" {
                     rzpoints.push(RZPoint {
                         r: get_attr_or(inner, "r", "0"),
@@ -1300,7 +1300,7 @@ fn read_polyhedra_body(
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
+            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
                 if inner.local_name().as_ref() == b"zplane" {
                     zplanes.push(ZPlane {
                         rmin: get_attr(inner, "rmin"),
@@ -1348,7 +1348,7 @@ fn read_generic_polyhedra_body(
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
+            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
                 if inner.local_name().as_ref() == b"rzpoint" {
                     rzpoints.push(RZPoint {
                         r: get_attr_or(inner, "r", "0"),
@@ -1400,7 +1400,7 @@ fn read_xtru_body(reader: &mut Reader<&[u8]>, attrs: XtruAttrs) -> Result<XtruSo
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
+            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
                 let tag = inner.local_name();
                 match tag.as_ref() {
                     b"twoDimVertex" => {
@@ -1455,7 +1455,7 @@ fn read_tessellated_body(
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
+            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
                 let tag = inner.local_name();
                 match tag.as_ref() {
                     b"triangular" => {
@@ -1959,7 +1959,7 @@ fn read_scaled_solid_body(
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
+            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
                 let tag = inner.local_name();
                 match tag.as_ref() {
                     b"solidref" => {

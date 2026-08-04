@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use gdml_studio_backend::gdml::materials::serialize_gdml;
+use gdml_studio_backend::gdml::model::Solid;
 use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
 
 use quick_xml::events::Event;
@@ -296,6 +297,87 @@ fn comment_bodies_are_not_escaped() {
         out.contains(r#"<!-- <auxiliary auxtype="Hierarchy" auxvalue="a &amp; b"/> -->"#),
         "comment body was mangled:\n{out}"
     );
+}
+
+#[test]
+fn non_self_closed_leaf_children_are_read() {
+    // Seven body readers matched Event::Empty only, so `<zplane ...></zplane>`
+    // — legal XML that a DOM serialiser will happily emit — was silently
+    // skipped, leaving e.g. a polycone with zero z-planes and no warning.
+    // These children are schema leaves, so the merged Empty|Start arm is safe:
+    // the reader's End arm is name-guarded on the parent, so the child's own
+    // closing tag is ignored.
+    let cases: &[(&str, &str, usize)] = &[
+        (
+            "polycone",
+            r#"<polycone name="s" startphi="0" deltaphi="360" aunit="deg" lunit="mm"><zplane z="0" rmin="0" rmax="5"></zplane><zplane z="10" rmin="0" rmax="5"></zplane></polycone>"#,
+            2,
+        ),
+        (
+            "genericPolycone",
+            r#"<genericPolycone name="s" startphi="0" deltaphi="360" aunit="deg" lunit="mm"><rzpoint r="0" z="0"></rzpoint><rzpoint r="5" z="5"></rzpoint><rzpoint r="0" z="10"></rzpoint></genericPolycone>"#,
+            3,
+        ),
+        (
+            "polyhedra",
+            r#"<polyhedra name="s" startphi="0" deltaphi="360" numsides="6" aunit="deg" lunit="mm"><zplane z="0" rmin="0" rmax="5"></zplane><zplane z="10" rmin="0" rmax="5"></zplane></polyhedra>"#,
+            2,
+        ),
+        (
+            "genericPolyhedra",
+            r#"<genericPolyhedra name="s" startphi="0" deltaphi="360" numsides="6" aunit="deg" lunit="mm"><rzpoint r="0" z="0"></rzpoint><rzpoint r="5" z="5"></rzpoint><rzpoint r="0" z="10"></rzpoint></genericPolyhedra>"#,
+            3,
+        ),
+        (
+            "xtru",
+            r#"<xtru name="s" lunit="mm"><twoDimVertex x="0" y="0"></twoDimVertex><twoDimVertex x="5" y="0"></twoDimVertex><twoDimVertex x="0" y="5"></twoDimVertex><section zOrder="0" zPosition="0" xOffset="0" yOffset="0" scalingFactor="1"></section><section zOrder="1" zPosition="10" xOffset="0" yOffset="0" scalingFactor="1"></section></xtru>"#,
+            5,
+        ),
+        (
+            "tessellated",
+            r#"<tessellated name="s"><triangular vertex1="v1" vertex2="v2" vertex3="v3" type="ABSOLUTE"></triangular></tessellated>"#,
+            1,
+        ),
+        (
+            "scaledSolid",
+            r#"<scaledSolid name="s"><solidref ref="WorldBox"></solidref><scale name="sc" x="2" y="2" z="2"></scale></scaledSolid>"#,
+            2,
+        ),
+    ];
+
+    for (kind, solid_xml, expected_children) in cases {
+        let src = doc_with(&format!("    {solid_xml}"), "");
+        let doc = parse_gdml_from_bytes(src.as_bytes(), "leaf.gdml".to_string())
+            .unwrap_or_else(|e| panic!("{kind}: parse failed: {e}"));
+
+        let solid = doc
+            .solids
+            .solids
+            .iter()
+            .find(|s| s.name() == "s")
+            .unwrap_or_else(|| panic!("{kind}: solid not parsed at all"));
+
+        let got = match solid {
+            Solid::Polycone(p) => p.zplanes.len(),
+            Solid::GenericPolycone(p) => p.rzpoints.len(),
+            Solid::Polyhedra(p) => p.zplanes.len(),
+            Solid::GenericPolyhedra(p) => p.rzpoints.len(),
+            Solid::Xtru(x) => x.vertices.len() + x.sections.len(),
+            Solid::Tessellated(t) => t.facets.len(),
+            // solidref + scale: the ref must be non-empty and the scale applied.
+            Solid::Scaled(s) => {
+                assert_eq!(s.solid_ref, "WorldBox", "{kind}: solidref lost");
+                assert_eq!(s.scale_x, "2", "{kind}: scale lost");
+                2
+            }
+            other => panic!("{kind}: unexpected variant {other:?}"),
+        };
+
+        assert_eq!(
+            got, *expected_children,
+            "{kind}: non-self-closed children were skipped"
+        );
+    }
 }
 
 #[test]
