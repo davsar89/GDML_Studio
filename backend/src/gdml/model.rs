@@ -706,6 +706,12 @@ pub struct FileRef {
 pub struct PhysVol {
     pub name: Option<String>,
     pub volume_ref: String,
+    /// `<physvol copynumber="..">`. Geant4 reads it and hands it to
+    /// G4PVPlacement, where it is the copy number used for sensitive-detector
+    /// and readout identity — so dropping it on export corrupts the detector,
+    /// not just its description.
+    #[serde(default)]
+    pub copynumber: Option<String>,
     pub file_ref: Option<FileRef>,
     pub position: Option<PlacementPos>,
     pub rotation: Option<PlacementRot>,
@@ -727,6 +733,13 @@ pub enum PlacementRot {
 pub struct Auxiliary {
     pub auxtype: String,
     pub auxvalue: String,
+    #[serde(default)]
+    pub auxunit: Option<String>,
+    /// Nested `<auxiliary>` children — e.g. production cuts inside a Region.
+    /// Only the self-closing form was handled before, so a nested cut was
+    /// silently re-parented onto the volume as a sibling of its own Region.
+    #[serde(default)]
+    pub children: Vec<Auxiliary>,
 }
 
 // ─── Setup Section ───────────────────────────────────────────────────────────

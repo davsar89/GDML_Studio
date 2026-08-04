@@ -1119,6 +1119,30 @@ fn write_solids(
     Ok(())
 }
 
+/// Write an `<auxiliary>`, recursing into nested children.
+///
+/// Emitted self-closing when it has no children, so files that never used the
+/// nested form round-trip byte-identically.
+fn write_auxiliary(writer: &mut Writer<Cursor<Vec<u8>>>, aux: &Auxiliary) -> Result<()> {
+    let mut ae = BytesStart::new("auxiliary");
+    ae.push_attribute(("auxtype", aux.auxtype.as_str()));
+    ae.push_attribute(("auxvalue", aux.auxvalue.as_str()));
+    if let Some(ref u) = aux.auxunit {
+        ae.push_attribute(("auxunit", u.as_str()));
+    }
+
+    if aux.children.is_empty() {
+        writer.write_event(Event::Empty(ae))?;
+    } else {
+        writer.write_event(Event::Start(ae))?;
+        for child in &aux.children {
+            write_auxiliary(writer, child)?;
+        }
+        writer.write_event(Event::End(BytesEnd::new("auxiliary")))?;
+    }
+    Ok(())
+}
+
 fn write_structure(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     structure: &StructureSection,
@@ -1143,6 +1167,9 @@ fn write_structure(
             let mut pv_elem = BytesStart::new("physvol");
             if let Some(ref n) = pv.name {
                 pv_elem.push_attribute(("name", n.as_str()));
+            }
+            if let Some(ref c) = pv.copynumber {
+                pv_elem.push_attribute(("copynumber", c.as_str()));
             }
             writer.write_event(Event::Start(pv_elem))?;
 
@@ -1261,10 +1288,7 @@ fn write_structure(
         }
 
         for aux in &vol.auxiliaries {
-            let mut ae = BytesStart::new("auxiliary");
-            ae.push_attribute(("auxtype", aux.auxtype.as_str()));
-            ae.push_attribute(("auxvalue", aux.auxvalue.as_str()));
-            writer.write_event(Event::Empty(ae))?;
+            write_auxiliary(writer, aux)?;
         }
 
         writer.write_event(Event::End(BytesEnd::new("volume")))?;

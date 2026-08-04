@@ -1398,10 +1398,7 @@ fn read_volume_body(
                         solid_ref = get_attr(inner, "ref").unwrap_or_default();
                     }
                     b"auxiliary" => {
-                        auxiliaries.push(Auxiliary {
-                            auxtype: get_attr(inner, "auxtype").unwrap_or_default(),
-                            auxvalue: get_attr(inner, "auxvalue").unwrap_or_default(),
-                        });
+                        auxiliaries.push(auxiliary_from(inner));
                     }
                     _ => {}
                 }
@@ -1418,9 +1415,20 @@ fn read_volume_body(
                         solid_ref = get_attr(inner, "ref").unwrap_or_default();
                         reader.read_to_end(inner.to_end().name())?;
                     }
+                    // Non-self-closing <auxiliary> with nested children. This
+                    // needs its own recursive reader rather than being folded
+                    // into the Empty arm above: <auxiliary> is the one element
+                    // here whose children are themselves <auxiliary>, so the
+                    // flat treatment re-parented a nested production cut onto
+                    // the volume and dropped its enclosing Region entirely.
+                    b"auxiliary" => {
+                        auxiliaries.push(read_auxiliary_body(reader, inner)?);
+                    }
                     b"physvol" => {
                         let pv_name = get_attr(inner, "name");
-                        let pv = read_physvol_body(reader, pv_name, &vol_name, skipped)?;
+                        let copynumber = get_attr(inner, "copynumber");
+                        let mut pv = read_physvol_body(reader, pv_name, &vol_name, skipped)?;
+                        pv.copynumber = copynumber;
                         physvols.push(pv);
                     }
                     b"replicavol" => {
@@ -1461,6 +1469,50 @@ fn read_volume_body(
         replica,
     });
     Ok(())
+}
+
+/// Build an `Auxiliary` from a self-closing `<auxiliary/>` element.
+fn auxiliary_from(e: &BytesStart) -> Auxiliary {
+    Auxiliary {
+        auxtype: get_attr(e, "auxtype").unwrap_or_default(),
+        auxvalue: get_attr(e, "auxvalue").unwrap_or_default(),
+        auxunit: get_attr(e, "auxunit"),
+        children: Vec::new(),
+    }
+}
+
+/// Read a non-self-closing `<auxiliary>` and its nested `<auxiliary>` children.
+fn read_auxiliary_body(reader: &mut Reader<&[u8]>, start: &BytesStart) -> Result<Auxiliary> {
+    let mut aux = auxiliary_from(start);
+    let mut buf = Vec::new();
+
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref inner)) => {
+                if inner.local_name().as_ref() == b"auxiliary" {
+                    aux.children.push(auxiliary_from(inner));
+                }
+            }
+            Ok(Event::Start(ref inner)) => {
+                if inner.local_name().as_ref() == b"auxiliary" {
+                    aux.children.push(read_auxiliary_body(reader, inner)?);
+                } else {
+                    reader.read_to_end(inner.to_end().name())?;
+                }
+            }
+            Ok(Event::End(ref inner)) => {
+                if inner.local_name().as_ref() == b"auxiliary" {
+                    break;
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(anyhow::anyhow!("XML error in auxiliary: {}", e)),
+            _ => {}
+        }
+    }
+
+    Ok(aux)
 }
 
 fn read_physvol_body(
@@ -1605,6 +1657,7 @@ fn read_physvol_body(
     Ok(PhysVol {
         name,
         volume_ref,
+        copynumber: None,
         file_ref,
         position,
         rotation,

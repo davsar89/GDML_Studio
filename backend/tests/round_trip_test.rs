@@ -68,7 +68,8 @@ fn canonicalize(xml: &str) -> Vec<String> {
 
     loop {
         match reader.read_event() {
-            Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
+            Ok(ref ev @ (Event::Start(ref e) | Event::Empty(ref e))) => {
+                let is_empty = matches!(ev, Event::Empty(_));
                 let name = String::from_utf8_lossy(e.local_name().as_ref()).to_string();
                 let mut attrs: Vec<String> = e
                     .attributes()
@@ -81,6 +82,11 @@ fn canonicalize(xml: &str) -> Vec<String> {
                     .collect();
                 attrs.sort();
                 out.push(format!("E:{name}|{}", attrs.join("|")));
+                // Emit the closing token for a self-closing element too, so
+                // `<x/>` and `<x></x>` really do compare equal.
+                if is_empty {
+                    out.push(format!("/{name}"));
+                }
             }
             Ok(Event::End(e)) => {
                 out.push(format!("/{}", String::from_utf8_lossy(e.local_name().as_ref())));
@@ -118,6 +124,111 @@ fn token_counts(xml: &str) -> HashMap<String, usize> {
     counts
 }
 
+/// Assert every token in `src` survives into `out`.
+///
+/// A subset check rather than equality, because the writer legitimately adds the
+/// `<gdml>` schema attributes (it hardcodes them, which is itself a known gap —
+/// see the corpus test's exemption list).
+fn assert_tokens_preserved(src: &str, out: &str) {
+    let before = token_counts(src);
+    let after = token_counts(out);
+    let mut missing = Vec::new();
+    for (tok, n) in &before {
+        if tok.starts_with("E:gdml") {
+            continue;
+        }
+        let got = after.get(tok).copied().unwrap_or(0);
+        if got < *n {
+            missing.push(format!("{tok}  ({n} before, {got} after)"));
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "round trip dropped:\n  {}\n\n--- export ---\n{out}",
+        missing.join("\n  ")
+    );
+}
+
+/// Wrap a fragment in the smallest valid GDML document.
+fn doc_with(solids: &str, structure: &str) -> String {
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<gdml>
+  <define/>
+  <materials>
+    <material name="Vacuum" state="gas"><D value="1e-25"/><atom value="1.008"/></material>
+  </materials>
+  <solids>
+    <box name="WorldBox" x="1000" y="1000" z="1000" lunit="mm"/>
+{solids}
+  </solids>
+  <structure>
+{structure}
+    <volume name="World">
+      <materialref ref="Vacuum"/>
+      <solidref ref="WorldBox"/>
+    </volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+</gdml>"#
+    )
+}
+
+#[test]
+fn physvol_copynumber_survives() {
+    let src = doc_with(
+        "",
+        r#"    <volume name="Inner">
+      <materialref ref="Vacuum"/>
+      <solidref ref="WorldBox"/>
+    </volume>
+    <volume name="Mother">
+      <materialref ref="Vacuum"/>
+      <solidref ref="WorldBox"/>
+      <physvol name="p1" copynumber="17"><volumeref ref="Inner"/></physvol>
+    </volume>"#,
+    );
+    let out = round_trip(src.as_bytes(), "copynumber.gdml");
+    assert!(
+        out.contains(r#"copynumber="17""#),
+        "copynumber was dropped:\n{out}"
+    );
+    assert_tokens_preserved(&src, &out);
+}
+
+#[test]
+fn nested_auxiliary_is_not_reparented() {
+    // A production cut inside a Region must stay inside it. Handling only the
+    // self-closing form dropped the Region and promoted the cut to a sibling.
+    let src = doc_with(
+        "",
+        r#"    <volume name="Mother">
+      <materialref ref="Vacuum"/>
+      <solidref ref="WorldBox"/>
+      <auxiliary auxtype="Region" auxvalue="R1" auxunit="mm">
+        <auxiliary auxtype="gamcut" auxvalue="0.1"/>
+      </auxiliary>
+    </volume>"#,
+    );
+
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "aux.gdml".to_string()).unwrap();
+    let mother = doc
+        .structure
+        .volumes
+        .iter()
+        .find(|v| v.name == "Mother")
+        .expect("Mother volume");
+
+    assert_eq!(mother.auxiliaries.len(), 1, "Region should not be dropped");
+    let region = &mother.auxiliaries[0];
+    assert_eq!(region.auxtype, "Region");
+    assert_eq!(region.auxunit.as_deref(), Some("mm"));
+    assert_eq!(region.children.len(), 1, "gamcut should stay nested");
+    assert_eq!(region.children[0].auxtype, "gamcut");
+
+    assert_tokens_preserved(&src, &serialize_gdml(&doc).unwrap());
+}
+
 #[test]
 fn export_is_idempotent_across_the_corpus() {
     for path in sample_files() {
@@ -145,8 +256,6 @@ fn export_drops_nothing_from_the_corpus() {
         "C:",       // XML comments — not yet preserved
         "D:",       // DOCTYPE / internal entity declarations — not yet preserved
         "E:loop",   // <loop> is captured raw but re-emitted in the wrong section
-        "E:physvol", // copynumber attribute not modelled, so the token differs
-        "E:auxiliary", // auxunit / nesting not modelled
         "E:atom",   // unit attribute not modelled
         "E:multiUnionNode", // name attribute not modelled
         "E:gdml",   // root attributes are hardcoded on write

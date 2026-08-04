@@ -62,7 +62,6 @@ where
     Ok(())
 }
 
-/// Merge a child GdmlDocument into the main document, resolving file_ref physvols.
 /// Append child items whose names are not already taken, warning when a name is
 /// taken by a *different* definition.
 ///
@@ -103,6 +102,7 @@ fn merge_by_name<T, F>(
     }
 }
 
+/// Merge a child GdmlDocument into the main document, resolving file_ref physvols.
 fn merge_child_into_main(
     main_doc: &mut GdmlDocument,
     child_doc: &GdmlDocument,
@@ -1562,6 +1562,7 @@ mod tests {
         PhysVol {
             name: None,
             volume_ref: String::new(),
+            copynumber: None,
             file_ref: Some(FileRef {
                 name: file.to_string(),
                 volname: volname.map(|s| s.to_string()),
@@ -1628,6 +1629,7 @@ mod tests {
         world.physvols.push(PhysVol {
             name: Some("pv_leaf".to_string()),
             volume_ref: "Leaf".to_string(),
+            copynumber: None,
             file_ref: None,
             position: None,
             rotation: None,
@@ -1915,6 +1917,7 @@ mod tests {
         world.physvols.push(PhysVol {
             name: Some("pv_0".to_string()),
             volume_ref: "Leaf".to_string(),
+            copynumber: None,
             file_ref: None,
             position: None,
             rotation: None,
@@ -1922,6 +1925,7 @@ mod tests {
         world.physvols.push(PhysVol {
             name: Some("pv_1".to_string()),
             volume_ref: "Leaf".to_string(),
+            copynumber: None,
             file_ref: None,
             position: None,
             rotation: None,
