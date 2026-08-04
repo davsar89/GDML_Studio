@@ -90,16 +90,30 @@ impl EvalEngine {
             .iter()
             .filter_map(|q| q.unit.as_ref().map(|u| (q.name.clone(), u.clone())))
             .collect();
+        // `type` is optional and Geant4's QuantityRead never reads it — the unit
+        // is applied unconditionally. So a quantity's kind comes from its unit
+        // when the type is absent or unrecognised; gating purely on `type` left
+        // `<quantity name="w" value="5" unit="cm"/>` unconverted, giving 5 mm
+        // where Geant4 gives 50.
+        let quantity_kind = |q: &crate::gdml::model::Quantity| -> Option<units::UnitKind> {
+            match q.r#type.as_deref() {
+                Some("length") => Some(units::UnitKind::Length),
+                Some("angle") => Some(units::UnitKind::Angle),
+                Some("density") => None,
+                _ => q.unit.as_deref().and_then(units::unit_kind),
+            }
+        };
+
         let length_quantity_names: HashSet<&str> = defines
             .quantities
             .iter()
-            .filter(|q| q.r#type.as_deref() == Some("length"))
+            .filter(|q| quantity_kind(q) == Some(units::UnitKind::Length))
             .map(|q| q.name.as_str())
             .collect();
         let angle_quantity_names: HashSet<&str> = defines
             .quantities
             .iter()
-            .filter(|q| q.r#type.as_deref() == Some("angle"))
+            .filter(|q| quantity_kind(q) == Some(units::UnitKind::Angle))
             .map(|q| q.name.as_str())
             .collect();
 
@@ -112,22 +126,40 @@ impl EvalEngine {
             let is_angle_symbol = angle_quantity_names.contains(entry.name.as_str())
                 || refs.iter().any(|name| self.angle_symbols.contains(name));
 
-            let value = self.eval_expr(&entry.expression).with_context(|| {
-                format!(
-                    "Failed to evaluate '{}' = '{}'",
-                    entry.name, entry.expression
-                )
-            })?;
+            // A define that cannot be evaluated is a warning, not a fatal error.
+            // The identical expression appearing in a solid attribute already
+            // degrades to 0 with a warning via `resolve_value`; propagating here
+            // instead meant one bad <constant> returned HTTP 500 and the user saw
+            // nothing at all rather than a geometry with one hole in it.
+            let value = match self.eval_expr(&entry.expression) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to evaluate define '{}' = '{}': {} -- using 0.0",
+                        entry.name,
+                        entry.expression,
+                        e
+                    );
+                    self.record_warning(format!(
+                        "Could not evaluate define \"{}\" = \"{}\"; treated as 0. \
+                         Anything referencing it will be wrong.",
+                        entry.name,
+                        entry.expression.trim()
+                    ));
+                    0.0
+                }
+            };
 
             // Apply unit conversion for quantities
             let final_value = if let Some(unit) = quantity_units.get(&entry.name) {
                 let qty = defines.quantities.iter().find(|q| q.name == entry.name);
                 if let Some(q) = qty {
-                    match q.r#type.as_deref() {
-                        Some("length") => units::length_to_mm(value, unit),
-                        Some("angle") => units::angle_to_rad(value, unit),
-                        Some("density") => value, // keep as-is
-                        _ => value,
+                    match quantity_kind(q) {
+                        Some(units::UnitKind::Length) => units::length_to_mm(value, unit),
+                        Some(units::UnitKind::Angle) => units::angle_to_rad(value, unit),
+                        // type="density" and anything with an unrecognised unit
+                        // are carried through as written.
+                        None => value,
                     }
                 } else {
                     value
@@ -256,6 +288,26 @@ impl EvalEngine {
     }
 
     /// Record a non-fatal evaluation warning (deduplicated, capped to avoid flooding).
+    /// Record a warning from outside the evaluator (deduplicated and capped
+    /// alongside evaluation warnings, and surfaced through the same channel).
+    pub fn record_warning_public(&self, msg: String) {
+        self.record_warning(msg);
+    }
+
+    /// Report a `lunit`/`aunit` string that is not in Geant4's unit table.
+    ///
+    /// Geant4 refuses to load such a file; this viewer falls back to the base
+    /// unit, which silently renders wrong geometry, so the fallback has to be
+    /// visible.
+    pub fn record_unit_warning(&self, unit: &str, kind: &str) {
+        self.record_warning(format!(
+            "Unknown {kind} unit \"{unit}\"; treated as {}. Geant4 would reject \
+             this file — check the spelling (note `micron` and `dm` are not GDML \
+             units; use `um` and `cm`).",
+            if kind == "length" { "mm" } else { "rad" }
+        ));
+    }
+
     fn record_warning(&self, msg: String) {
         if let Ok(mut warnings) = self.warnings.lock() {
             if warnings.len() < 100 && !warnings.contains(&msg) {
@@ -420,6 +472,83 @@ fn rewrite_math_functions(expr: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::gdml::model::{Constant, DefineSection, Quantity};
+
+    fn quantity(name: &str, value: &str, unit: Option<&str>, ty: Option<&str>) -> Quantity {
+        Quantity {
+            name: name.to_string(),
+            r#type: ty.map(str::to_string),
+            value: value.to_string(),
+            unit: unit.map(str::to_string),
+        }
+    }
+
+    fn constant(name: &str, value: &str) -> Constant {
+        Constant {
+            name: name.to_string(),
+            value: value.to_string(),
+        }
+    }
+
+    #[test]
+    fn clhep_length_symbols_are_usable_in_expressions() {
+        // Geant4 evaluates GDML expressions through an evaluator preloaded with
+        // CLHEP's units, so `2*cm` is valid GDML. Without these bindings the
+        // lookup failed and the whole document 500'd.
+        let engine = EvalEngine::new();
+        assert_eq!(engine.eval_expr("2*cm").unwrap(), 20.0);
+        assert_eq!(engine.eval_expr("5*mm").unwrap(), 5.0);
+        assert_eq!(engine.eval_expr("1*m").unwrap(), 1000.0);
+        assert_eq!(engine.eval_expr("3*um").unwrap(), 3.0e-3);
+    }
+
+    #[test]
+    fn untyped_quantity_still_applies_its_unit() {
+        // G4GDMLReadDefine::QuantityRead never reads `type`; it multiplies by
+        // the unit unconditionally. Gating on type left this at 5 instead of 50.
+        let mut defines = DefineSection::default();
+        defines
+            .quantities
+            .push(quantity("untyped", "5", Some("cm"), None));
+        defines
+            .quantities
+            .push(quantity("typed", "5", Some("cm"), Some("length")));
+        defines
+            .quantities
+            .push(quantity("degrees", "180", Some("deg"), None));
+
+        let mut engine = EvalEngine::new();
+        engine.evaluate_all(&defines).unwrap();
+
+        assert_eq!(engine.eval_expr("untyped").unwrap(), 50.0);
+        assert_eq!(engine.eval_expr("typed").unwrap(), 50.0);
+        assert!((engine.eval_expr("degrees").unwrap() - std::f64::consts::PI).abs() < 1e-12);
+    }
+
+    #[test]
+    fn unevaluable_define_warns_instead_of_failing_the_document() {
+        // One bad expression used to abort the whole load with a 500. The same
+        // expression in a solid attribute has always degraded to 0 with a
+        // warning; defines now match.
+        let mut defines = DefineSection::default();
+        defines.constants.push(constant("good", "10"));
+        defines.constants.push(constant("bad", "nonexistent_symbol*2"));
+
+        let mut engine = EvalEngine::new();
+        engine
+            .evaluate_all(&defines)
+            .expect("one bad define must not fail the document");
+
+        assert_eq!(engine.eval_expr("good").unwrap(), 10.0);
+        assert_eq!(engine.eval_expr("bad").unwrap(), 0.0);
+
+        let warnings = engine.take_warnings();
+        assert!(
+            warnings.iter().any(|w| w.contains("bad")),
+            "expected a warning naming the bad define, got {:?}",
+            warnings
+        );
+    }
 
     #[test]
     fn integer_result_expressions_evaluate() {

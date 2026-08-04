@@ -22,8 +22,23 @@ pub fn tessellate_polyhedra(
         return TriangleMesh { positions, normals, indices };
     }
 
-    let full_circle = (deltaphi - 2.0 * PI).abs() < 1e-6;
+    // Matches G4Polycone::Create: a non-positive or over-full sweep means a
+    // complete revolution, not an empty solid.
+    let full_circle = deltaphi <= 0.0 || deltaphi >= 2.0 * PI - 1e-6;
+    let deltaphi = if full_circle { 2.0 * PI } else { deltaphi };
     let n = numsides;
+
+    // Decreasing-z plane lists are legal (G4Polycone::Create reverses them when
+    // the (r,z) polygon's signed area is negative); this mesher assumes
+    // planes[0] is the bottom, so normalise or the whole solid comes out
+    // inside-out. See the equivalent note in polycone_mesh.rs.
+    let reversed: Vec<(f64, f64, f64)>;
+    let planes = if planes[planes.len() - 1].0 < planes[0].0 {
+        reversed = planes.iter().rev().copied().collect();
+        &reversed[..]
+    } else {
+        planes
+    };
 
     // Convert apothem (rmin/rmax) to vertex radius. Each of the n sides spans
     // deltaphi/n, so the corner sits at r_apothem / cos(deltaphi / (2n)).

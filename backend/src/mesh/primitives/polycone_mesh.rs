@@ -11,7 +11,12 @@ pub fn tessellate_polycone(
     segments: u32,
 ) -> TriangleMesh {
     let seg = segments.max(3);
-    let full_circle = (deltaphi - 2.0 * PI).abs() < 1e-6;
+    // G4Polycone::Create treats a non-positive or over-full sweep as a complete
+    // revolution (`if ((phiTotal <= 0) || (phiTotal > twopi*(1-DBL_EPSILON)))`).
+    // Testing only for ~2*PI left `deltaphi="0"` producing a zero-step sweep and
+    // therefore a zero-volume mesh, where Geant4 builds a full solid.
+    let full_circle = deltaphi <= 0.0 || deltaphi >= 2.0 * PI - 1e-6;
+    let deltaphi = if full_circle { 2.0 * PI } else { deltaphi };
     let phi_step = deltaphi / seg as f64;
 
     let mut positions: Vec<f32> = Vec::new();
@@ -26,6 +31,21 @@ pub fn tessellate_polycone(
             indices,
         };
     }
+
+    // Z-planes listed in decreasing z are legal GDML: G4Polycone::Create builds
+    // an (r,z) polygon and calls `rz->ReverseOrder()` when its signed area comes
+    // out negative. This mesher assumes planes[0] is the bottom cap, so without
+    // normalising, a decreasing-z list inverts every triangle -- the silhouette
+    // still draws because the viewer renders double-sided, but the solid is
+    // inside-out and any boolean using it as an operand is wrong, since csg.rs
+    // derives orientation entirely from winding.
+    let reversed: Vec<(f64, f64, f64)>;
+    let planes = if planes[n - 1].0 < planes[0].0 {
+        reversed = planes.iter().rev().copied().collect();
+        &reversed[..]
+    } else {
+        planes
+    };
 
     // For each pair of adjacent z-planes, generate a frustum segment
     for p in 0..n - 1 {

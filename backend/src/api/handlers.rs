@@ -63,6 +63,46 @@ where
 }
 
 /// Merge a child GdmlDocument into the main document, resolving file_ref physvols.
+/// Append child items whose names are not already taken, warning when a name is
+/// taken by a *different* definition.
+///
+/// An identical duplicate is normal — two modules including the same materials
+/// file — and passes without comment. A genuine conflict means the child's
+/// version is being discarded, which changes the rendered geometry, so it is
+/// reported rather than swallowed.
+fn merge_by_name<T, F>(
+    target: &mut Vec<T>,
+    incoming: &[T],
+    existing_names: &HashSet<String>,
+    name_of: F,
+    kind: &str,
+    file_ref_name: &str,
+    warnings: &mut Vec<String>,
+) where
+    T: Clone + Serialize,
+    F: Fn(&T) -> &str,
+{
+    for item in incoming {
+        let name = name_of(item);
+        if !existing_names.contains(name) {
+            target.push(item.clone());
+            continue;
+        }
+        let conflicting = target
+            .iter()
+            .find(|existing| name_of(existing) == name)
+            .map(|existing| !definitions_equivalent(existing, item).unwrap_or(false))
+            .unwrap_or(false);
+        if conflicting {
+            warnings.push(format!(
+                "File \"{file_ref_name}\" defines {kind} \"{name}\" differently from the \
+                 main document. The main document's version is used; this file's is \
+                 IGNORED, so its geometry may be wrong."
+            ));
+        }
+    }
+}
+
 fn merge_child_into_main(
     main_doc: &mut GdmlDocument,
     child_doc: &GdmlDocument,
@@ -154,33 +194,60 @@ fn merge_child_into_main(
         |item| item.name.as_str(),
     )?;
 
-    // Merge elements (skip duplicates)
-    for elem in &child_doc.materials.elements {
-        if !existing_elements.contains(&elem.name) {
-            main_doc.materials.elements.push(elem.clone());
-        }
-    }
+    // Merge elements, materials, solids and volumes by name.
+    //
+    // Geant4 does not flatten like this: G4GDMLReadStructure::FileRead builds a
+    // separate reader for each module and reads it with `isModule = true`, so two
+    // modules may legitimately each define a `Box` with different dimensions.
+    // Flattening into one namespace means the first definition wins -- and doing
+    // that silently rendered the second module with the first module's geometry.
+    // Until modules are properly namespaced, at least say so.
+    merge_by_name(
+        &mut main_doc.materials.elements,
+        &child_doc.materials.elements,
+        &existing_elements,
+        |e| e.name.as_str(),
+        "element",
+        file_ref_name,
+        warnings,
+    );
+    merge_by_name(
+        &mut main_doc.materials.materials,
+        &child_doc.materials.materials,
+        &existing_materials,
+        |m| m.name.as_str(),
+        "material",
+        file_ref_name,
+        warnings,
+    );
+    merge_by_name(
+        &mut main_doc.solids.solids,
+        &child_doc.solids.solids,
+        &existing_solids,
+        |s| s.name(),
+        "solid",
+        file_ref_name,
+        warnings,
+    );
+    merge_by_name(
+        &mut main_doc.structure.volumes,
+        &child_doc.structure.volumes,
+        &existing_volumes,
+        |v| v.name.as_str(),
+        "volume",
+        file_ref_name,
+        warnings,
+    );
 
-    // Merge materials (skip duplicates)
-    for mat in &child_doc.materials.materials {
-        if !existing_materials.contains(&mat.name) {
-            main_doc.materials.materials.push(mat.clone());
-        }
-    }
-
-    // Merge solids (skip duplicates)
-    for solid in &child_doc.solids.solids {
-        if !existing_solids.contains(solid.name()) {
-            main_doc.solids.solids.push(solid.clone());
-        }
-    }
-
-    // Merge volumes (skip duplicates)
-    for vol in &child_doc.structure.volumes {
-        if !existing_volumes.contains(&vol.name) {
-            main_doc.structure.volumes.push(vol.clone());
-        }
-    }
+    // Preserved-verbatim elements and the child's own parse warnings were not
+    // carried over at all, so a child's <opticalsurface> vanished on save and its
+    // warnings never reached the user.
+    main_doc
+        .raw_unknown
+        .extend(child_doc.raw_unknown.iter().cloned());
+    main_doc
+        .skipped_unsupported
+        .extend(child_doc.skipped_unsupported.iter().cloned());
 
     // Now resolve file_ref physvols: replace file_ref with volume_ref pointing to child_world
     for vol in &mut main_doc.structure.volumes {

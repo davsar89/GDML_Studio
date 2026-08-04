@@ -136,7 +136,7 @@ fn transform_vertex(v: (f64, f64), x_offset: f64, y_offset: f64, scale: f64) -> 
     ((v.0 * scale + x_offset) as f32, (v.1 * scale + y_offset) as f32)
 }
 
-fn polygon_signed_area(vertices: &[(f64, f64)]) -> f64 {
+pub(crate) fn polygon_signed_area(vertices: &[(f64, f64)]) -> f64 {
     let n = vertices.len();
     let mut area = 0.0;
     for i in 0..n {
@@ -150,7 +150,7 @@ fn polygon_signed_area(vertices: &[(f64, f64)]) -> f64 {
 /// Ear-clipping triangulation for a simple polygon.
 /// Returns a list of triangles as [i, j, k] index triples into the original vertex array.
 /// The `ccw` flag indicates whether vertices are counter-clockwise.
-fn ear_clip_triangulate(vertices: &[(f64, f64)], ccw: bool) -> Vec<[usize; 3]> {
+pub(crate) fn ear_clip_triangulate(vertices: &[(f64, f64)], ccw: bool) -> Vec<[usize; 3]> {
     let n = vertices.len();
     if n < 3 {
         return Vec::new();

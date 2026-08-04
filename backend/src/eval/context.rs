@@ -33,6 +33,34 @@ impl EvalContext {
         ctx.values.insert("rad".to_string(), 1.0);
         ctx.values.insert("radian".to_string(), 1.0);
         ctx.values.insert("mrad".to_string(), 0.001);
+        // Length unit symbols. Geant4 evaluates every GDML expression through
+        // G4GDMLEvaluator, which loads CLHEP's system of units, so `2*cm` is
+        // valid in any <constant>/<variable>/<quantity> value. Without these the
+        // identifier lookup fails and -- because evaluate_all propagates with `?`
+        // -- the entire document returns HTTP 500 and nothing renders.
+        // Base length unit is the millimetre, matching `units::length_to_mm`.
+        for (name, mm) in [
+            ("mm", 1.0),
+            ("millimeter", 1.0),
+            ("cm", 10.0),
+            ("centimeter", 10.0),
+            ("m", 1000.0),
+            ("meter", 1000.0),
+            ("km", 1.0e6),
+            ("kilometer", 1.0e6),
+            ("um", 1.0e-3),
+            ("micrometer", 1.0e-3),
+            ("nm", 1.0e-6),
+            ("nanometer", 1.0e-6),
+            ("Ang", 1.0e-7),
+            ("angstrom", 1.0e-7),
+            ("fm", 1.0e-12),
+            ("fermi", 1.0e-12),
+            ("pc", 3.0856775807e19),
+            ("parsec", 3.0856775807e19),
+        ] {
+            ctx.values.insert(name.to_string(), mm);
+        }
         ctx
     }
 

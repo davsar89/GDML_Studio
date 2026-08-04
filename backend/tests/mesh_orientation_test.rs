@@ -22,7 +22,8 @@ use gdml_studio_backend::mesh::primitives::{
     arb8_mesh::tessellate_arb8, box_mesh::tessellate_box, cone_mesh::tessellate_cone,
     cut_tube_mesh::tessellate_cut_tube, elcone_mesh::tessellate_elcone,
     ellipsoid_mesh::tessellate_ellipsoid, eltube_mesh::tessellate_eltube,
-    hype_mesh::tessellate_hype, paraboloid_mesh::tessellate_paraboloid,
+    generic_polycone_mesh::tessellate_generic_polycone, hype_mesh::tessellate_hype,
+    paraboloid_mesh::tessellate_paraboloid,
     polycone_mesh::tessellate_polycone, polyhedra_mesh::tessellate_polyhedra,
     sphere_mesh::tessellate_sphere, torus_mesh::tessellate_torus, trap_mesh::tessellate_trap,
     trd_mesh::tessellate_trd, tube_mesh::tessellate_tube,
@@ -261,6 +262,80 @@ fn polycone_quarter() {
     let m = tessellate_polycone(&planes, 0.0, PI / 2.0, SEG);
     assert_volume(&m, 0.5 * (PI / 2.0) * 100.0 * 20.0, 0.01, "polycone quarter");
     assert_normals_match_winding(&m, "polycone quarter");
+}
+
+#[test]
+fn polycone_decreasing_z_is_not_inside_out() {
+    // Decreasing-z plane lists are legal GDML -- G4Polycone::Create reverses the
+    // (r,z) polygon when its signed area is negative. The mesher assumed
+    // planes[0] was the bottom, so every triangle came out inverted (measured
+    // -94238 against +94238). Double-sided rendering hides it, but any boolean
+    // using the solid as an operand is then wrong.
+    let up = [(-50.0, 10.0, 20.0), (50.0, 10.0, 20.0)];
+    let down = [(50.0, 10.0, 20.0), (-50.0, 10.0, 20.0)];
+    let expected = PI * (400.0 - 100.0) * 100.0;
+
+    let m_up = tessellate_polycone(&up, 0.0, 2.0 * PI, SEG);
+    let m_down = tessellate_polycone(&down, 0.0, 2.0 * PI, SEG);
+
+    assert_volume(&m_up, expected, 0.01, "polycone increasing z");
+    assert_volume(&m_down, expected, 0.01, "polycone decreasing z");
+    assert_normals_match_winding(&m_down, "polycone decreasing z");
+}
+
+#[test]
+fn zero_deltaphi_means_full_circle() {
+    // G4Polycone::Create: `if ((phiTotal <= 0) || (phiTotal > twopi*(...)))`
+    // means a complete revolution. A zero sweep previously gave a zero-volume
+    // mesh instead of a full solid.
+    let planes = [(-50.0, 0.0, 20.0), (50.0, 0.0, 20.0)];
+    let expected = PI * 400.0 * 100.0;
+
+    let m = tessellate_polycone(&planes, 0.0, 0.0, SEG);
+    assert_volume(&m, expected, 0.01, "polycone deltaphi=0");
+
+    let p = tessellate_polyhedra(&planes, 0.0, 0.0, 64);
+    assert_volume(&p, expected, 0.02, "polyhedra deltaphi=0");
+}
+
+#[test]
+fn generic_polycone_revolves_the_closing_edge() {
+    // A hollow tube written as a closed (r,z) contour. Treating the rzpoints as
+    // z-planes never revolves the last-to-first edge, so the bore is lost and
+    // full disks are emitted at both ends: measured 33.3% too large.
+    let hollow = [(10.0, -50.0), (20.0, -50.0), (20.0, 50.0), (10.0, 50.0)];
+    let expected = PI * (400.0 - 100.0) * 100.0;
+    let m = tessellate_generic_polycone(&hollow, 0.0, 2.0 * PI, SEG, None);
+    assert_volume(&m, expected, 0.01, "generic polycone hollow tube");
+    assert_normals_match_winding(&m, "generic polycone hollow tube");
+
+    // Reversed contour winding is legal input -- G4Polycone::Create normalises
+    // it by signed area.
+    let cw: Vec<(f64, f64)> = hollow.iter().rev().copied().collect();
+    let r = tessellate_generic_polycone(&cw, 0.0, 2.0 * PI, SEG, None);
+    assert_volume(&r, expected, 0.01, "generic polycone reversed contour");
+}
+
+#[test]
+fn generic_polycone_bicone_still_correct() {
+    // The shape both shipped samples use: a bicone whose closing edge lies on
+    // the z axis. This was already right under the old z-plane mapping, so it
+    // guards against the fix regressing the common case.
+    let bicone = [(0.0, 10.0), (5.0, 20.0), (0.0, 30.0)];
+    // Two cones joined base to base, each h=10, r=5.
+    let expected = 2.0 * PI * 25.0 * 10.0 / 3.0;
+    let m = tessellate_generic_polycone(&bicone, 0.0, 2.0 * PI, SEG, None);
+    assert_volume(&m, expected, 0.01, "generic polycone bicone");
+}
+
+#[test]
+fn generic_polycone_partial_sweep_is_closed() {
+    // Exercises the flat phi faces produced by ear-clipping the contour.
+    let hollow = [(10.0, -50.0), (20.0, -50.0), (20.0, 50.0), (10.0, 50.0)];
+    let expected = 0.25 * PI * (400.0 - 100.0) * 100.0;
+    let m = tessellate_generic_polycone(&hollow, 0.3, PI / 2.0, SEG, None);
+    assert_volume(&m, expected, 0.01, "generic polycone quarter sweep");
+    assert_closed_outward(&m, "generic polycone quarter sweep");
 }
 
 #[test]

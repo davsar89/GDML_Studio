@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 
 use super::csg;
-use super::primitives::{arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_box_mesh, twisted_trap_mesh, twisted_tubs_mesh, xtru_mesh};
+use super::primitives::{arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, generic_polycone_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_box_mesh, twisted_trap_mesh, twisted_tubs_mesh, xtru_mesh};
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
@@ -555,11 +555,39 @@ fn resolve_opt(engine: &EvalEngine, expr: &Option<String>) -> f64 {
 /// Resolve a length expression, applying lunit conversion only for literal values.
 /// If the expression references any symbols that are already length values in mm,
 /// skip the lunit conversion to avoid double-converting.
+///
+/// **This deliberately diverges from Geant4 and is left as-is for now.**
+/// `G4GDMLReadSolids::BoxRead` does `x = eval.Evaluate(attValue); x *= 0.5 *
+/// lunit;` unconditionally, with no knowledge of where the value came from. So
+/// for `<quantity name="a" type="length" value="5" unit="cm"/>` used as
+/// `<box x="a" lunit="cm"/>`, Geant4 gives a 500 mm box and this gives 50 mm.
+/// Two known consequences:
+///
+/// - sibling attributes of one element can end up in different unit regimes —
+///   in `<box x="a" y="20" lunit="cm"/>`, `x` skips the conversion and `y` does
+///   not;
+/// - length-ness is contagious (`EvalEngine` marks any define referencing a
+///   length symbol as one itself), so a dimensionless ratio like
+///   `<constant name="k" value="a/b"/>` also loses its `lunit`, where the
+///   anti-double-conversion rationale does not apply at all.
+///
+/// Matching Geant4 exactly would be the principled fix, but it changes how every
+/// existing file renders and no shipped sample exercises the difference, so it
+/// needs a corpus to validate against first. See
+/// `resolve_with_lunit_does_not_double_convert_length_expressions` for the
+/// behaviour this preserves.
 fn resolve_with_lunit(engine: &EvalEngine, expr: &str, lunit: &str) -> f64 {
     let val = engine.resolve_value(expr);
     if engine.expression_uses_length_symbols(expr) {
         val
     } else {
+        // Geant4 resolves lunit through G4UnitDefinition::GetValueOf and raises
+        // a FatalException when the category is wrong, so a file naming an
+        // unknown unit would not load there at all. Treating it as millimetres
+        // renders wrong geometry with nothing else to go on, so say so.
+        if units::length_factor(lunit).is_none() {
+            engine.record_unit_warning(lunit, "length");
+        }
         units::length_to_mm(val, lunit)
     }
 }
@@ -580,6 +608,9 @@ fn resolve_with_aunit(engine: &EvalEngine, expr: &str, aunit: &str) -> f64 {
     if engine.expression_uses_angle_symbols(expr) {
         val
     } else {
+        if units::angle_factor(aunit).is_none() {
+            engine.record_unit_warning(aunit, "angle");
+        }
         units::angle_to_rad(val, aunit)
     }
 }
@@ -706,6 +737,36 @@ fn tessellate_twisted_tubs_solid(
         Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => 2.0 * PI,
     };
+
+    // G4GDMLReadSolids offers two parameterisations: end radii with `zlen`, or
+    // mid radii with `negativeEndz`/`positiveEndz` when `zlen` is zero. Only the
+    // first is modelled, and the parser defaults `zlen` to "0", so a file using
+    // the second silently produced a zero-thickness (invisible) solid.
+    if zlen.abs() < 1e-12 {
+        anyhow::bail!(
+            "twistedtubs \"{}\" uses the midinnerrad/negativeEndz/positiveEndz form \
+             (zlen = 0), which is not supported. The solid is skipped rather than \
+             drawn with zero thickness.",
+            s.name
+        );
+    }
+
+    // The radius is held constant along z, so this is a straight tube segment,
+    // not the hyperboloid G4TwistedTubs actually builds -- that the real surface
+    // is not a cylinder is clear from the reader offering both `endinnerrad` and
+    // `midinnerrad`, which would be redundant otherwise. Note that for a full
+    // 2*PI sweep the twist has no geometric effect at all here: rotating a
+    // constant-radius circle about its own axis is the identity, so the mesh is
+    // bit-for-bit a plain tube. G4TwistedTubs.cc is not among the vendored
+    // reference sources, so the exact profile could not be established; warn
+    // rather than guess at it.
+    engine.record_warning_public(format!(
+        "twistedtubs \"{}\" is approximated as a straight tube segment: its \
+         inner and outer surfaces are really hyperboloids, so the waist near \
+         z=0 is drawn too wide. Dimensions elsewhere are correct.",
+        s.name
+    ));
+
     Ok(twisted_tubs_mesh::tessellate_twisted_tubs(
         rmin, rmax, zlen, phi, twist_angle, segments,
     ))
@@ -1153,19 +1214,21 @@ fn tessellate_generic_polycone_solid(
         None => 2.0 * PI,
     };
 
-    // Convert (r,z) pairs to (z, rmin=0, rmax=r) planes
-    let planes: Vec<(f64, f64, f64)> = s
+    // The rzpoints are a closed contour in the (r,z) half-plane, revolved about
+    // z -- not a list of z-planes.
+    let contour: Vec<(f64, f64)> = s
         .rzpoints
         .iter()
         .map(|rz| {
-            let r = resolve_with_lunit(engine, &rz.r, lunit);
-            let z = resolve_with_lunit(engine, &rz.z, lunit);
-            (z, 0.0, r)
+            (
+                resolve_with_lunit(engine, &rz.r, lunit),
+                resolve_with_lunit(engine, &rz.z, lunit),
+            )
         })
         .collect();
 
-    Ok(polycone_mesh::tessellate_polycone(
-        &planes, startphi, deltaphi, segments,
+    Ok(generic_polycone_mesh::tessellate_generic_polycone(
+        &contour, startphi, deltaphi, segments, None,
     ))
 }
 
@@ -1225,19 +1288,28 @@ fn tessellate_generic_polyhedra_solid(
     // Clamp sides: 0/1/2 are degenerate and an unbounded value blows up memory.
     let numsides = (resolve(engine, &s.numsides) as u32).clamp(3, 512);
 
-    // Convert (r,z) pairs to (z, rmin=0, rmax=r) planes
-    let planes: Vec<(f64, f64, f64)> = s
+    // As with genericPolycone, the rzpoints are a closed contour, not z-planes.
+    // The apothem -> corner radius conversion is kept: whether the generic form
+    // should skip it (its Geant4 constructor takes different arguments) could
+    // not be established from the vendored sources, so the existing behaviour
+    // stands until it can be.
+    let contour: Vec<(f64, f64)> = s
         .rzpoints
         .iter()
         .map(|rz| {
-            let r = resolve_with_lunit(engine, &rz.r, lunit);
-            let z = resolve_with_lunit(engine, &rz.z, lunit);
-            (z, 0.0, r)
+            (
+                resolve_with_lunit(engine, &rz.r, lunit),
+                resolve_with_lunit(engine, &rz.z, lunit),
+            )
         })
         .collect();
 
-    Ok(polyhedra_mesh::tessellate_polyhedra(
-        &planes, startphi, deltaphi, numsides,
+    Ok(generic_polycone_mesh::tessellate_generic_polycone(
+        &contour,
+        startphi,
+        deltaphi,
+        numsides,
+        Some(numsides),
     ))
 }
 
