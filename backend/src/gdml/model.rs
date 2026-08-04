@@ -86,6 +86,38 @@ pub struct DocumentOrder {
     /// *references* are not expanded — see the note in the parser.
     #[serde(default)]
     pub doctype: Option<String>,
+    /// The `<define>` children in the order the source declared them.
+    ///
+    /// The writer otherwise emits one typed collection at a time — every
+    /// constant, then every quantity, and so on — which can move a define ahead
+    /// of one it references. `G4GDMLReadDefine::DefineRead` is a single forward
+    /// pass over the children and evaluates each `value` inline as it reads it
+    /// (`G4GDMLReadDefine.cc:601` and `:203`), so a forward reference is fatal
+    /// there even though this project's own evaluator sorts topologically and
+    /// never notices.
+    ///
+    /// Empty for programmatically built documents, which fall back to the
+    /// grouped order.
+    #[serde(default)]
+    pub define_slots: Vec<DefineSlot>,
+}
+
+/// One `<define>` child, identifying which collection it lives in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DefineSlot {
+    pub kind: DefineKind,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DefineKind {
+    Constant,
+    Quantity,
+    Variable,
+    Expression,
+    Position,
+    Rotation,
+    Scale,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

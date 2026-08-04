@@ -256,126 +256,280 @@ fn write_materials_define(
 
 /// Write the define items `include` selects. Shared by both blocks so the two
 /// cannot drift apart in which attributes they emit.
+///
+/// Replays `order.define_slots` -- the order the source declared these in --
+/// whenever it lines up with the collections. Emitting one typed collection at
+/// a time instead can move a define ahead of one it references, and
+/// `G4GDMLReadDefine::DefineRead` reads the children in a single forward pass,
+/// evaluating each `value` inline as it goes, so such a file is fatal to load
+/// in Geant4 -- even though this project's own evaluator sorts topologically
+/// and never notices.
+///
+/// A document built programmatically carries no manifest; those fall back to
+/// the grouped order, which is what the rest of the suite expects.
 fn write_define_items(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     defines: &DefineSection,
     order: &DocumentOrder,
     include: &dyn Fn(&str) -> bool,
 ) -> Result<()> {
+    if write_defines_in_source_order(writer, defines, order, include)? {
+        return Ok(());
+    }
     for c in &defines.constants {
-        if !include(&c.name) {
-            continue;
-        }
-        write_comments(writer, order, "define", Some(&c.name))?;
-        let mut elem = BytesStart::new("constant");
-        elem.push_attribute(("name", c.name.as_str()));
-        elem.push_attribute(("value", c.value.as_str()));
-        writer.write_event(Event::Empty(elem))?;
+        write_constant(writer, order, include, c)?;
     }
-
     for q in &defines.quantities {
-        if !include(&q.name) {
-            continue;
-        }
-        write_comments(writer, order, "define", Some(&q.name))?;
-        let mut elem = BytesStart::new("quantity");
-        elem.push_attribute(("name", q.name.as_str()));
-        if let Some(ref t) = q.r#type {
-            elem.push_attribute(("type", t.as_str()));
-        }
-        elem.push_attribute(("value", q.value.as_str()));
-        if let Some(ref u) = q.unit {
-            elem.push_attribute(("unit", u.as_str()));
-        }
-        writer.write_event(Event::Empty(elem))?;
+        write_quantity(writer, order, include, q)?;
     }
-
     for v in &defines.variables {
-        if !include(&v.name) {
-            continue;
-        }
-        write_comments(writer, order, "define", Some(&v.name))?;
-        let mut elem = BytesStart::new("variable");
-        elem.push_attribute(("name", v.name.as_str()));
-        elem.push_attribute(("value", v.value.as_str()));
-        writer.write_event(Event::Empty(elem))?;
+        write_variable(writer, order, include, v)?;
     }
-
     for e in &defines.expressions {
-        if !include(&e.name) {
-            continue;
-        }
-        write_comments(writer, order, "define", Some(&e.name))?;
-        let mut elem = BytesStart::new("expression");
-        elem.push_attribute(("name", e.name.as_str()));
-        writer.write_event(Event::Start(elem))?;
-        writer.write_event(Event::Text(BytesText::new(&e.value)))?;
-        writer.write_event(Event::End(BytesEnd::new("expression")))?;
+        write_expression(writer, order, include, e)?;
     }
-
     for p in &defines.positions {
-        if !include(&p.name) {
-            continue;
-        }
-        write_comments(writer, order, "define", Some(&p.name))?;
-        let mut elem = BytesStart::new("position");
-        elem.push_attribute(("name", p.name.as_str()));
-        if let Some(ref x) = p.x {
-            elem.push_attribute(("x", x.as_str()));
-        }
-        if let Some(ref y) = p.y {
-            elem.push_attribute(("y", y.as_str()));
-        }
-        if let Some(ref z) = p.z {
-            elem.push_attribute(("z", z.as_str()));
-        }
-        if let Some(ref u) = p.unit {
-            elem.push_attribute(("unit", u.as_str()));
-        }
-        writer.write_event(Event::Empty(elem))?;
+        write_position(writer, order, include, p)?;
     }
-
     for r in &defines.rotations {
-        if !include(&r.name) {
-            continue;
-        }
-        write_comments(writer, order, "define", Some(&r.name))?;
-        let mut elem = BytesStart::new("rotation");
-        elem.push_attribute(("name", r.name.as_str()));
-        if let Some(ref x) = r.x {
-            elem.push_attribute(("x", x.as_str()));
-        }
-        if let Some(ref y) = r.y {
-            elem.push_attribute(("y", y.as_str()));
-        }
-        if let Some(ref z) = r.z {
-            elem.push_attribute(("z", z.as_str()));
-        }
-        if let Some(ref u) = r.unit {
-            elem.push_attribute(("unit", u.as_str()));
-        }
-        writer.write_event(Event::Empty(elem))?;
+        write_rotation(writer, order, include, r)?;
     }
-
     for s in &defines.scales {
-        if !include(&s.name) {
-            continue;
-        }
-        write_comments(writer, order, "define", Some(&s.name))?;
-        let mut elem = BytesStart::new("scale");
-        elem.push_attribute(("name", s.name.as_str()));
-        if let Some(ref x) = s.x {
-            elem.push_attribute(("x", x.as_str()));
-        }
-        if let Some(ref y) = s.y {
-            elem.push_attribute(("y", y.as_str()));
-        }
-        if let Some(ref z) = s.z {
-            elem.push_attribute(("z", z.as_str()));
-        }
-        writer.write_event(Event::Empty(elem))?;
+        write_scale(writer, order, include, s)?;
+    }
+    Ok(())
+}
+
+/// Per-kind cursor slot. An exhaustive match rather than `kind as usize`, so
+/// adding a variant is a compile error here instead of an out-of-bounds panic.
+fn cursor_index(kind: DefineKind) -> usize {
+    match kind {
+        DefineKind::Constant => 0,
+        DefineKind::Quantity => 1,
+        DefineKind::Variable => 2,
+        DefineKind::Expression => 3,
+        DefineKind::Position => 4,
+        DefineKind::Rotation => 5,
+        DefineKind::Scale => 6,
+    }
+}
+
+/// Emit the defines in the manifest order. Returns false, having written
+/// nothing, when the manifest does not correspond to the collections.
+fn write_defines_in_source_order(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    defines: &DefineSection,
+    order: &DocumentOrder,
+    include: &dyn Fn(&str) -> bool,
+) -> Result<bool> {
+    let total = defines.constants.len()
+        + defines.quantities.len()
+        + defines.variables.len()
+        + defines.expressions.len()
+        + defines.positions.len()
+        + defines.rotations.len()
+        + defines.scales.len();
+    if order.define_slots.len() != total {
+        return Ok(false);
     }
 
+    // The manifest is appended alongside the collections, one entry per item in
+    // the same relative order, so a per-kind cursor walks the two in step.
+    // Check that fully before writing anything: a mismatch means the document
+    // was assembled some other way, and a half-written block would be worse
+    // than the grouped fallback.
+    let mut cursor = [0usize; 7];
+    for slot in &order.define_slots {
+        let i = cursor_index(slot.kind);
+        let n = cursor[i];
+        cursor[i] += 1;
+        let found = match slot.kind {
+            DefineKind::Constant => defines.constants.get(n).map(|x| &x.name),
+            DefineKind::Quantity => defines.quantities.get(n).map(|x| &x.name),
+            DefineKind::Variable => defines.variables.get(n).map(|x| &x.name),
+            DefineKind::Expression => defines.expressions.get(n).map(|x| &x.name),
+            DefineKind::Position => defines.positions.get(n).map(|x| &x.name),
+            DefineKind::Rotation => defines.rotations.get(n).map(|x| &x.name),
+            DefineKind::Scale => defines.scales.get(n).map(|x| &x.name),
+        };
+        if found != Some(&slot.name) {
+            return Ok(false);
+        }
+    }
+
+    let mut cursor = [0usize; 7];
+    for slot in &order.define_slots {
+        let i = cursor_index(slot.kind);
+        let n = cursor[i];
+        cursor[i] += 1;
+        match slot.kind {
+            DefineKind::Constant => write_constant(writer, order, include, &defines.constants[n])?,
+            DefineKind::Quantity => write_quantity(writer, order, include, &defines.quantities[n])?,
+            DefineKind::Variable => write_variable(writer, order, include, &defines.variables[n])?,
+            DefineKind::Expression => {
+                write_expression(writer, order, include, &defines.expressions[n])?
+            }
+            DefineKind::Position => write_position(writer, order, include, &defines.positions[n])?,
+            DefineKind::Rotation => write_rotation(writer, order, include, &defines.rotations[n])?,
+            DefineKind::Scale => write_scale(writer, order, include, &defines.scales[n])?,
+        }
+    }
+    Ok(true)
+}
+
+fn write_constant(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    order: &DocumentOrder,
+    include: &dyn Fn(&str) -> bool,
+    c: &Constant,
+) -> Result<()> {
+    if !include(&c.name) {
+        return Ok(());
+    }
+    write_comments(writer, order, "define", Some(&c.name))?;
+    let mut elem = BytesStart::new("constant");
+    elem.push_attribute(("name", c.name.as_str()));
+    elem.push_attribute(("value", c.value.as_str()));
+    writer.write_event(Event::Empty(elem))?;
+    Ok(())
+}
+
+fn write_quantity(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    order: &DocumentOrder,
+    include: &dyn Fn(&str) -> bool,
+    q: &Quantity,
+) -> Result<()> {
+    if !include(&q.name) {
+        return Ok(());
+    }
+    write_comments(writer, order, "define", Some(&q.name))?;
+    let mut elem = BytesStart::new("quantity");
+    elem.push_attribute(("name", q.name.as_str()));
+    if let Some(ref t) = q.r#type {
+        elem.push_attribute(("type", t.as_str()));
+    }
+    elem.push_attribute(("value", q.value.as_str()));
+    if let Some(ref u) = q.unit {
+        elem.push_attribute(("unit", u.as_str()));
+    }
+    writer.write_event(Event::Empty(elem))?;
+    Ok(())
+}
+
+fn write_variable(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    order: &DocumentOrder,
+    include: &dyn Fn(&str) -> bool,
+    v: &Variable,
+) -> Result<()> {
+    if !include(&v.name) {
+        return Ok(());
+    }
+    write_comments(writer, order, "define", Some(&v.name))?;
+    let mut elem = BytesStart::new("variable");
+    elem.push_attribute(("name", v.name.as_str()));
+    elem.push_attribute(("value", v.value.as_str()));
+    writer.write_event(Event::Empty(elem))?;
+    Ok(())
+}
+
+fn write_expression(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    order: &DocumentOrder,
+    include: &dyn Fn(&str) -> bool,
+    e: &Expression,
+) -> Result<()> {
+    if !include(&e.name) {
+        return Ok(());
+    }
+    write_comments(writer, order, "define", Some(&e.name))?;
+    let mut elem = BytesStart::new("expression");
+    elem.push_attribute(("name", e.name.as_str()));
+    writer.write_event(Event::Start(elem))?;
+    writer.write_event(Event::Text(BytesText::new(&e.value)))?;
+    writer.write_event(Event::End(BytesEnd::new("expression")))?;
+    Ok(())
+}
+
+fn write_position(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    order: &DocumentOrder,
+    include: &dyn Fn(&str) -> bool,
+    p: &Position,
+) -> Result<()> {
+    if !include(&p.name) {
+        return Ok(());
+    }
+    write_comments(writer, order, "define", Some(&p.name))?;
+    let mut elem = BytesStart::new("position");
+    elem.push_attribute(("name", p.name.as_str()));
+    if let Some(ref x) = p.x {
+        elem.push_attribute(("x", x.as_str()));
+    }
+    if let Some(ref y) = p.y {
+        elem.push_attribute(("y", y.as_str()));
+    }
+    if let Some(ref z) = p.z {
+        elem.push_attribute(("z", z.as_str()));
+    }
+    if let Some(ref u) = p.unit {
+        elem.push_attribute(("unit", u.as_str()));
+    }
+    writer.write_event(Event::Empty(elem))?;
+    Ok(())
+}
+
+fn write_rotation(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    order: &DocumentOrder,
+    include: &dyn Fn(&str) -> bool,
+    r: &Rotation,
+) -> Result<()> {
+    if !include(&r.name) {
+        return Ok(());
+    }
+    write_comments(writer, order, "define", Some(&r.name))?;
+    let mut elem = BytesStart::new("rotation");
+    elem.push_attribute(("name", r.name.as_str()));
+    if let Some(ref x) = r.x {
+        elem.push_attribute(("x", x.as_str()));
+    }
+    if let Some(ref y) = r.y {
+        elem.push_attribute(("y", y.as_str()));
+    }
+    if let Some(ref z) = r.z {
+        elem.push_attribute(("z", z.as_str()));
+    }
+    if let Some(ref u) = r.unit {
+        elem.push_attribute(("unit", u.as_str()));
+    }
+    writer.write_event(Event::Empty(elem))?;
+    Ok(())
+}
+
+fn write_scale(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    order: &DocumentOrder,
+    include: &dyn Fn(&str) -> bool,
+    s: &Scale,
+) -> Result<()> {
+    if !include(&s.name) {
+        return Ok(());
+    }
+    write_comments(writer, order, "define", Some(&s.name))?;
+    let mut elem = BytesStart::new("scale");
+    elem.push_attribute(("name", s.name.as_str()));
+    if let Some(ref x) = s.x {
+        elem.push_attribute(("x", x.as_str()));
+    }
+    if let Some(ref y) = s.y {
+        elem.push_attribute(("y", y.as_str()));
+    }
+    if let Some(ref z) = s.z {
+        elem.push_attribute(("z", z.as_str()));
+    }
+    writer.write_event(Event::Empty(elem))?;
     Ok(())
 }
 

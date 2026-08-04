@@ -86,24 +86,49 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"constant"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Constant,
+                            e,
+                        );
                         parse_constant(e, &mut defines);
                     }
                     b"quantity"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Quantity,
+                            e,
+                        );
                         parse_quantity(e, &mut defines);
                     }
                     b"variable"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Variable,
+                            e,
+                        );
                         parse_variable(e, &mut defines);
                     }
                     b"expression"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Expression,
+                            e,
+                        );
                         let name = get_attr(e, "name").unwrap_or_default();
                         let text = reader.read_text(e.name()).unwrap_or_default().to_string();
                         let text = collapse_spaces(&text);
@@ -112,19 +137,37 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"position"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Position,
+                            e,
+                        );
                         parse_position(e, &mut defines);
                     }
                     b"scale"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Scale,
+                            e,
+                        );
                         parse_scale(e, &mut defines);
                     }
                     b"rotation"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Rotation,
+                            e,
+                        );
                         parse_rotation(e, &mut defines);
                     }
                     b"isotope" if section == Section::Materials => {
@@ -310,37 +353,73 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"constant"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Constant,
+                            e,
+                        );
                         parse_constant(e, &mut defines);
                     }
                     b"quantity"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Quantity,
+                            e,
+                        );
                         parse_quantity(e, &mut defines);
                     }
                     b"variable"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Variable,
+                            e,
+                        );
                         parse_variable(e, &mut defines);
                     }
                     b"position"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Position,
+                            e,
+                        );
                         parse_position(e, &mut defines);
                     }
                     b"scale"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Scale,
+                            e,
+                        );
                         parse_scale(e, &mut defines);
                     }
                     b"rotation"
                         if section == Section::Define || section == Section::MaterialsDefine =>
                     {
-                        note_materials_define(section, &mut materials_define, e);
+                        note_define(
+                            section,
+                            &mut order,
+                            &mut materials_define,
+                            DefineKind::Rotation,
+                            e,
+                        );
                         parse_rotation(e, &mut defines);
                     }
                     b"isotope" if section == Section::Materials => {
@@ -641,14 +720,30 @@ enum Section {
     Structure,
 }
 
-/// Record a define's name when it came from the nested `<materials><define>`
-/// rather than the top-level block, so the writer can put it back there.
-fn note_materials_define(section: Section, slot: &mut Option<Vec<String>>, e: &BytesStart) {
-    if section != Section::MaterialsDefine {
+/// Record a `<define>` child: its position among its siblings, and whether it
+/// came from the nested `<materials><define>` rather than the top-level block.
+///
+/// Order matters because `G4GDMLReadDefine::DefineRead` reads the children in
+/// one forward pass and evaluates each `value` as it goes, so emitting them
+/// regrouped by type can put a define ahead of one it references.
+fn note_define(
+    section: Section,
+    order: &mut DocumentOrder,
+    materials_slot: &mut Option<Vec<String>>,
+    kind: DefineKind,
+    e: &BytesStart,
+) {
+    let Some(name) = get_attr(e, "name") else {
         return;
-    }
-    if let (Some(names), Some(name)) = (slot.as_mut(), get_attr(e, "name")) {
-        names.push(name);
+    };
+    order.define_slots.push(DefineSlot {
+        kind,
+        name: name.clone(),
+    });
+    if section == Section::MaterialsDefine {
+        if let Some(names) = materials_slot.as_mut() {
+            names.push(name);
+        }
     }
 }
 

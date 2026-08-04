@@ -812,3 +812,97 @@ fn a_document_without_a_nested_define_does_not_grow_one() {
         "export invented a <define> inside <materials>:\n{xml}"
     );
 }
+
+#[test]
+fn defines_are_emitted_in_source_order() {
+    // G4GDMLReadDefine::DefineRead walks the <define> children once, in document
+    // order, and evaluates each `value` inline as it reads it
+    // (G4GDMLReadDefine.cc:601 and :203). Emitting the collections one type at a
+    // time -- every constant, then every quantity, ... -- can therefore put a
+    // define ahead of one it references and produce a file Geant4 refuses to
+    // load, which this project's own evaluator never notices because
+    // `evaluate_all` sorts topologically.
+    let src = r#"<?xml version="1.0"?>
+<gdml>
+  <define>
+    <variable name="v" value="5"/>
+    <constant name="c" value="v*2"/>
+    <position name="p" x="c" y="0" z="0"/>
+    <quantity name="q" type="length" value="v" unit="mm"/>
+  </define>
+  <materials>
+    <material name="M" Z="1"><D value="1"/><atom value="1"/></material>
+  </materials>
+  <solids><box name="B" x="1" y="1" z="1"/></solids>
+  <structure>
+    <volume name="W"><materialref ref="M"/><solidref ref="B"/></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="W"/></setup>
+</gdml>"#;
+
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
+    let xml = serialize_gdml(&doc).unwrap();
+    let block = xml
+        .split("<define>")
+        .nth(1)
+        .and_then(|s| s.split("</define>").next())
+        .expect("no <define> block");
+
+    let at = |needle: &str| {
+        block
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle} missing:\n{block}"))
+    };
+    assert!(
+        at(r#"name="v""#) < at(r#"name="c""#),
+        "constant c emitted before the variable v it references:\n{block}"
+    );
+    assert!(
+        at(r#"name="c""#) < at(r#"name="p""#),
+        "position p emitted before the constant c it references:\n{block}"
+    );
+    assert!(
+        at(r#"name="v""#) < at(r#"name="q""#),
+        "quantity q emitted before the variable v it references:\n{block}"
+    );
+
+    // Idempotent: the second trip must not shuffle it back.
+    let doc2 = parse_gdml_from_bytes(xml.as_bytes(), "t2.gdml".to_string()).unwrap();
+    assert_eq!(
+        serialize_gdml(&doc2).unwrap(),
+        xml,
+        "define order is not stable across a second round trip"
+    );
+}
+
+#[test]
+fn a_hand_built_document_still_serialises() {
+    // No manifest: the grouped fallback has to kick in rather than emitting a
+    // partial block or panicking.
+    use gdml_studio_backend::gdml::model::{Constant, GdmlDocument, Variable};
+
+    let src = doc_with("", "");
+    let mut doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
+    doc.defines.constants.push(Constant {
+        name: "added_c".to_string(),
+        value: "1".to_string(),
+    });
+    doc.defines.variables.push(Variable {
+        name: "added_v".to_string(),
+        value: "2".to_string(),
+    });
+    // The manifest no longer matches the collections.
+    assert_ne!(doc.order.define_slots.len(), 2);
+
+    let xml = serialize_gdml(&doc).unwrap();
+    assert!(
+        xml.contains(r#"name="added_c""#),
+        "constant dropped:\n{xml}"
+    );
+    assert!(
+        xml.contains(r#"name="added_v""#),
+        "variable dropped:\n{xml}"
+    );
+
+    let _: GdmlDocument = parse_gdml_from_bytes(xml.as_bytes(), "t2.gdml".to_string()).unwrap();
+}
