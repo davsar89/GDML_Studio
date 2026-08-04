@@ -1,4 +1,5 @@
 import type { DocumentSummary, MeshData, SceneNode, DefineValue, VolumeInfo, MaterialInfo, ElementInfo, NistMaterial } from '../store/types';
+import { useAppStore } from '../store';
 
 const BASE = '';
 
@@ -97,48 +98,62 @@ export async function getNistMaterial(name: string) {
   );
 }
 
+/**
+ * Flag the document as having unsaved edits.
+ *
+ * Wrapped around the mutating calls rather than inferred from the refresh that
+ * follows them: "a mutating request succeeded" is exactly what dirty means, and
+ * tying it to the endpoint means one added later cannot quietly skip it. Only
+ * marks on success -- a rejected edit changed nothing.
+ */
+async function mutate<T>(request: Promise<T>): Promise<T> {
+  const result = await request;
+  useAppStore.getState().markDirty();
+  return result;
+}
+
 // ─── Material CRUD ──────────────────────────────────────────────────────────
 
 export async function updateMaterial(name: string, material: MaterialInfo) {
-  return fetchJson<{ ok: boolean }>('/api/document/materials/update', {
+  return mutate(fetchJson<{ ok: boolean }>('/api/document/materials/update', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, material }),
-  });
+  }));
 }
 
 export async function addMaterial(material: MaterialInfo) {
-  return fetchJson<{ ok: boolean }>('/api/document/materials/add', {
+  return mutate(fetchJson<{ ok: boolean }>('/api/document/materials/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ material }),
-  });
+  }));
 }
 
 export async function deleteMaterial(name: string) {
-  return fetchJson<{ ok: boolean }>('/api/document/materials/delete', {
+  return mutate(fetchJson<{ ok: boolean }>('/api/document/materials/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
-  });
+  }));
 }
 
 // ─── Element CRUD ───────────────────────────────────────────────────────────
 
 export async function addElement(element: ElementInfo) {
-  return fetchJson<{ ok: boolean }>('/api/document/elements/add', {
+  return mutate(fetchJson<{ ok: boolean }>('/api/document/elements/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ element }),
-  });
+  }));
 }
 
 export async function deleteElement(name: string) {
-  return fetchJson<{ ok: boolean }>('/api/document/elements/delete', {
+  return mutate(fetchJson<{ ok: boolean }>('/api/document/elements/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
-  });
+  }));
 }
 
 // ─── Volume material ref ────────────────────────────────────────────────────
@@ -147,11 +162,11 @@ export async function updateVolumeMaterialRef(
   volumeName: string,
   materialRef: string,
 ) {
-  return fetchJson<{ ok: boolean }>('/api/document/structure/material-ref', {
+  return mutate(fetchJson<{ ok: boolean }>('/api/document/structure/material-ref', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ volume_name: volumeName, material_ref: materialRef }),
-  });
+  }));
 }
 
 // ─── Export ─────────────────────────────────────────────────────────────────

@@ -6,6 +6,16 @@ interface AppState {
   loading: boolean;
   error: string | null;
   warnings: string[];
+  /**
+   * The in-memory document has edits that are not in any file on disk.
+   *
+   * Set by every mutating API call (see `markDirty` in `api/client.ts`) and
+   * cleared on load and on a successful export. Note "Save" downloads a copy
+   * rather than overwriting the file that was opened, so clearing here means
+   * "the user has been given a file matching this state", not "the original
+   * path is up to date".
+   */
+  dirty: boolean;
   summary: DocumentSummary | null;
   meshes: Record<string, MeshData>;
   sceneGraph: SceneNode | null;
@@ -34,6 +44,8 @@ interface AppState {
 
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  markDirty: () => void;
+  markSaved: () => void;
   setWarnings: (warnings: string[]) => void;
   clearWarnings: () => void;
   setSummary: (summary: DocumentSummary) => void;
@@ -66,6 +78,7 @@ export const useAppStore = create<AppState>((set) => ({
   loading: false,
   error: null,
   warnings: [],
+  dirty: false,
   summary: null,
   meshes: {},
   sceneGraph: null,
@@ -90,6 +103,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
+  markDirty: () => set({ dirty: true }),
+  markSaved: () => set({ dirty: false }),
   setWarnings: (warnings) => set({ warnings }),
   clearWarnings: () => set({ warnings: [] }),
   setSummary: (summary) => set({ summary }),
@@ -160,6 +175,7 @@ export const useAppStore = create<AppState>((set) => ({
       loading: false,
       error: null,
       warnings: [],
+      dirty: false,
       summary: null,
       meshes: {},
       sceneGraph: null,

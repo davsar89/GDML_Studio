@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { clearAllGeometries } from './Viewport/geometryCache';
@@ -70,6 +71,16 @@ export default function Toolbar() {
   const setMeshOpacity = useAppStore((s) => s.setMeshOpacity);
   const measureMode = useAppStore((s) => s.measureMode);
   const measurements = useAppStore((s) => s.measurements);
+  const dirty = useAppStore((s) => s.dirty);
+
+  // Edits live only in the backend's in-memory document; closing the tab
+  // discards them, and nothing else warns about that.
+  useEffect(() => {
+    if (!dirty) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty]);
 
   const handleOpenFile = () => {
     const input = document.createElement('input');
@@ -132,6 +143,8 @@ export default function Toolbar() {
         // scene graph replaces the old one, leaves no window to render into.
         clearAllGeometries();
 
+        // A freshly loaded document matches the file it came from.
+        store.markSaved();
         store.setSummary(result);
         store.setWarnings([...(result.warnings ?? []), ...(meshData.warnings ?? [])]);
         store.setMeshes(meshData.meshes);
@@ -160,6 +173,9 @@ export default function Toolbar() {
       const filename = prompt('Save as:', summary?.filename || 'output.gdml');
       if (filename) {
         downloadFile(gdml, filename);
+        // Only once a file has actually been written. Cancelling the prompt
+        // leaves the edits still unsaved.
+        useAppStore.getState().markSaved();
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -177,6 +193,7 @@ export default function Toolbar() {
     try {
       const { gdml } = await api.exportGdml();
       downloadFile(gdml, fname);
+      useAppStore.getState().markSaved();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       useAppStore.getState().setError(`Export failed: ${msg}`);
@@ -230,7 +247,17 @@ export default function Toolbar() {
           <button onClick={handleSave} style={btnStyle}>Save</button>
           <button onClick={handleSaveAs} style={btnStyle}>Save As</button>
           <span style={{ fontSize: 12, color: '#8899aa' }}>
-            {summary.filename} &mdash; {summary.solids_count} solids, {summary.volumes_count} volumes, {summary.meshes_count} meshes
+            {summary.filename}
+            {dirty && (
+              <span
+                style={{ color: '#e9a545', marginLeft: 4 }}
+                title="This document has edits that are not in any saved file"
+              >
+                &bull; unsaved
+              </span>
+            )}
+            {' — '}
+            {summary.solids_count} solids, {summary.volumes_count} volumes, {summary.meshes_count} meshes
           </span>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
             <label style={{ fontSize: 11, color: '#8899aa' }}>Opacity</label>
