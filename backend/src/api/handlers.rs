@@ -1535,6 +1535,7 @@ mod tests {
                 version: "1.0".to_string(),
                 world_ref: world_ref.to_string(),
             },
+            setups: Vec::new(),
             raw_unknown: Vec::new(),
             skipped_unsupported: Vec::new(),
         }

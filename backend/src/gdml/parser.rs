@@ -24,7 +24,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
     let mut materials = MaterialSection::default();
     let mut solids = SolidSection::default();
     let mut structure = StructureSection::default();
-    let mut setup = None;
+    let mut setups: Vec<SetupSection> = Vec::new();
     // Elements recognized by name but not interpreted; preserved verbatim.
     let mut raw_unknown: Vec<RawElement> = Vec::new();
     let mut root_attributes: Vec<(String, String)> = Vec::new();
@@ -96,6 +96,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"position" if section == Section::Define => {
                         parse_position(e, &mut defines);
+                    }
+                    b"scale" if section == Section::Define => {
+                        parse_scale(e, &mut defines);
                     }
                     b"rotation" if section == Section::Define => {
                         parse_rotation(e, &mut defines);
@@ -248,7 +251,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     // Recognized-but-uninterpreted constructs: preserve verbatim so
                     // they survive a load -> save round-trip (and warn the user).
                     b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
-                    | b"loop" | b"assembly" | b"matrix" | b"scale" => {
+                    | b"loop" | b"assembly" | b"matrix" => {
                         let raw_tag = String::from_utf8_lossy(tag).to_string();
                         let xml = capture_raw_subtree(&mut reader, e.clone().into_owned())?;
                         raw_unknown.push(RawElement {
@@ -261,7 +264,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let name = get_attr(e, "name").unwrap_or_default();
                         let version = get_attr(e, "version").unwrap_or_else(|| "1.0".to_string());
                         let world_ref = read_setup_body(&mut reader)?;
-                        setup = Some(SetupSection {
+                        setups.push(SetupSection {
                             name,
                             version,
                             world_ref,
@@ -288,6 +291,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"position" if section == Section::Define => {
                         parse_position(e, &mut defines);
+                    }
+                    b"scale" if section == Section::Define => {
+                        parse_scale(e, &mut defines);
                     }
                     b"rotation" if section == Section::Define => {
                         parse_rotation(e, &mut defines);
@@ -384,7 +390,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     // Self-closing recognized-but-uninterpreted constructs: preserve verbatim.
                     b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
-                    | b"loop" | b"assembly" | b"matrix" | b"scale" => {
+                    | b"loop" | b"assembly" | b"matrix" => {
                         let raw_tag = String::from_utf8_lossy(tag).to_string();
                         let xml = empty_element_to_string(e)?;
                         raw_unknown.push(RawElement {
@@ -397,7 +403,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let name = get_attr(e, "name").unwrap_or_default();
                         let version = get_attr(e, "version").unwrap_or_else(|| "1.0".to_string());
                         let world_ref = get_attr(e, "world").unwrap_or_default();
-                        setup = Some(SetupSection {
+                        setups.push(SetupSection {
                             name,
                             version,
                             world_ref,
@@ -473,11 +479,21 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
         materials,
         solids,
         structure,
-        setup: setup.unwrap_or(SetupSection {
-            name: "default".to_string(),
-            version: "1.0".to_string(),
-            world_ref: String::new(),
-        }),
+        // A file may carry several <setup> blocks. Overwriting meant the LAST
+        // one won; Geant4's G4GDMLParser::Read asks for the one named "Default",
+        // so a file with an alternative setup listed after the default rendered
+        // the wrong world volume.
+        setup: setups
+            .iter()
+            .find(|s| s.name.eq_ignore_ascii_case("Default"))
+            .or_else(|| setups.first())
+            .cloned()
+            .unwrap_or(SetupSection {
+                name: "default".to_string(),
+                version: "1.0".to_string(),
+                world_ref: String::new(),
+            }),
+        setups,
         raw_unknown,
         order: {
             // Anything still pending sits after </gdml>.
@@ -674,6 +690,15 @@ fn parse_position(e: &BytesStart, defines: &mut DefineSection) {
         y: get_attr(e, "y"),
         z: get_attr(e, "z"),
         unit: get_attr(e, "unit"),
+    });
+}
+
+fn parse_scale(e: &BytesStart, defines: &mut DefineSection) {
+    defines.scales.push(Scale {
+        name: get_attr(e, "name").unwrap_or_default(),
+        x: get_attr(e, "x"),
+        y: get_attr(e, "y"),
+        z: get_attr(e, "z"),
     });
 }
 
@@ -2001,6 +2026,8 @@ fn read_scaled_solid_body(reader: &mut Reader<&[u8]>, name: String) -> Result<Sc
     let mut scale_x = "1".to_string();
     let mut scale_y = "1".to_string();
     let mut scale_z = "1".to_string();
+    let mut scale_ref = None;
+    let mut scale_name = None;
     let mut buf = Vec::new();
 
     loop {
@@ -2016,6 +2043,12 @@ fn read_scaled_solid_body(reader: &mut Reader<&[u8]>, name: String) -> Result<Sc
                         scale_x = get_attr_or(inner, "x", "1");
                         scale_y = get_attr_or(inner, "y", "1");
                         scale_z = get_attr_or(inner, "z", "1");
+                        scale_name = get_attr(inner, "name");
+                    }
+                    // Geant4 accepts a reference to a named <scale> here just as
+                    // it does an inline one.
+                    b"scaleref" => {
+                        scale_ref = get_attr(inner, "ref");
                     }
                     _ => {}
                 }
@@ -2032,6 +2065,8 @@ fn read_scaled_solid_body(reader: &mut Reader<&[u8]>, name: String) -> Result<Sc
         scale_x,
         scale_y,
         scale_z,
+        scale_ref,
+        scale_name,
     })
 }
 

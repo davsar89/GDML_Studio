@@ -15,6 +15,13 @@ pub struct GdmlDocument {
     /// being silently dropped.
     #[serde(default)]
     pub raw_unknown: Vec<RawElement>,
+    /// Every `<setup>` in the source, in document order.
+    ///
+    /// `setup` above is the *selected* one — the block named "Default" if there
+    /// is one, else the first — matching `G4GDMLParser::Read`. Keeping the rest
+    /// means an alternative setup is not deleted on save.
+    #[serde(default)]
+    pub setups: Vec<SetupSection>,
     /// Comment placement, so a load → save round trip does not delete the user's
     /// annotations. See [`DocumentOrder`].
     #[serde(default)]
@@ -89,6 +96,11 @@ pub struct DefineSection {
     pub expressions: Vec<Expression>,
     pub positions: Vec<Position>,
     pub rotations: Vec<Rotation>,
+    /// Named `<scale>` elements. Previously swallowed into `raw_unknown`, which
+    /// preserved them on save but left nothing for `<scaleref>` to resolve
+    /// against.
+    #[serde(default)]
+    pub scales: Vec<Scale>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,6 +136,18 @@ pub struct Position {
     pub y: Option<String>,
     pub z: Option<String>,
     pub unit: Option<String>,
+}
+
+/// A named `<scale>` in `<define>`, referenced by `<scaleref>`.
+///
+/// Structurally identical to [`Position`], but kept separate because it is
+/// dimensionless — a scale factor has no `lunit`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Scale {
+    pub name: String,
+    pub x: Option<String>,
+    pub y: Option<String>,
+    pub z: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -722,6 +746,16 @@ pub struct ScaledSolidDef {
     pub scale_x: String,
     pub scale_y: String,
     pub scale_z: String,
+    /// Set when the source wrote `<scaleref ref=".."/>` instead of an inline
+    /// `<scale>`. Geant4 accepts both; only the inline form was handled, so a
+    /// scaleref silently fell back to (1,1,1) — an unscaled render — and was
+    /// rewritten as a fabricated inline scale on export.
+    #[serde(default)]
+    pub scale_ref: Option<String>,
+    /// `name` of the inline `<scale>`, so it round-trips instead of being
+    /// regenerated as "{solid}_scale".
+    #[serde(default)]
+    pub scale_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

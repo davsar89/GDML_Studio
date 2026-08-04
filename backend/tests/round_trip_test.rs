@@ -25,9 +25,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use gdml_studio_backend::eval::engine::EvalEngine;
 use gdml_studio_backend::gdml::materials::serialize_gdml;
 use gdml_studio_backend::gdml::model::Solid;
 use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
+
+use gdml_studio_backend::mesh::tessellator::tessellate_all_solids;
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
@@ -475,6 +478,92 @@ fn optical_material_properties_survive() {
     );
 
     assert_tokens_preserved(src, &serialize_gdml(&doc).unwrap());
+}
+
+#[test]
+fn named_default_setup_wins_over_the_last_one() {
+    // G4GDMLParser::Read asks for the setup named "Default". Overwriting on each
+    // <setup> meant the last one won, so a file listing an alternative setup
+    // after the default rendered the wrong world volume — and the alternative
+    // was deleted on save either way.
+    let src = r#"<?xml version="1.0" encoding="UTF-8"?>
+<gdml>
+  <define/>
+  <materials>
+    <material name="Vacuum" state="gas"><D value="1e-25"/><atom value="1.008"/></material>
+  </materials>
+  <solids>
+    <box name="WorldBox" x="1000" y="1000" z="1000" lunit="mm"/>
+  </solids>
+  <structure>
+    <volume name="Alt"><materialref ref="Vacuum"/><solidref ref="WorldBox"/></volume>
+    <volume name="World"><materialref ref="Vacuum"/><solidref ref="WorldBox"/></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+  <setup name="Alternative" version="1.0"><world ref="Alt"/></setup>
+</gdml>"#;
+
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "setups.gdml".to_string()).unwrap();
+    assert_eq!(doc.setup.name, "Default", "wrong setup selected");
+    assert_eq!(doc.setup.world_ref, "World", "wrong world volume");
+    assert_eq!(doc.setups.len(), 2, "the alternative setup was dropped");
+
+    let out = serialize_gdml(&doc).unwrap();
+    assert!(
+        out.contains(r#"name="Alternative""#),
+        "alt setup lost:\n{out}"
+    );
+    assert_tokens_preserved(src, &out);
+}
+
+#[test]
+fn scaleref_is_resolved_and_not_rewritten() {
+    // Geant4 accepts <scaleref> in a <scaledSolid> as readily as an inline
+    // <scale>. Only the inline form was handled, so a scaleref fell through to
+    // the (1,1,1) defaults — an unscaled render — and was then rewritten on
+    // export as a fabricated inline scale, corrupting the file too.
+    let src = r#"<?xml version="1.0" encoding="UTF-8"?>
+<gdml>
+  <define>
+    <scale name="doubler" x="2" y="2" z="2"/>
+  </define>
+  <materials>
+    <material name="Vacuum" state="gas"><D value="1e-25"/><atom value="1.008"/></material>
+  </materials>
+  <solids>
+    <box name="WorldBox" x="10" y="10" z="10" lunit="mm"/>
+    <scaledSolid name="Big"><solidref ref="WorldBox"/><scaleref ref="doubler"/></scaledSolid>
+  </solids>
+  <structure>
+    <volume name="World"><materialref ref="Vacuum"/><solidref ref="Big"/></volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+</gdml>"#;
+
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "scaleref.gdml".to_string()).unwrap();
+    assert_eq!(doc.defines.scales.len(), 1, "<scale> define not parsed");
+
+    // The reference must actually scale the mesh: a 10mm box doubled is 20mm.
+    let mut engine = EvalEngine::new();
+    engine.evaluate_all(&doc.defines).unwrap();
+    let (meshes, _) = tessellate_all_solids(&doc.solids, &engine, 32).unwrap();
+    let big = meshes.get("Big").expect("scaled solid not tessellated");
+    let extent = big
+        .positions
+        .chunks_exact(3)
+        .map(|v| v[0].abs())
+        .fold(0.0f32, f32::max);
+    assert!(
+        (extent - 10.0).abs() < 1e-3,
+        "scaleref not applied: half-extent {extent}, expected 10 (a 10mm box scaled 2x)"
+    );
+
+    let out = serialize_gdml(&doc).unwrap();
+    assert!(
+        out.contains(r#"<scaleref ref="doubler"/>"#),
+        "scaleref rewritten as an inline scale:\n{out}"
+    );
+    assert_tokens_preserved(src, &out);
 }
 
 #[test]

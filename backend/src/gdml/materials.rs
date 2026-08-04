@@ -159,7 +159,15 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
         &doc.order,
     )?;
     write_comments(&mut writer, &doc.order, "root", Some("setup"))?;
-    write_setup(&mut writer, &doc.setup)?;
+    // Emit every setup the source carried, not just the selected one. Falls back
+    // to the single selected setup for documents built programmatically.
+    if doc.setups.is_empty() {
+        write_setup(&mut writer, &doc.setup)?;
+    } else {
+        for setup in &doc.setups {
+            write_setup(&mut writer, setup)?;
+        }
+    }
 
     // Elements that belong directly under <gdml> (e.g. <userinfo>).
     for raw in raw_in("gdml") {
@@ -266,8 +274,24 @@ fn write_defines(
         writer.write_event(Event::Empty(elem))?;
     }
 
-    // Preserved-verbatim define-section elements (<matrix>, <scale>, <loop>)
-    // go last so anything they reference is already defined.
+    for s in &defines.scales {
+        write_comments(writer, order, "define", Some(&s.name))?;
+        let mut elem = BytesStart::new("scale");
+        elem.push_attribute(("name", s.name.as_str()));
+        if let Some(ref x) = s.x {
+            elem.push_attribute(("x", x.as_str()));
+        }
+        if let Some(ref y) = s.y {
+            elem.push_attribute(("y", y.as_str()));
+        }
+        if let Some(ref z) = s.z {
+            elem.push_attribute(("z", z.as_str()));
+        }
+        writer.write_event(Event::Empty(elem))?;
+    }
+
+    // Preserved-verbatim define-section elements (<matrix>, <loop>) go last so
+    // anything they reference is already defined.
     for raw in raws {
         write_raw(writer, raw)?;
     }
@@ -1173,12 +1197,24 @@ fn write_solids(
                 let mut sref = BytesStart::new("solidref");
                 sref.push_attribute(("ref", ss.solid_ref.as_str()));
                 writer.write_event(Event::Empty(sref))?;
-                let mut scale = BytesStart::new("scale");
-                scale.push_attribute(("name", format!("{}_scale", ss.name).as_str()));
-                scale.push_attribute(("x", ss.scale_x.as_str()));
-                scale.push_attribute(("y", ss.scale_y.as_str()));
-                scale.push_attribute(("z", ss.scale_z.as_str()));
-                writer.write_event(Event::Empty(scale))?;
+                if let Some(ref r) = ss.scale_ref {
+                    // Written as a reference in the source; keep it one rather
+                    // than substituting a fabricated inline scale.
+                    let mut sr = BytesStart::new("scaleref");
+                    sr.push_attribute(("ref", r.as_str()));
+                    writer.write_event(Event::Empty(sr))?;
+                } else {
+                    let mut scale = BytesStart::new("scale");
+                    let scale_name = ss
+                        .scale_name
+                        .clone()
+                        .unwrap_or_else(|| format!("{}_scale", ss.name));
+                    scale.push_attribute(("name", scale_name.as_str()));
+                    scale.push_attribute(("x", ss.scale_x.as_str()));
+                    scale.push_attribute(("y", ss.scale_y.as_str()));
+                    scale.push_attribute(("z", ss.scale_z.as_str()));
+                    writer.write_event(Event::Empty(scale))?;
+                }
                 writer.write_event(Event::End(BytesEnd::new("scaledSolid")))?;
             }
             Solid::Boolean(bs) => {

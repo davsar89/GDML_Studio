@@ -204,9 +204,27 @@ fn tessellate_scaled_solid(
             resolving,
         )?;
 
-        let sx = resolve(engine, &ss.scale_x);
-        let sy = resolve(engine, &ss.scale_y);
-        let sz = resolve(engine, &ss.scale_z);
+        // A <scaleref> resolves against the named <scale> defines. Without this
+        // the reference fell through to the (1,1,1) defaults and the solid
+        // rendered unscaled, with nothing to indicate it.
+        let [sx, sy, sz] = match &ss.scale_ref {
+            Some(name) => match engine.scale_values.get(name) {
+                Some(v) => *v,
+                None => {
+                    engine.record_warning_public(format!(
+                        "scaledSolid \"{}\" references scale \"{}\", which is not defined; \
+                         rendering unscaled.",
+                        ss.name, name
+                    ));
+                    [1.0, 1.0, 1.0]
+                }
+            },
+            None => [
+                resolve(engine, &ss.scale_x),
+                resolve(engine, &ss.scale_y),
+                resolve(engine, &ss.scale_z),
+            ],
+        };
 
         Ok(scale_mesh(&inner_mesh, sx, sy, sz))
     })();

@@ -10,6 +10,7 @@ use crate::gdml::units;
 pub struct EvalEngine {
     pub context: EvalContext,
     pub position_values: HashMap<String, [f64; 3]>,
+    pub scale_values: HashMap<String, [f64; 3]>,
     pub rotation_values: HashMap<String, [f64; 3]>,
     pub length_symbols: HashSet<String>,
     pub angle_symbols: HashSet<String>,
@@ -32,6 +33,7 @@ impl EvalEngine {
             context: EvalContext::new(),
             position_values: HashMap::new(),
             rotation_values: HashMap::new(),
+            scale_values: HashMap::new(),
             length_symbols: HashSet::new(),
             angle_symbols: HashSet::new(),
             warnings: std::sync::Mutex::new(Vec::new()),
@@ -42,6 +44,7 @@ impl EvalEngine {
         // Rebuild derived state from scratch for the current document.
         self.context = EvalContext::new();
         self.position_values.clear();
+        self.scale_values.clear();
         self.rotation_values.clear();
         self.length_symbols.clear();
         self.angle_symbols.clear();
@@ -187,6 +190,15 @@ impl EvalEngine {
         for rot in &defines.rotations {
             let values = self.eval_rotation(rot)?;
             self.rotation_values.insert(rot.name.clone(), values);
+        }
+
+        // Evaluate named <scale> defines. Dimensionless, so no unit handling.
+        for sc in &defines.scales {
+            let comp = |e: &Option<String>| -> f64 {
+                e.as_deref().map(|x| self.resolve_value(x)).unwrap_or(1.0)
+            };
+            let values = [comp(&sc.x), comp(&sc.y), comp(&sc.z)];
+            self.scale_values.insert(sc.name.clone(), values);
         }
 
         Ok(())
