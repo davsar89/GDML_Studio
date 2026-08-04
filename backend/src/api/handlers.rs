@@ -1518,6 +1518,7 @@ mod tests {
         GdmlDocument {
             filename: filename.to_string(),
             root_attributes: Vec::new(),
+            order: Default::default(),
             defines: DefineSection::default(),
             materials: MaterialSection::default(),
             solids: SolidSection::default(),
@@ -1556,6 +1557,7 @@ mod tests {
             physvols: Vec::new(),
             auxiliaries: Vec::new(),
             replica: None,
+            body_comments: Vec::new(),
         }
     }
 

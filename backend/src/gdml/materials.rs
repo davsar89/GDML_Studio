@@ -100,6 +100,10 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     // XML declaration
     writer.write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
 
+    for text in &doc.order.prolog {
+        writer.write_event(Event::Comment(BytesText::from_escaped(text)))?;
+    }
+
     // <gdml> root. Reproduce the source's own attributes when we captured them;
     // fall back to the standard schema pair for documents built programmatically
     // (add_material and the handler tests) which have no source to copy.
@@ -126,10 +130,15 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
             .collect()
     };
 
-    write_defines(&mut writer, &doc.defines, &raw_in("define"))?;
-    write_materials(&mut writer, &doc.materials)?;
-    write_solids(&mut writer, &doc.solids, &raw_in("solids"))?;
-    write_structure(&mut writer, &doc.structure, &raw_in("structure"))?;
+    write_comments(&mut writer, &doc.order, "root", Some("define"))?;
+    write_defines(&mut writer, &doc.defines, &raw_in("define"), &doc.order)?;
+    write_comments(&mut writer, &doc.order, "root", Some("materials"))?;
+    write_materials(&mut writer, &doc.materials, &doc.order)?;
+    write_comments(&mut writer, &doc.order, "root", Some("solids"))?;
+    write_solids(&mut writer, &doc.solids, &raw_in("solids"), &doc.order)?;
+    write_comments(&mut writer, &doc.order, "root", Some("structure"))?;
+    write_structure(&mut writer, &doc.structure, &raw_in("structure"), &doc.order)?;
+    write_comments(&mut writer, &doc.order, "root", Some("setup"))?;
     write_setup(&mut writer, &doc.setup)?;
 
     // Elements that belong directly under <gdml> (e.g. <userinfo>).
@@ -138,8 +147,15 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
         writer.get_mut().write_all(raw.xml.as_bytes())?;
     }
 
+    // Comments that were inside <gdml> with nothing after them.
+    write_comments(&mut writer, &doc.order, "root", None)?;
+
     // </gdml>
     writer.write_event(Event::End(BytesEnd::new("gdml")))?;
+
+    for text in &doc.order.epilog {
+        writer.write_event(Event::Comment(BytesText::from_escaped(text)))?;
+    }
 
     let result = writer.into_inner().into_inner();
     Ok(String::from_utf8(result)?)
@@ -149,10 +165,12 @@ fn write_defines(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     defines: &DefineSection,
     raws: &[&RawElement],
+    order: &DocumentOrder,
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("define")))?;
 
     for c in &defines.constants {
+        write_comments(writer, order, "define", Some(&c.name))?;
         let mut elem = BytesStart::new("constant");
         elem.push_attribute(("name", c.name.as_str()));
         elem.push_attribute(("value", c.value.as_str()));
@@ -160,6 +178,7 @@ fn write_defines(
     }
 
     for q in &defines.quantities {
+        write_comments(writer, order, "define", Some(&q.name))?;
         let mut elem = BytesStart::new("quantity");
         elem.push_attribute(("name", q.name.as_str()));
         if let Some(ref t) = q.r#type {
@@ -173,6 +192,7 @@ fn write_defines(
     }
 
     for v in &defines.variables {
+        write_comments(writer, order, "define", Some(&v.name))?;
         let mut elem = BytesStart::new("variable");
         elem.push_attribute(("name", v.name.as_str()));
         elem.push_attribute(("value", v.value.as_str()));
@@ -180,6 +200,7 @@ fn write_defines(
     }
 
     for e in &defines.expressions {
+        write_comments(writer, order, "define", Some(&e.name))?;
         let mut elem = BytesStart::new("expression");
         elem.push_attribute(("name", e.name.as_str()));
         writer.write_event(Event::Start(elem))?;
@@ -188,6 +209,7 @@ fn write_defines(
     }
 
     for p in &defines.positions {
+        write_comments(writer, order, "define", Some(&p.name))?;
         let mut elem = BytesStart::new("position");
         elem.push_attribute(("name", p.name.as_str()));
         if let Some(ref x) = p.x {
@@ -206,6 +228,7 @@ fn write_defines(
     }
 
     for r in &defines.rotations {
+        write_comments(writer, order, "define", Some(&r.name))?;
         let mut elem = BytesStart::new("rotation");
         elem.push_attribute(("name", r.name.as_str()));
         if let Some(ref x) = r.x {
@@ -229,6 +252,7 @@ fn write_defines(
         write_raw(writer, raw)?;
     }
 
+    write_comments(writer, order, "define", None)?;
     writer.write_event(Event::End(BytesEnd::new("define")))?;
     Ok(())
 }
@@ -236,10 +260,12 @@ fn write_defines(
 fn write_materials(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     materials: &MaterialSection,
+    order: &DocumentOrder,
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("materials")))?;
 
     for iso in &materials.isotopes {
+        write_comments(writer, order, "materials", Some(&iso.name))?;
         let mut elem = BytesStart::new("isotope");
         elem.push_attribute(("name", iso.name.as_str()));
         if let Some(ref n) = iso.n {
@@ -260,6 +286,7 @@ fn write_materials(
     }
 
     for el in &materials.elements {
+        write_comments(writer, order, "materials", Some(&el.name))?;
         let mut elem = BytesStart::new("element");
         elem.push_attribute(("name", el.name.as_str()));
         if let Some(ref f) = el.formula {
@@ -288,6 +315,7 @@ fn write_materials(
     }
 
     for mat in &materials.materials {
+        write_comments(writer, order, "materials", Some(&mat.name))?;
         let mut elem = BytesStart::new("material");
         elem.push_attribute(("name", mat.name.as_str()));
         if let Some(ref f) = mat.formula {
@@ -363,6 +391,7 @@ fn write_materials(
         writer.write_event(Event::End(BytesEnd::new("material")))?;
     }
 
+    write_comments(writer, order, "materials", None)?;
     writer.write_event(Event::End(BytesEnd::new("materials")))?;
     Ok(())
 }
@@ -441,10 +470,12 @@ fn write_solids(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     solids: &SolidSection,
     raws: &[&RawElement],
+    order: &DocumentOrder,
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("solids")))?;
 
     for solid in &solids.solids {
+        write_comments(writer, order, "solids", Some(solid.name()))?;
         match solid {
             Solid::Box(b) => {
                 let mut elem = BytesStart::new("box");
@@ -1126,7 +1157,28 @@ fn write_solids(
         write_raw(writer, raw)?;
     }
 
+    write_comments(writer, order, "solids", None)?;
     writer.write_event(Event::End(BytesEnd::new("solids")))?;
+    Ok(())
+}
+
+/// Emit the comments anchored before `before` in `section`.
+///
+/// `BytesText::from_escaped` writes the body verbatim; `BytesText::new` would
+/// escape it and turn a `<` inside a comment into `&lt;`. Going through
+/// `write_event` rather than `write_raw` also keeps the writer's indentation
+/// state correct.
+fn write_comments(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    order: &DocumentOrder,
+    section: &str,
+    before: Option<&str>,
+) -> Result<()> {
+    for anchor in &order.anchors {
+        if anchor.section == section && anchor.before.as_deref() == before {
+            writer.write_event(Event::Comment(BytesText::from_escaped(&anchor.text)))?;
+        }
+    }
     Ok(())
 }
 
@@ -1158,13 +1210,19 @@ fn write_structure(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     structure: &StructureSection,
     raws: &[&RawElement],
+    order: &DocumentOrder,
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("structure")))?;
 
     for vol in &structure.volumes {
+        write_comments(writer, order, "structure", Some(&vol.name))?;
         let mut elem = BytesStart::new("volume");
         elem.push_attribute(("name", vol.name.as_str()));
         writer.write_event(Event::Start(elem))?;
+
+        for text in &vol.body_comments {
+            writer.write_event(Event::Comment(BytesText::from_escaped(text)))?;
+        }
 
         let mut mref = BytesStart::new("materialref");
         mref.push_attribute(("ref", vol.material_ref.as_str()));
@@ -1311,6 +1369,7 @@ fn write_structure(
         write_raw(writer, raw)?;
     }
 
+    write_comments(writer, order, "structure", None)?;
     writer.write_event(Event::End(BytesEnd::new("structure")))?;
     Ok(())
 }

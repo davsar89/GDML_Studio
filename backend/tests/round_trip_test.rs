@@ -230,6 +230,75 @@ fn nested_auxiliary_is_not_reparented() {
 }
 
 #[test]
+fn comments_survive_at_every_depth() {
+    let src = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!-- prolog comment -->
+<gdml>
+  <!-- before define -->
+  <define>
+    <!-- before a constant -->
+    <constant name="a" value="1"/>
+    <!-- trailing inside define -->
+  </define>
+  <!-- between sections -->
+  <materials>
+    <material name="Vacuum" state="gas"><D value="1e-25"/><atom value="1.008"/></material>
+  </materials>
+  <solids>
+    <!-- before a solid -->
+    <box name="WorldBox" x="1000" y="1000" z="1000" lunit="mm"/>
+  </solids>
+  <structure>
+    <volume name="World">
+      <!-- inside a volume body -->
+      <materialref ref="Vacuum"/>
+      <solidref ref="WorldBox"/>
+    </volume>
+  </structure>
+  <!-- before setup -->
+  <setup name="Default" version="1.0"><world ref="World"/></setup>
+</gdml>
+<!-- epilog comment -->"#;
+
+    let out = round_trip(src.as_bytes(), "comments.gdml");
+    for expected in [
+        "prolog comment",
+        "before define",
+        "before a constant",
+        "trailing inside define",
+        "between sections",
+        "before a solid",
+        "inside a volume body",
+        "before setup",
+        "epilog comment",
+    ] {
+        assert!(out.contains(expected), "lost comment {expected:?}:\n{out}");
+    }
+    assert_tokens_preserved(src, &out);
+}
+
+#[test]
+fn comment_bodies_are_not_escaped() {
+    // Comment content is not XML-escaped, so it must not be unescaped on read
+    // nor escaped on write -- `BytesText::new` would turn `<` into `&lt;`.
+    // Commented-out markup is common in real files: fermi_simple_elements_
+    // satellite.gdml has 11 commented-out <auxiliary/> elements.
+    let src = doc_with(
+        "",
+        r#"    <volume name="Mother">
+      <!-- <auxiliary auxtype="Hierarchy" auxvalue="a &amp; b"/> -->
+      <materialref ref="Vacuum"/>
+      <solidref ref="WorldBox"/>
+    </volume>"#,
+    );
+    let out = round_trip(src.as_bytes(), "escape.gdml");
+    assert!(
+        out.contains(r#"<!-- <auxiliary auxtype="Hierarchy" auxvalue="a &amp; b"/> -->"#),
+        "comment body was mangled:\n{out}"
+    );
+}
+
+#[test]
 fn export_is_idempotent_across_the_corpus() {
     for path in sample_files() {
         let name = path.file_name().unwrap().to_string_lossy().to_string();
@@ -257,7 +326,7 @@ fn export_drops_nothing_from_the_corpus() {
         // samples (64 in pinhole_lab.gdml alone), all deleted on save.
         // Preserving them requires the writer to interleave with parsed content
         // rather than emit typed collections in a fixed order.
-        "C:",
+
         // DOCTYPE and internal ENTITY declarations. quick-xml does not expand
         // entities, so `&size;` also survives verbatim into an expression and
         // then fails to evaluate. No shipped sample uses either.

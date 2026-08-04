@@ -15,6 +15,10 @@ pub struct GdmlDocument {
     /// being silently dropped.
     #[serde(default)]
     pub raw_unknown: Vec<RawElement>,
+    /// Comment placement, so a load → save round trip does not delete the user's
+    /// annotations. See [`DocumentOrder`].
+    #[serde(default)]
+    pub order: DocumentOrder,
     /// Attributes on the `<gdml>` root, captured verbatim. The writer used to
     /// hardcode two xsi attributes, so anything else — most commonly
     /// `xmlns:gdml`, present in 5 of the 10 shipped samples — was dropped.
@@ -25,6 +29,37 @@ pub struct GdmlDocument {
     /// warnings: these are NOT preserved and will be missing from a save.
     #[serde(default)]
     pub skipped_unsupported: Vec<String>,
+}
+
+/// One run of XML comments, anchored to the element that followed it.
+///
+/// Comments are stored by *anchor* rather than by absolute index because the
+/// document is a set of typed collections that the writer emits in a fixed
+/// order — there is no single position a comment could be pinned to. Anchoring
+/// to the name of the next element keeps a comment attached to the thing it
+/// describes even though the surrounding items may be re-ordered on write.
+///
+/// A comment anchored to an element that is later deleted goes with it, which is
+/// the desired behaviour: a comment about a material the user removed should not
+/// outlive it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommentAnchor {
+    /// `"root"`, `"define"`, `"materials"`, `"solids"` or `"structure"`.
+    pub section: String,
+    /// `name` of the element this run precedes, or `None` for comments at the
+    /// end of a section with nothing after them.
+    pub before: Option<String>,
+    pub text: String,
+}
+
+/// Where the source document's comments were, so they can be put back.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DocumentOrder {
+    /// Comments before the `<gdml>` element.
+    pub prolog: Vec<String>,
+    pub anchors: Vec<CommentAnchor>,
+    /// Comments after `</gdml>`.
+    pub epilog: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -692,6 +727,15 @@ pub struct Volume {
     pub physvols: Vec<PhysVol>,
     pub auxiliaries: Vec<Auxiliary>,
     pub replica: Option<ReplicaVol>,
+    /// Comments found inside this volume's body.
+    ///
+    /// Re-emitted together at the top of the volume rather than at their exact
+    /// original positions: a physvol usually has no `name`, so there is nothing
+    /// stable to anchor an individual comment to. Content is preserved; position
+    /// within the volume is not. In practice these are commented-out physvols
+    /// and section banners, for which that is adequate.
+    #[serde(default)]
+    pub body_comments: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

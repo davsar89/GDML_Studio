@@ -28,18 +28,12 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
     // Elements recognized by name but not interpreted; preserved verbatim.
     let mut raw_unknown: Vec<RawElement> = Vec::new();
     let mut root_attributes: Vec<(String, String)> = Vec::new();
+    let mut order = DocumentOrder::default();
+    // Comments seen since the last element; they anchor to whatever comes next.
+    let mut pending_comments: Vec<String> = Vec::new();
+    let mut seen_root = false;
     // Unsupported constructs that had to be dropped entirely (warn the user).
     let mut skipped_unsupported: Vec<String> = Vec::new();
-
-    #[derive(Debug, PartialEq)]
-    enum Section {
-        None,
-        Define,
-        Materials,
-        MaterialsDefine,
-        Solids,
-        Structure,
-    }
 
     let mut section = Section::None;
     let mut buf = Vec::new();
@@ -50,6 +44,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             Ok(Event::Start(ref e)) => {
                 let local = e.local_name();
                 let tag = local.as_ref();
+                anchor_pending_comments(&mut pending_comments, &mut order, section, e, tag);
                 match tag {
                     b"define" => {
                         if section == Section::Materials {
@@ -64,6 +59,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     // Capture the root's own attributes so the writer can
                     // reproduce them instead of substituting a hardcoded pair.
                     b"gdml" => {
+                        seen_root = true;
                         root_attributes = e
                             .attributes()
                             .filter_map(|a| a.ok())
@@ -268,6 +264,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             Ok(Event::Empty(ref e)) => {
                 let local = e.local_name();
                 let tag = local.as_ref();
+                anchor_pending_comments(&mut pending_comments, &mut order, section, e, tag);
                 match tag {
                     b"constant" if section == Section::Define => {
                         parse_constant(e, &mut defines);
@@ -394,6 +391,27 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             }
             Ok(Event::End(ref e)) => {
                 let local = e.local_name();
+                // Comments with nothing after them in this section anchor to its
+                // end rather than being lost.
+                if !pending_comments.is_empty()
+                    && matches!(
+                        local.as_ref(),
+                        b"define" | b"materials" | b"solids" | b"structure" | b"gdml"
+                    )
+                {
+                    let sect = if local.as_ref() == b"gdml" {
+                        "root".to_string()
+                    } else {
+                        section_key(section)
+                    };
+                    for text in pending_comments.drain(..) {
+                        order.anchors.push(CommentAnchor {
+                            section: sect.clone(),
+                            before: None,
+                            text,
+                        });
+                    }
+                }
                 match local.as_ref() {
                     b"define" => {
                         if section == Section::MaterialsDefine {
@@ -406,6 +424,18 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"solids" => section = Section::None,
                     b"structure" => section = Section::None,
                     _ => {}
+                }
+            }
+            // Comments are content: the user wrote them, and export used to
+            // delete every one (155 across 7 of the 10 shipped samples).
+            // `from_utf8_lossy` without unescaping, deliberately — comment bodies
+            // are not XML-escaped, so unescaping would corrupt a literal `&amp;`.
+            Ok(Event::Comment(ref e)) => {
+                let text = String::from_utf8_lossy(e).to_string();
+                if seen_root {
+                    pending_comments.push(text);
+                } else {
+                    order.prolog.push(text);
                 }
             }
             Ok(Event::Eof) => break,
@@ -432,6 +462,11 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             world_ref: String::new(),
         }),
         raw_unknown,
+        order: {
+            // Anything still pending sits after </gdml>.
+            order.epilog.extend(pending_comments);
+            order
+        },
         root_attributes,
         skipped_unsupported,
     })
@@ -479,6 +514,76 @@ fn empty_element_to_string(e: &BytesStart) -> Result<String> {
 }
 
 // ─── Attribute helpers ───────────────────────────────────────────────────────
+
+/// Which top-level GDML section the parser is currently inside.
+///
+/// Module-scoped rather than local to the parse loop so the comment-anchoring
+/// helpers below can take it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Section {
+    None,
+    Define,
+    Materials,
+    MaterialsDefine,
+    Solids,
+    Structure,
+}
+
+/// Name of the section a comment belongs to, for [`CommentAnchor::section`].
+fn section_key(section: Section) -> String {
+    match section {
+        Section::Define | Section::MaterialsDefine => "define",
+        Section::Materials => "materials",
+        Section::Solids => "solids",
+        Section::Structure => "structure",
+        Section::None => "root",
+    }
+    .to_string()
+}
+
+/// Attach any comments seen since the last element to the element now starting.
+///
+/// Called from the single top-level dispatch point, which every named
+/// define/material/solid/volume and every raw element passes through, so one
+/// hook covers them all.
+fn anchor_pending_comments(
+    pending: &mut Vec<String>,
+    order: &mut DocumentOrder,
+    section: Section,
+    e: &BytesStart,
+    tag: &[u8],
+) {
+    if pending.is_empty() {
+        return;
+    }
+    // A section element is itself the anchor, at root level -- that is where
+    // the comments between </materials> and <solids> belong.
+    let is_section = matches!(
+        tag,
+        b"define" | b"materials" | b"solids" | b"structure" | b"setup"
+    );
+    let (sect, before) = if is_section {
+        (
+            "root".to_string(),
+            Some(String::from_utf8_lossy(tag).to_string()),
+        )
+    } else {
+        match get_attr(e, "name") {
+            Some(name) => (section_key(section), Some(name)),
+            // Unnamed element: keep the comments pending so they attach to the
+            // next named one rather than being silently dropped.
+            None => return,
+        }
+    };
+
+    for text in pending.drain(..) {
+        order.anchors.push(CommentAnchor {
+            section: sect.clone(),
+            before: before.clone(),
+            text,
+        });
+    }
+}
 
 fn get_attr(e: &BytesStart, name: &str) -> Option<String> {
     for attr in e.attributes().flatten() {
@@ -1405,6 +1510,7 @@ fn read_volume_body(
     let mut physvols = Vec::new();
     let mut auxiliaries = Vec::new();
     let mut replica = None;
+    let mut body_comments: Vec<String> = Vec::new();
     let mut buf = Vec::new();
 
     loop {
@@ -1476,6 +1582,9 @@ fn read_volume_body(
                     break;
                 }
             }
+            Ok(Event::Comment(ref c)) => {
+                body_comments.push(String::from_utf8_lossy(c).to_string());
+            }
             Ok(Event::Eof) => break,
             Err(e) => return Err(anyhow::anyhow!("XML error in volume: {}", e)),
             _ => {}
@@ -1489,6 +1598,7 @@ fn read_volume_body(
         physvols,
         auxiliaries,
         replica,
+        body_comments,
     });
     Ok(())
 }
