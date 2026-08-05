@@ -863,3 +863,75 @@ fn twistedtubs_nseg_and_totphi_set_the_sweep() {
         "volume {vol:.2}, expected {expected:.2} (rel {rel:.4})"
     );
 }
+
+#[test]
+fn a_loop_is_expanded_for_geometry_but_kept_for_export() {
+    use gdml_studio_backend::gdml::loops::expand_loops;
+    use gdml_studio_backend::gdml::materials::serialize_gdml;
+    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
+
+    let src = r#"<?xml version="1.0"?>
+<gdml>
+  <define><variable name="i" value="0"/></define>
+  <materials>
+    <material name="M" Z="1"><D value="1"/><atom value="1"/></material>
+  </materials>
+  <solids>
+    <box name="World" x="1000" y="1000" z="1000" lunit="mm"/>
+    <box name="Blk" x="10" y="10" z="10" lunit="mm"/>
+  </solids>
+  <structure>
+    <volume name="Inner"><materialref ref="M"/><solidref ref="Blk"/></volume>
+    <volume name="W">
+      <materialref ref="M"/><solidref ref="World"/>
+      <loop for="i" from="1" to="4" step="1">
+        <physvol><volumeref ref="Inner"/><position name="p" z="i*20" unit="mm"/></physvol>
+      </loop>
+    </volume>
+  </structure>
+  <setup name="Default" version="1.0"><world ref="W"/></setup>
+</gdml>"#;
+
+    // The source document keeps the loop and gains no physvols from it.
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
+    let w = doc
+        .structure
+        .volumes
+        .iter()
+        .find(|v| v.name == "W")
+        .unwrap();
+    assert_eq!(w.loops.len(), 1);
+    assert!(w.physvols.is_empty());
+    assert!(
+        serialize_gdml(&doc).unwrap().contains("<loop"),
+        "export must keep the loop"
+    );
+
+    // The render twin has the four placements, at z = 20, 40, 60, 80.
+    let mut engine = EvalEngine::new();
+    engine.evaluate_all(&doc.defines).unwrap();
+    let expanded = expand_loops(src, &engine).unwrap();
+    let render = parse_gdml_from_bytes(expanded.as_bytes(), "t.gdml".to_string()).unwrap();
+    let rw = render
+        .structure
+        .volumes
+        .iter()
+        .find(|v| v.name == "W")
+        .unwrap();
+    assert_eq!(rw.physvols.len(), 4, "expected four expanded placements");
+    assert!(rw.loops.is_empty(), "the loop should be gone from the twin");
+
+    let mut engine2 = EvalEngine::new();
+    engine2.evaluate_all(&render.defines).unwrap();
+    let zs: Vec<f64> = rw
+        .physvols
+        .iter()
+        .map(|pv| match pv.position {
+            Some(gdml_studio_backend::gdml::model::PlacementPos::Inline(ref p)) => {
+                engine2.resolve_value(p.z.as_deref().unwrap_or("0"))
+            }
+            _ => f64::NAN,
+        })
+        .collect();
+    assert_eq!(zs, vec![20.0, 40.0, 60.0, 80.0], "placement z values");
+}

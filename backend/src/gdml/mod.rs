@@ -1,4 +1,5 @@
 pub mod defines;
+pub mod loops;
 pub mod materials;
 pub mod model;
 pub mod parser;

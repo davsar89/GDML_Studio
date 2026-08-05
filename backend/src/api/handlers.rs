@@ -382,9 +382,11 @@ fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
             // <loop> is a special case: unlike the other preserved tags it is
             // partly rendered, because its body is read as if the loop wrapper
             // were not there. The generic wording was wrong in both directions.
-            "loop" => "<loop> is preserved exactly as written on save, but it is NOT expanded: \
-                       only one iteration's worth of contents appears in the 3D view and in \
-                       the summary counts. The exported file is faithful; the preview is not."
+            // Expansion feeds a separate render document, so the solid and
+            // volume COUNTS in the summary still come from the source and
+            // report the loop as written rather than as drawn.
+            "loop" => "<loop> is expanded for the 3D view and preserved exactly as written \
+                       on save. The summary counts the loop once, not once per iteration."
                 .to_string(),
             other => format!(
                 "<{}> elements are preserved on save but are not interpreted or rendered.",
@@ -426,10 +428,18 @@ pub async fn upload_file(
         .evaluate_all(&doc.defines)
         .map_err(|e| ApiError::internal(&format!("Expression evaluation error: {}", e)))?;
 
+    // Expand <loop> for the preview. The parsed `doc` keeps its loops verbatim
+    // so the export stays faithful; geometry is built from the twin.
+    let mut loop_warnings = Vec::new();
+    let render = build_render_document(&req.content, &req.filename, &engine, &mut loop_warnings);
+    let geometry = render.as_ref().unwrap_or(&doc);
+
     // Tessellate solids
     let segments = req.segments.unwrap_or_else(config::mesh_segments);
-    let (meshes, mut warnings) = tessellator::tessellate_all_solids(&doc.solids, &engine, segments)
-        .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
+    let (meshes, mut warnings) =
+        tessellator::tessellate_all_solids(&geometry.solids, &engine, segments)
+            .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
+    warnings.append(&mut loop_warnings);
     // Surface non-fatal expression-evaluation failures (treated as 0) to the user.
     warnings.extend(engine.take_warnings());
     warnings.extend(raw_unknown_warnings(&doc));
@@ -456,6 +466,7 @@ pub async fn upload_file(
     let mut state_w = state.write().await;
     state_w.loaded = Some(LoadedDocument {
         document: doc,
+        render,
         engine,
         meshes,
         warnings,
@@ -511,11 +522,31 @@ pub async fn upload_files(
         .evaluate_all(&main_doc.defines)
         .map_err(|e| ApiError::internal(&format!("Expression evaluation error: {}", e)))?;
 
+    // Loops are not expanded for a multi-file load. Each file is parsed
+    // separately and then merged, so there is no single XML document to expand,
+    // and a loop's bounds may reference defines that only exist after the
+    // merge. Rather than expand each file against a partial symbol table and be
+    // wrong in the cross-file case, say so and render unexpanded.
+    let loop_files: Vec<&str> = req
+        .files
+        .iter()
+        .filter(|(_, c)| c.contains("<loop"))
+        .map(|(n, _)| n.as_str())
+        .collect();
+    let mut loop_warnings = Vec::new();
+    if !loop_files.is_empty() {
+        loop_warnings.push(format!(
+            "<loop> is not expanded for multi-file loads ({}); those placements are              missing from the preview. The saved file is unaffected.",
+            loop_files.join(", ")
+        ));
+    }
+
     // Tessellate solids
     let segments = req.segments.unwrap_or_else(config::mesh_segments);
     let (meshes, mut warnings) =
         tessellator::tessellate_all_solids(&main_doc.solids, &engine, segments)
             .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
+    warnings.append(&mut loop_warnings);
     // Surface non-fatal expression-evaluation failures (treated as 0) to the user.
     warnings.extend(engine.take_warnings());
     warnings.extend(raw_unknown_warnings(&main_doc));
@@ -542,6 +573,7 @@ pub async fn upload_files(
     let mut state_w = state.write().await;
     state_w.loaded = Some(LoadedDocument {
         document: main_doc,
+        render: None,
         engine,
         meshes,
         warnings,
@@ -591,7 +623,12 @@ pub async fn get_scene(State(state): State<SharedState>) -> Result<Json<Value>, 
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
     let mut scene_warnings = Vec::new();
-    let scene_graph = build_scene_graph(&loaded.document, &loaded.engine, &mut scene_warnings);
+    let scene_graph = build_scene_graph(
+        loaded.geometry(),
+        &loaded.document.materials,
+        &loaded.engine,
+        &mut scene_warnings,
+    );
 
     Ok(Json(json!({
         "scene_graph": scene_graph,
@@ -607,11 +644,12 @@ pub async fn get_meshes(State(state): State<SharedState>) -> Result<Json<Value>,
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
     let doc = &loaded.document;
+    let geometry = loaded.geometry();
     let engine = &loaded.engine;
 
     // Build scene graph from the world volume
     let mut scene_warnings = Vec::new();
-    let scene_graph = build_scene_graph(doc, engine, &mut scene_warnings);
+    let scene_graph = build_scene_graph(geometry, &doc.materials, engine, &mut scene_warnings);
 
     // Serialise the mesh buffers by reference. Cloning them and then handing the
     // result to `json!` cost three copies: the clone, a serde_json::Value tree
@@ -756,8 +794,51 @@ pub async fn get_structure(State(state): State<SharedState>) -> Result<Json<Valu
 
 // ─── Scene graph builder ─────────────────────────────────────────────────────
 
+/// Build the loop-expanded twin of a freshly parsed document.
+///
+/// Returns `None` when the source has no `<loop>`, so the common case costs one
+/// substring search and nothing else. Expansion failures are reported as
+/// warnings and fall back to the unexpanded document rather than refusing the
+/// upload: a file that renders incompletely is more useful than one that will
+/// not open.
+fn build_render_document(
+    source_xml: &str,
+    filename: &str,
+    engine: &EvalEngine,
+    warnings: &mut Vec<String>,
+) -> Option<GdmlDocument> {
+    if !source_xml.contains("<loop") {
+        return None;
+    }
+    match crate::gdml::loops::expand_loops(source_xml, engine) {
+        Ok(expanded) => {
+            match parser::parse_gdml_from_bytes(expanded.as_bytes(), filename.to_string()) {
+                Ok(doc) => Some(doc),
+                Err(e) => {
+                    warnings.push(format!(
+                        "<loop> expanded but the result did not parse ({e}); the preview                          shows the geometry unexpanded. The saved file is unaffected."
+                    ));
+                    None
+                }
+            }
+        }
+        Err(e) => {
+            warnings.push(format!(
+                "<loop> could not be expanded ({e}); its placements are missing from the                  preview. The saved file is unaffected."
+            ));
+            None
+        }
+    }
+}
+
+/// Build the scene from `doc`'s structure and `materials` for colouring.
+///
+/// The two are separate because `doc` may be the loop-expanded render
+/// document while materials are only ever edited on the source. Passing them
+/// apart makes that explicit rather than relying on the two being kept in sync.
 fn build_scene_graph(
     doc: &GdmlDocument,
+    materials: &crate::gdml::model::MaterialSection,
     engine: &EvalEngine,
     warnings: &mut Vec<String>,
 ) -> SceneNode {
@@ -770,8 +851,7 @@ fn build_scene_graph(
         .collect();
 
     // Build material name → density (g/cm³) lookup
-    let density_map: HashMap<&str, f64> = doc
-        .materials
+    let density_map: HashMap<&str, f64> = materials
         .materials
         .iter()
         .filter_map(|m| {
@@ -1780,6 +1860,7 @@ mod tests {
             let mut w = state.write().await;
             w.loaded = Some(LoadedDocument {
                 document: doc,
+                render: None,
                 engine: EvalEngine::new(),
                 meshes: HashMap::new(),
                 warnings: Vec::new(),
@@ -1828,6 +1909,7 @@ mod tests {
             let mut w = state.write().await;
             w.loaded = Some(LoadedDocument {
                 document: doc,
+                render: None,
                 engine: EvalEngine::new(),
                 meshes: HashMap::new(),
                 warnings: Vec::new(),
@@ -1862,6 +1944,7 @@ mod tests {
             let mut w = state.write().await;
             w.loaded = Some(LoadedDocument {
                 document: doc,
+                render: None,
                 engine: EvalEngine::new(),
                 meshes: HashMap::new(),
                 warnings: Vec::new(),
@@ -1891,6 +1974,7 @@ mod tests {
             let mut w = state.write().await;
             w.loaded = Some(LoadedDocument {
                 document: doc,
+                render: None,
                 engine: EvalEngine::new(),
                 meshes: HashMap::new(),
                 warnings: Vec::new(),
@@ -1924,6 +2008,7 @@ mod tests {
             let mut w = state.write().await;
             w.loaded = Some(LoadedDocument {
                 document: doc,
+                render: None,
                 engine: EvalEngine::new(),
                 meshes: HashMap::new(),
                 warnings: Vec::new(),
@@ -1960,6 +2045,7 @@ mod tests {
             let mut w = state.write().await;
             w.loaded = Some(LoadedDocument {
                 document: doc,
+                render: None,
                 engine: EvalEngine::new(),
                 meshes: HashMap::new(),
                 warnings: Vec::new(),
@@ -2065,7 +2151,7 @@ mod tests {
 
         let engine = EvalEngine::new();
         let mut warnings = Vec::new();
-        let graph = build_scene_graph(&doc, &engine, &mut warnings);
+        let graph = build_scene_graph(&doc, &doc.materials, &engine, &mut warnings);
         assert_eq!(graph.children.len(), 2);
         assert_eq!(graph.children[0].volume_name, graph.children[1].volume_name);
         assert_ne!(graph.children[0].instance_id, graph.children[1].instance_id);
@@ -2113,7 +2199,7 @@ mod tests {
 
         let engine = EvalEngine::new();
         let mut warnings = Vec::new();
-        let graph = build_scene_graph(&doc, &engine, &mut warnings);
+        let graph = build_scene_graph(&doc, &doc.materials, &engine, &mut warnings);
         // Geant4 centers the stack: 4 slices of width 10 -> x = -15, -5, +5, +15
         let xs: Vec<f64> = graph.children.iter().map(|c| c.position[0]).collect();
         assert_eq!(xs, vec![-15.0, -5.0, 5.0, 15.0]);
@@ -2146,7 +2232,7 @@ mod tests {
 
         let engine = EvalEngine::new();
         let mut warnings = Vec::new();
-        let graph = build_scene_graph(&doc, &engine, &mut warnings);
+        let graph = build_scene_graph(&doc, &doc.materials, &engine, &mut warnings);
         (graph, warnings)
     }
 
