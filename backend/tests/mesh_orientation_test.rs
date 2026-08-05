@@ -393,7 +393,9 @@ fn cut_tube_quarter_straight_cuts() {
 
 #[test]
 fn twisted_tubs_quarter_no_twist() {
-    let m = tessellate_twisted_tubs(0.0, 10.0, 20.0, PI / 2.0, 0.0, SEG);
+    // Zero twist collapses the hyperboloid to a plain tube: the exact limit,
+    // since tanStereo is proportional to tan(twist/2).
+    let m = tessellate_twisted_tubs(0.0, 10.0, -10.0, 10.0, PI / 2.0, 0.0, SEG);
     assert_volume(
         &m,
         0.5 * (PI / 2.0) * 100.0 * 20.0,
@@ -557,4 +559,50 @@ fn polyhedra_radii_are_still_apothems() {
     let r_vertex = apothem / (PI / n as f64).cos();
     let area = 0.5 * n as f64 * r_vertex * r_vertex * (2.0 * PI / n as f64).sin();
     assert_volume(&m, area * 10.0, 0.01, "polyhedra hexagonal prism");
+}
+
+#[test]
+fn twisted_tubs_is_a_hyperboloid_not_a_cylinder() {
+    // G4TwistedTubs::SetFields (inline in G4TwistedTubs.hh):
+    //   tanStereo    = |r_mid * tan(twist/2)| / zHalfLength
+    //   endRadius[i] = sqrt(r_mid^2 + endZ[i]^2 * tanStereo^2)
+    // which closes to r_end = r_mid / cos(twist/2).
+    //
+    // Meshing at constant radius made the twist geometrically INVISIBLE for a
+    // full 2*pi sweep -- rotating a constant-radius circle about its own axis
+    // is the identity, so the mesh was bit-for-bit a plain tube.
+    let r_mid = 10.0;
+    let z_half = 10.0;
+    let twist = PI / 3.0; // 60 degrees
+
+    let m = tessellate_twisted_tubs(0.0, r_mid, -z_half, z_half, 2.0 * PI, twist, 256);
+
+    // Solid of revolution of r(z)^2 = r_mid^2 + z^2 tan^2:
+    //   V = pi * INT(-h..h) r(z)^2 dz = 2*pi*h*(r_mid^2 + h^2 tan^2 / 3)
+    let tan_stereo = (r_mid * (0.5 * twist).tan()).abs() / z_half;
+    let expected =
+        2.0 * PI * z_half * (r_mid * r_mid + z_half * z_half * tan_stereo * tan_stereo / 3.0);
+    assert_volume(&m, expected, 0.01, "twistedtubs hyperboloid");
+    assert_normals_match_winding(&m, "twistedtubs hyperboloid");
+
+    // The regression guard: a straight tube of the waist radius is 12.2% smaller
+    // here, so the assertion above genuinely distinguishes the two surfaces.
+    let cylinder = PI * r_mid * r_mid * 2.0 * z_half;
+    assert!(
+        (expected - cylinder) / cylinder > 0.1,
+        "fixture does not distinguish a hyperboloid from a cylinder"
+    );
+
+    // End radius must match the closed form r_mid / cos(twist/2).
+    let want_end = r_mid / (0.5 * twist).cos();
+    let max_r = (0..m.positions.len() / 3)
+        .map(|i| {
+            let (x, y) = (m.positions[i * 3] as f64, m.positions[i * 3 + 1] as f64);
+            (x * x + y * y).sqrt()
+        })
+        .fold(0.0f64, f64::max);
+    assert!(
+        (max_r - want_end).abs() / want_end < 0.01,
+        "end radius {max_r:.4}, expected r_mid/cos(twist/2) = {want_end:.4}"
+    );
 }

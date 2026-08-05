@@ -737,13 +737,36 @@ pub struct Arb8Solid {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// `<twistedtubs>`.
+///
+/// Two mutually exclusive parameterisations, selected by `zlen`
+/// (`G4GDMLReadSolids.cc:3330`): non-zero picks the end-radius form, zero picks
+/// the mid-radius form with explicit z bounds. Note `zlen` is a HALF-length --
+/// it is passed to the constructor's `halfzlen` parameter, which then calls
+/// `SetFields(..., -halfzlen, halfzlen)`.
+///
+/// The sweep is `totphi / nseg` when `nseg` is given, else `phi`.
+#[derive(Default)]
 pub struct TwistedTubsSolid {
     pub name: String,
     pub twistedangle: String,
     pub endinnerrad: Option<String>,
-    pub endouterrad: String,
-    pub zlen: String,
+    pub endouterrad: Option<String>,
+    /// Half-length, not full length. Absent or zero selects the mid-radius form.
+    pub zlen: Option<String>,
     pub phi: Option<String>,
+    #[serde(default)]
+    pub midinnerrad: Option<String>,
+    #[serde(default)]
+    pub midouterrad: Option<String>,
+    #[serde(default)]
+    pub negative_endz: Option<String>,
+    #[serde(default)]
+    pub positive_endz: Option<String>,
+    #[serde(default)]
+    pub nseg: Option<String>,
+    #[serde(default)]
+    pub totphi: Option<String>,
     pub aunit: Option<String>,
     pub lunit: Option<String>,
 }

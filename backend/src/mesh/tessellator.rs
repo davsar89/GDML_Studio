@@ -805,49 +805,66 @@ fn tessellate_twisted_tubs_solid(
 ) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let aunit = s.aunit.as_deref().unwrap_or("rad");
-    let rmin = resolve_opt_with_lunit(engine, &s.endinnerrad, lunit);
-    let rmax = resolve_with_lunit(engine, &s.endouterrad, lunit);
-    let zlen = resolve_with_lunit(engine, &s.zlen, lunit);
     let twist_angle = resolve_with_aunit(engine, &s.twistedangle, aunit);
-    let phi = match &s.phi {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => 2.0 * PI,
+
+    // `fDPhi = totphi / nseg` when segmented, else the plain `phi`
+    // (G4TwistedTubs.cc:129, G4GDMLReadSolids.cc:3330).
+    let nseg = s
+        .nseg
+        .as_ref()
+        .map(|e| engine.resolve_value(e))
+        .unwrap_or(0.0);
+    let deltaphi = if nseg >= 1.0 {
+        match &s.totphi {
+            Some(e) => resolve_with_aunit(engine, e, aunit) / nseg,
+            None => 2.0 * PI / nseg,
+        }
+    } else {
+        match &s.phi {
+            Some(e) => resolve_with_aunit(engine, e, aunit),
+            None => 2.0 * PI,
+        }
     };
 
-    // G4GDMLReadSolids offers two parameterisations: end radii with `zlen`, or
-    // mid radii with `negativeEndz`/`positiveEndz` when `zlen` is zero. Only the
-    // first is modelled, and the parser defaults `zlen` to "0", so a file using
-    // the second silently produced a zero-thickness (invisible) solid.
-    if zlen.abs() < 1e-12 {
+    // Two parameterisations, selected by `zlen` being non-zero. Note `zlen` is
+    // a HALF-length: the reader passes it to the constructor's `halfzlen`,
+    // which calls SetFields(.., -halfzlen, halfzlen), so the solid spans
+    // [-zlen, +zlen].
+    let zlen = resolve_opt_with_lunit(engine, &s.zlen, lunit);
+    let (rmin_mid, rmax_mid, z_neg, z_pos) = if zlen.abs() > 1e-12 {
+        // End-radius form. The constructor converts to waist radii via
+        // sqrt(rEnd^2 - (rEnd*sin(twist/2))^2), i.e. rEnd*|cos(twist/2)|
+        // (G4TwistedTubs.cc:118-127).
+        let cos_half = (0.5 * twist_angle).cos().abs();
+        let r_in_end = resolve_opt_with_lunit(engine, &s.endinnerrad, lunit);
+        let r_out_end = resolve_opt_with_lunit(engine, &s.endouterrad, lunit);
+        (r_in_end * cos_half, r_out_end * cos_half, -zlen, zlen)
+    } else {
+        // Mid-radius form: radii are already the waist values and the z bounds
+        // are given outright, so they need not be symmetric about the origin.
+        let r_in = resolve_opt_with_lunit(engine, &s.midinnerrad, lunit);
+        let r_out = resolve_opt_with_lunit(engine, &s.midouterrad, lunit);
+        let z_neg = resolve_opt_with_lunit(engine, &s.negative_endz, lunit);
+        let z_pos = resolve_opt_with_lunit(engine, &s.positive_endz, lunit);
+        (r_in, r_out, z_neg, z_pos)
+    };
+
+    if (z_pos - z_neg).abs() < 1e-12 || rmax_mid <= 1e-12 {
         anyhow::bail!(
-            "twistedtubs \"{}\" uses the midinnerrad/negativeEndz/positiveEndz form \
-             (zlen = 0), which is not supported. The solid is skipped rather than \
-             drawn with zero thickness.",
-            s.name
+            "twistedtubs \"{}\" has no extent (outer radius {} mm over z {}..{} mm);              check that either zlen or midouterrad/negativeEndz/positiveEndz is set.",
+            s.name,
+            rmax_mid,
+            z_neg,
+            z_pos
         );
     }
 
-    // The radius is held constant along z, so this is a straight tube segment,
-    // not the hyperboloid G4TwistedTubs actually builds -- that the real surface
-    // is not a cylinder is clear from the reader offering both `endinnerrad` and
-    // `midinnerrad`, which would be redundant otherwise. Note that for a full
-    // 2*PI sweep the twist has no geometric effect at all here: rotating a
-    // constant-radius circle about its own axis is the identity, so the mesh is
-    // bit-for-bit a plain tube. G4TwistedTubs.cc is not among the vendored
-    // reference sources, so the exact profile could not be established; warn
-    // rather than guess at it.
-    engine.record_warning_public(format!(
-        "twistedtubs \"{}\" is approximated as a straight tube segment: its \
-         inner and outer surfaces are really hyperboloids, so the waist near \
-         z=0 is drawn too wide. Dimensions elsewhere are correct.",
-        s.name
-    ));
-
     Ok(twisted_tubs_mesh::tessellate_twisted_tubs(
-        rmin,
-        rmax,
-        zlen,
-        phi,
+        rmin_mid,
+        rmax_mid,
+        z_neg,
+        z_pos,
+        deltaphi,
         twist_angle,
         segments,
     ))

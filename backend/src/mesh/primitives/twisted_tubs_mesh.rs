@@ -45,303 +45,183 @@ fn emit_quad(
     }
 }
 
-/// Generate a twisted tube mesh.
-/// `zlen` is the FULL Z-length (halved internally). `deltaphi` is the azimuthal
-/// span in radians (start is always 0). `twist_angle` is the total twist over
-/// the full Z-length in radians.
+/// Tessellate a `<twistedtubs>`.
+///
+/// Both radii are the **z = 0** (waist) values, matching `G4TwistedTubs`'s
+/// `fInnerRadius`/`fOuterRadius`. The lateral surfaces are hyperboloids, not
+/// cylinders: `G4TwistedTubs::SetFields` (inline in `G4TwistedTubs.hh`) sets
+///
+/// ```text
+/// tanStereo       = |r_mid * tan(twist/2)| / zHalfLength
+/// endRadius[i]    = sqrt(r_mid^2 + endZ[i]^2 * tanStereo^2)
+/// endPhi[i]       = atan2(endZ[i] * tan(twist/2), zHalfLength)
+/// ```
+///
+/// so radius grows away from the waist and reaches `r_mid / cos(twist/2)` at the
+/// ends. That is why the GDML reader offers `endinnerrad` *and* `midinnerrad` —
+/// they are different surfaces of the same solid.
+///
+/// A zero twist makes `tanStereo` zero and the profile collapses to a plain
+/// tube, which is the correct limit.
 pub fn tessellate_twisted_tubs(
-    rmin: f64,
-    rmax: f64,
-    zlen: f64,
+    rmin_mid: f64,
+    rmax_mid: f64,
+    z_neg: f64,
+    z_pos: f64,
     deltaphi: f64,
     twist_angle: f64,
     segments: u32,
 ) -> TriangleMesh {
-    let hz = (zlen / 2.0) as f32;
-    let has_hole = rmin > 1e-10;
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut indices = Vec::new();
+
+    let z_half = z_neg.abs().max(z_pos.abs());
+    if z_half < 1e-12 || rmax_mid <= 1e-12 {
+        return TriangleMesh {
+            positions,
+            normals,
+            indices,
+        };
+    }
+
+    let has_hole = rmin_mid > 1e-10;
     let full_circle = (deltaphi - 2.0 * PI).abs() < 1e-6;
 
     let phi_segs = segments.max(3);
     let z_segs = segments.max(3);
     let dphi = deltaphi / phi_segs as f64;
-    let dz = zlen / z_segs as f64;
+    let dz = (z_pos - z_neg) / z_segs as f64;
 
-    let mut positions = Vec::new();
-    let mut normals = Vec::new();
-    let mut indices = Vec::new();
+    // The hyperboloid, straight out of SetFields.
+    let tan_half_twist = (0.5 * twist_angle).tan();
+    let tan_in = (rmin_mid * tan_half_twist).abs() / z_half;
+    let tan_out = (rmax_mid * tan_half_twist).abs() / z_half;
+    let r_in = |z: f64| (rmin_mid * rmin_mid + z * z * tan_in * tan_in).sqrt();
+    let r_out = |z: f64| (rmax_mid * rmax_mid + z * z * tan_out * tan_out).sqrt();
+    // Azimuth of the twisted surface at height z. Note this is NOT linear in z;
+    // it is the arctangent law above, which still totals `twist_angle` across
+    // the full length.
+    let twist_at = |z: f64| (z * tan_half_twist).atan2(z_half);
 
-    let twist_at = |z: f64| -> f64 { twist_angle * (z + hz as f64) / (2.0 * hz as f64) };
-
-    let rmax_f = rmax as f32;
-    let rmin_f = rmin as f32;
-
-    // Outer surface: z_segs x phi_segs quads
-    for j in 0..z_segs {
-        let z0 = -(hz as f64) + j as f64 * dz;
-        let z1 = z0 + dz;
-        let tw0 = twist_at(z0);
-        let tw1 = twist_at(z1);
-
-        for i in 0..phi_segs {
-            let phi0 = i as f64 * dphi;
-            let phi1 = phi0 + dphi;
-
-            let a0 = (phi0 + tw0) as f32;
-            let a1 = (phi1 + tw0) as f32;
-            let a2 = (phi1 + tw1) as f32;
-            let a3 = (phi0 + tw1) as f32;
-
-            let p0 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
-            let p1 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z0 as f32];
-            let p2 = [rmax_f * a2.cos(), rmax_f * a2.sin(), z1 as f32];
-            let p3 = [rmax_f * a3.cos(), rmax_f * a3.sin(), z1 as f32];
-
-            emit_quad(
-                &mut positions,
-                &mut normals,
-                &mut indices,
-                p0,
-                p1,
-                p2,
-                p3,
-                false,
-            );
-        }
-    }
-
-    // Inner surface (if hollow)
-    if has_hole {
+    let lateral = |positions: &mut Vec<f32>,
+                   normals: &mut Vec<f32>,
+                   indices: &mut Vec<u32>,
+                   radius: &dyn Fn(f64) -> f64,
+                   flip: bool| {
         for j in 0..z_segs {
-            let z0 = -(hz as f64) + j as f64 * dz;
-            let z1 = z0 + dz;
-            let tw0 = twist_at(z0);
-            let tw1 = twist_at(z1);
+            let za = z_neg + j as f64 * dz;
+            let zb = za + dz;
+            let (ra, rb) = (radius(za), radius(zb));
+            let (twa, twb) = (twist_at(za), twist_at(zb));
 
             for i in 0..phi_segs {
                 let phi0 = i as f64 * dphi;
                 let phi1 = phi0 + dphi;
-
-                let a0 = (phi0 + tw0) as f32;
-                let a1 = (phi1 + tw0) as f32;
-                let a2 = (phi1 + tw1) as f32;
-                let a3 = (phi0 + tw1) as f32;
-
-                let p0 = [rmin_f * a0.cos(), rmin_f * a0.sin(), z0 as f32];
-                let p1 = [rmin_f * a1.cos(), rmin_f * a1.sin(), z0 as f32];
-                let p2 = [rmin_f * a2.cos(), rmin_f * a2.sin(), z1 as f32];
-                let p3 = [rmin_f * a3.cos(), rmin_f * a3.sin(), z1 as f32];
+                let a0 = (phi0 + twa) as f32;
+                let a1 = (phi1 + twa) as f32;
+                let a2 = (phi1 + twb) as f32;
+                let a3 = (phi0 + twb) as f32;
+                let (ra, rb) = (ra as f32, rb as f32);
 
                 emit_quad(
-                    &mut positions,
-                    &mut normals,
-                    &mut indices,
-                    p0,
-                    p1,
-                    p2,
-                    p3,
-                    true,
+                    positions,
+                    normals,
+                    indices,
+                    [ra * a0.cos(), ra * a0.sin(), za as f32],
+                    [ra * a1.cos(), ra * a1.sin(), za as f32],
+                    [rb * a2.cos(), rb * a2.sin(), zb as f32],
+                    [rb * a3.cos(), rb * a3.sin(), zb as f32],
+                    flip,
                 );
             }
         }
+    };
+
+    lateral(&mut positions, &mut normals, &mut indices, &r_out, false);
+    if has_hole {
+        lateral(&mut positions, &mut normals, &mut indices, &r_in, true);
     }
 
-    // Top cap (z = +hz, twist = twist_angle)
-    {
-        let tw = twist_angle;
+    // ─── End caps, at the end radii rather than the waist radii ──────────────
+    for (z, outward) in [(z_pos, 1.0f32), (z_neg, -1.0f32)] {
+        let tw = twist_at(z);
+        let (ro, ri) = (r_out(z) as f32, r_in(z) as f32);
+        let zf = z as f32;
+        let n = [0.0f32, 0.0, outward];
+
         if has_hole {
             for i in 0..phi_segs {
                 let phi0 = i as f64 * dphi + tw;
                 let phi1 = phi0 + dphi;
-
+                let (c0, s0) = ((phi0 as f32).cos(), (phi0 as f32).sin());
+                let (c1, s1) = ((phi1 as f32).cos(), (phi1 as f32).sin());
                 let base = (positions.len() / 3) as u32;
-                let verts = [
-                    [
-                        rmin_f * (phi0 as f32).cos(),
-                        rmin_f * (phi0 as f32).sin(),
-                        hz,
-                    ],
-                    [
-                        rmax_f * (phi0 as f32).cos(),
-                        rmax_f * (phi0 as f32).sin(),
-                        hz,
-                    ],
-                    [
-                        rmax_f * (phi1 as f32).cos(),
-                        rmax_f * (phi1 as f32).sin(),
-                        hz,
-                    ],
-                    [
-                        rmin_f * (phi1 as f32).cos(),
-                        rmin_f * (phi1 as f32).sin(),
-                        hz,
-                    ],
-                ];
-                let n = [0.0f32, 0.0, 1.0];
-                for v in &verts {
+                for v in &[
+                    [ri * c0, ri * s0, zf],
+                    [ro * c0, ro * s0, zf],
+                    [ro * c1, ro * s1, zf],
+                    [ri * c1, ri * s1, zf],
+                ] {
                     positions.extend_from_slice(v);
                     normals.extend_from_slice(&n);
                 }
-                indices.extend_from_slice(&[base, base + 1, base + 2]);
-                indices.extend_from_slice(&[base, base + 2, base + 3]);
+                if outward > 0.0 {
+                    indices.extend_from_slice(&[base, base + 1, base + 2]);
+                    indices.extend_from_slice(&[base, base + 2, base + 3]);
+                } else {
+                    indices.extend_from_slice(&[base, base + 2, base + 1]);
+                    indices.extend_from_slice(&[base, base + 3, base + 2]);
+                }
             }
         } else {
-            let center_base = (positions.len() / 3) as u32;
-            positions.extend_from_slice(&[0.0, 0.0, hz]);
-            normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+            let center = (positions.len() / 3) as u32;
+            positions.extend_from_slice(&[0.0, 0.0, zf]);
+            normals.extend_from_slice(&n);
             for i in 0..=phi_segs {
-                let phi = i as f64 * dphi + tw;
-                positions.extend_from_slice(&[
-                    rmax_f * (phi as f32).cos(),
-                    rmax_f * (phi as f32).sin(),
-                    hz,
-                ]);
-                normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+                let phi = (i as f64 * dphi + tw) as f32;
+                positions.extend_from_slice(&[ro * phi.cos(), ro * phi.sin(), zf]);
+                normals.extend_from_slice(&n);
             }
             for i in 0..phi_segs {
-                indices.extend_from_slice(&[center_base, center_base + 1 + i, center_base + 2 + i]);
+                if outward > 0.0 {
+                    indices.extend_from_slice(&[center, center + 1 + i, center + 2 + i]);
+                } else {
+                    indices.extend_from_slice(&[center, center + 2 + i, center + 1 + i]);
+                }
             }
         }
     }
 
-    // Bottom cap (z = -hz, twist = 0)
-    {
-        if has_hole {
-            for i in 0..phi_segs {
-                let phi0 = i as f64 * dphi;
-                let phi1 = phi0 + dphi;
-
-                let base = (positions.len() / 3) as u32;
-                let verts = [
-                    [
-                        rmin_f * (phi0 as f32).cos(),
-                        rmin_f * (phi0 as f32).sin(),
-                        -hz,
-                    ],
-                    [
-                        rmax_f * (phi0 as f32).cos(),
-                        rmax_f * (phi0 as f32).sin(),
-                        -hz,
-                    ],
-                    [
-                        rmax_f * (phi1 as f32).cos(),
-                        rmax_f * (phi1 as f32).sin(),
-                        -hz,
-                    ],
-                    [
-                        rmin_f * (phi1 as f32).cos(),
-                        rmin_f * (phi1 as f32).sin(),
-                        -hz,
-                    ],
-                ];
-                let n = [0.0f32, 0.0, -1.0];
-                for v in &verts {
-                    positions.extend_from_slice(v);
-                    normals.extend_from_slice(&n);
-                }
-                indices.extend_from_slice(&[base, base + 2, base + 1]);
-                indices.extend_from_slice(&[base, base + 3, base + 2]);
-            }
-        } else {
-            let center_base = (positions.len() / 3) as u32;
-            positions.extend_from_slice(&[0.0, 0.0, -hz]);
-            normals.extend_from_slice(&[0.0, 0.0, -1.0]);
-            for i in 0..=phi_segs {
-                let phi = i as f64 * dphi;
-                positions.extend_from_slice(&[
-                    rmax_f * (phi as f32).cos(),
-                    rmax_f * (phi as f32).sin(),
-                    -hz,
-                ]);
-                normals.extend_from_slice(&[0.0, 0.0, -1.0]);
-            }
-            for i in 0..phi_segs {
-                indices.extend_from_slice(&[center_base, center_base + 2 + i, center_base + 1 + i]);
-            }
-        }
-    }
-
-    // Wedge faces for partial phi
+    // ─── Flat faces closing a partial sweep ──────────────────────────────────
     if !full_circle {
-        // Start-phi wedge (phi = 0 + twist)
-        for j in 0..z_segs {
-            let z0 = -(hz as f64) + j as f64 * dz;
-            let z1 = z0 + dz;
-            let tw0 = twist_at(z0);
-            let tw1 = twist_at(z1);
-            let a0 = tw0 as f32;
-            let a1 = tw1 as f32;
+        for (phi_off, flip) in [(0.0, false), (deltaphi, true)] {
+            for j in 0..z_segs {
+                let za = z_neg + j as f64 * dz;
+                let zb = za + dz;
+                let a0 = (phi_off + twist_at(za)) as f32;
+                let a1 = (phi_off + twist_at(zb)) as f32;
+                let (roa, rob) = (r_out(za) as f32, r_out(zb) as f32);
 
-            if has_hole {
-                let p0 = [rmin_f * a0.cos(), rmin_f * a0.sin(), z0 as f32];
-                let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
-                let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
-                let p3 = [rmin_f * a1.cos(), rmin_f * a1.sin(), z1 as f32];
-                emit_quad(
-                    &mut positions,
-                    &mut normals,
-                    &mut indices,
-                    p0,
-                    p1,
-                    p2,
-                    p3,
-                    false,
-                );
-            } else {
-                let p0 = [0.0, 0.0, z0 as f32];
-                let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
-                let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
-                let p3 = [0.0, 0.0, z1 as f32];
-                emit_quad(
-                    &mut positions,
-                    &mut normals,
-                    &mut indices,
-                    p0,
-                    p1,
-                    p2,
-                    p3,
-                    false,
-                );
-            }
-        }
+                let (inner_a, inner_b) = if has_hole {
+                    let (ria, rib) = (r_in(za) as f32, r_in(zb) as f32);
+                    (
+                        [ria * a0.cos(), ria * a0.sin(), za as f32],
+                        [rib * a1.cos(), rib * a1.sin(), zb as f32],
+                    )
+                } else {
+                    ([0.0, 0.0, za as f32], [0.0, 0.0, zb as f32])
+                };
 
-        // End-phi wedge (phi = deltaphi + twist)
-        for j in 0..z_segs {
-            let z0 = -(hz as f64) + j as f64 * dz;
-            let z1 = z0 + dz;
-            let tw0 = twist_at(z0);
-            let tw1 = twist_at(z1);
-            let a0 = (deltaphi + tw0) as f32;
-            let a1 = (deltaphi + tw1) as f32;
-
-            if has_hole {
-                let p0 = [rmin_f * a0.cos(), rmin_f * a0.sin(), z0 as f32];
-                let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
-                let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
-                let p3 = [rmin_f * a1.cos(), rmin_f * a1.sin(), z1 as f32];
                 emit_quad(
                     &mut positions,
                     &mut normals,
                     &mut indices,
-                    p0,
-                    p1,
-                    p2,
-                    p3,
-                    true,
-                );
-            } else {
-                let p0 = [0.0, 0.0, z0 as f32];
-                let p1 = [rmax_f * a0.cos(), rmax_f * a0.sin(), z0 as f32];
-                let p2 = [rmax_f * a1.cos(), rmax_f * a1.sin(), z1 as f32];
-                let p3 = [0.0, 0.0, z1 as f32];
-                emit_quad(
-                    &mut positions,
-                    &mut normals,
-                    &mut indices,
-                    p0,
-                    p1,
-                    p2,
-                    p3,
-                    true,
+                    inner_a,
+                    [roa * a0.cos(), roa * a0.sin(), za as f32],
+                    [rob * a1.cos(), rob * a1.sin(), zb as f32],
+                    inner_b,
+                    flip,
                 );
             }
         }

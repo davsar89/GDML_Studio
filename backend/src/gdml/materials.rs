@@ -1295,10 +1295,34 @@ fn write_solids(
                 if let Some(ref v) = t.endinnerrad {
                     elem.push_attribute(("endinnerrad", v.as_str()));
                 }
-                elem.push_attribute(("endouterrad", t.endouterrad.as_str()));
-                elem.push_attribute(("zlen", t.zlen.as_str()));
+                if let Some(ref v) = t.endouterrad {
+                    elem.push_attribute(("endouterrad", v.as_str()));
+                }
+                if let Some(ref v) = t.zlen {
+                    elem.push_attribute(("zlen", v.as_str()));
+                }
                 if let Some(ref v) = t.phi {
                     elem.push_attribute(("phi", v.as_str()));
+                }
+                // The zlen == 0 parameterisation. Omitting these on save turned
+                // a mid-radius twistedtubs into an empty one.
+                if let Some(ref v) = t.midinnerrad {
+                    elem.push_attribute(("midinnerrad", v.as_str()));
+                }
+                if let Some(ref v) = t.midouterrad {
+                    elem.push_attribute(("midouterrad", v.as_str()));
+                }
+                if let Some(ref v) = t.negative_endz {
+                    elem.push_attribute(("negativeEndz", v.as_str()));
+                }
+                if let Some(ref v) = t.positive_endz {
+                    elem.push_attribute(("positiveEndz", v.as_str()));
+                }
+                if let Some(ref v) = t.nseg {
+                    elem.push_attribute(("nseg", v.as_str()));
+                }
+                if let Some(ref v) = t.totphi {
+                    elem.push_attribute(("totphi", v.as_str()));
                 }
                 if let Some(ref u) = t.aunit {
                     elem.push_attribute(("aunit", u.as_str()));

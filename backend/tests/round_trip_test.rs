@@ -906,3 +906,28 @@ fn a_hand_built_document_still_serialises() {
 
     let _: GdmlDocument = parse_gdml_from_bytes(xml.as_bytes(), "t2.gdml".to_string()).unwrap();
 }
+
+#[test]
+fn twistedtubs_mid_radius_attributes_survive() {
+    // The zlen == 0 parameterisation. The writer emitted only the end-radius
+    // attributes, so saving a mid-radius twistedtubs produced a solid with no
+    // radii and no z bounds at all.
+    let src = doc_with(
+        r#"    <twistedtubs name="TT" twistedangle="30" midinnerrad="2" midouterrad="10"
+                negativeEndz="-5" positiveEndz="15" nseg="4" totphi="360"
+                aunit="deg" lunit="mm"/>"#,
+        "",
+    );
+    let out = round_trip(src.as_bytes(), "tt.gdml");
+    for attr in [
+        "midinnerrad",
+        "midouterrad",
+        "negativeEndz",
+        "positiveEndz",
+        "nseg",
+        "totphi",
+    ] {
+        assert!(out.contains(attr), "{attr} was dropped on save:\n{out}");
+    }
+    assert_tokens_preserved(&src, &out);
+}

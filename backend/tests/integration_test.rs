@@ -795,3 +795,71 @@ fn negative_and_oversized_deltaphi_also_sweep_a_full_circle() {
         );
     }
 }
+
+#[test]
+fn twistedtubs_zlen_is_a_half_length() {
+    // G4GDMLReadSolids.cc:3330 passes `zlen` straight to the constructor's
+    // `halfzlen` parameter, which calls SetFields(.., -halfzlen, halfzlen)
+    // (G4TwistedTubs.cc:129). The solid therefore spans [-zlen, +zlen] --
+    // total length 2*zlen, not zlen.
+    let xml = r#"    <twistedtubs name="T" twistedangle="0" endinnerrad="0" endouterrad="10"
+                zlen="10" phi="6.283185307179586" aunit="rad" lunit="mm"/>"#;
+    let mesh = mesh_from_solids(xml, "T");
+    // Zero twist, so this is a plain cylinder of radius 10 and length 20.
+    let expected = std::f64::consts::PI * 100.0 * 20.0;
+    let vol = signed_volume_about(&mesh, [0.0, 0.0, 0.0]);
+    let rel = (vol - expected).abs() / expected;
+    assert!(
+        rel < 0.02,
+        "volume {vol:.2}, expected {expected:.2} (rel {rel:.4}); \
+         half of expected means zlen was read as a full length"
+    );
+}
+
+#[test]
+fn twistedtubs_mid_radius_form_is_supported() {
+    // The zlen == 0 branch: midinnerrad/midouterrad with explicit, and
+    // deliberately asymmetric, z bounds. This form used to be rejected
+    // outright, so the solid vanished from the scene.
+    let xml = r#"    <twistedtubs name="T" twistedangle="0" midinnerrad="0" midouterrad="10"
+                negativeEndz="-5" positiveEndz="15" phi="6.283185307179586"
+                aunit="rad" lunit="mm"/>"#;
+    let mesh = mesh_from_solids(xml, "T");
+    assert!(
+        mesh.triangle_count() > 0,
+        "mid-radius form produced no mesh"
+    );
+
+    let expected = std::f64::consts::PI * 100.0 * 20.0;
+    let vol = signed_volume_about(&mesh, [0.0, 0.0, 0.0]);
+    let rel = (vol - expected).abs() / expected;
+    assert!(
+        rel < 0.02,
+        "volume {vol:.2}, expected {expected:.2} (rel {rel:.4})"
+    );
+
+    // Bounds must be honoured as given, not recentred on the origin.
+    let zs: Vec<f64> = (0..mesh.positions.len() / 3)
+        .map(|i| mesh.positions[i * 3 + 2] as f64)
+        .collect();
+    let zmin = zs.iter().cloned().fold(f64::INFINITY, f64::min);
+    let zmax = zs.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    assert!((zmin + 5.0).abs() < 0.01, "zmin {zmin:.3}, expected -5");
+    assert!((zmax - 15.0).abs() < 0.01, "zmax {zmax:.3}, expected 15");
+}
+
+#[test]
+fn twistedtubs_nseg_and_totphi_set_the_sweep() {
+    // fDPhi = totphi / nseg (G4TwistedTubs.cc:129).
+    let xml = r#"    <twistedtubs name="T" twistedangle="0" endinnerrad="0" endouterrad="10"
+                zlen="10" nseg="4" totphi="6.283185307179586" aunit="rad" lunit="mm"/>"#;
+    let mesh = mesh_from_solids(xml, "T");
+    // A quarter of the full cylinder.
+    let expected = std::f64::consts::PI * 100.0 * 20.0 / 4.0;
+    let vol = signed_volume_about(&mesh, [0.0, 0.0, 0.0]);
+    let rel = (vol - expected).abs() / expected;
+    assert!(
+        rel < 0.02,
+        "volume {vol:.2}, expected {expected:.2} (rel {rel:.4})"
+    );
+}
