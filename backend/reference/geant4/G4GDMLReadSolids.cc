@@ -1259,21 +1259,21 @@ void G4GDMLReadSolids::PolyconeRead(
     }
   }
 
-  std::size_t numZPlanes = zplaneList.size();
+  G4int numZPlanes = zplaneList.size();
 
   G4double* rmin_array = new G4double[numZPlanes];
   G4double* rmax_array = new G4double[numZPlanes];
   G4double* z_array    = new G4double[numZPlanes];
 
-  for(std::size_t i = 0; i < numZPlanes; ++i)
+  for(G4int i = 0; i < numZPlanes; ++i)
   {
     rmin_array[i] = zplaneList[i].rmin * lunit;
     rmax_array[i] = zplaneList[i].rmax * lunit;
     z_array[i]    = zplaneList[i].z * lunit;
   }
 
-  new G4Polycone(name, startphi, deltaphi, (G4int)numZPlanes, z_array,
-                 rmin_array, rmax_array);
+  new G4Polycone(name, startphi, deltaphi, numZPlanes, z_array, rmin_array,
+                 rmax_array);
 
   delete[] rmin_array;
   delete[] rmax_array;
@@ -1376,18 +1376,18 @@ void G4GDMLReadSolids::GenericPolyconeRead(
     }
   }
 
-  std::size_t numRZPoints = rzPointList.size();
+  G4int numRZPoints = rzPointList.size();
 
   G4double* r_array = new G4double[numRZPoints];
   G4double* z_array = new G4double[numRZPoints];
 
-  for(std::size_t i = 0; i < numRZPoints; ++i)
+  for(G4int i = 0; i < numRZPoints; ++i)
   {
     r_array[i] = rzPointList[i].r * lunit;
     z_array[i] = rzPointList[i].z * lunit;
   }
-  new G4GenericPolycone(name, startphi, deltaphi, (G4int)numRZPoints,
-                        r_array, z_array);
+  new G4GenericPolycone(name, startphi, deltaphi, numRZPoints, r_array,
+                        z_array);
   delete[] r_array;
   delete[] z_array;
 }
@@ -1493,21 +1493,21 @@ void G4GDMLReadSolids::PolyhedraRead(
     }
   }
 
-  std::size_t numZPlanes = zplaneList.size();
+  G4int numZPlanes = zplaneList.size();
 
   G4double* rmin_array = new G4double[numZPlanes];
   G4double* rmax_array = new G4double[numZPlanes];
   G4double* z_array    = new G4double[numZPlanes];
 
-  for(std::size_t i = 0; i < numZPlanes; ++i)
+  for(G4int i = 0; i < numZPlanes; ++i)
   {
     rmin_array[i] = zplaneList[i].rmin * lunit;
     rmax_array[i] = zplaneList[i].rmax * lunit;
     z_array[i]    = zplaneList[i].z * lunit;
   }
 
-  new G4Polyhedra(name, startphi, deltaphi, numsides, (G4int)numZPlanes,
-                  z_array, rmin_array, rmax_array);
+  new G4Polyhedra(name, startphi, deltaphi, numsides, numZPlanes, z_array,
+                  rmin_array, rmax_array);
 
   delete[] rmin_array;
   delete[] rmax_array;
@@ -1615,19 +1615,19 @@ void G4GDMLReadSolids::GenericPolyhedraRead(
     }
   }
 
-  std::size_t numRZPoints = rzpointList.size();
+  G4int numRZPoints = rzpointList.size();
 
   G4double* r_array = new G4double[numRZPoints];
   G4double* z_array = new G4double[numRZPoints];
 
-  for(std::size_t i = 0; i < numRZPoints; ++i)
+  for(G4int i = 0; i < numRZPoints; ++i)
   {
     r_array[i] = rzpointList[i].r * lunit;
     z_array[i] = rzpointList[i].z * lunit;
   }
 
-  new G4Polyhedra(name, startphi, deltaphi, numsides, (G4int)numRZPoints,
-                  r_array, z_array);
+  new G4Polyhedra(name, startphi, deltaphi, numsides, numRZPoints, r_array,
+                  z_array);
 
   delete[] r_array;
   delete[] z_array;
@@ -3553,12 +3553,13 @@ void G4GDMLReadSolids::PropertyRead(
   }
   if(matrix.GetCols() == 1)  // constant property assumed
   {
-    matprop->AddConstProperty(Strip(name), matrix.Get(0, 0), true);
+    matprop->AddConstProperty(Strip(name), matrix.Get(0, 0));
   }
   else  // build the material properties vector
   {
     G4MaterialPropertyVector* propvect;
     G4String temp = name + ref;
+    std::cout << temp << std::endl;
     // first check if it was already built
     if(mapOfMatPropVects.find(temp) == mapOfMatPropVects.end())
     {
@@ -3576,7 +3577,7 @@ void G4GDMLReadSolids::PropertyRead(
       propvect = mapOfMatPropVects[temp];
     }
 
-    matprop->AddProperty(Strip(name), propvect, true);
+    matprop->AddProperty(Strip(name), propvect);
   }
 }
 
@@ -4056,8 +4057,7 @@ void G4GDMLReadSolids::SolidsRead(
 // --------------------------------------------------------------------
 G4VSolid* G4GDMLReadSolids::GetSolid(const G4String& ref) const
 {
-  G4VSolid* solidPtr = G4SolidStore::GetInstance()
-                                    ->GetSolid(ref,false,reverseSearch);
+  G4VSolid* solidPtr = G4SolidStore::GetInstance()->GetSolid(ref, false);
 
   if(solidPtr == nullptr)
   {
