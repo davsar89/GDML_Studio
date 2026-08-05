@@ -1015,82 +1015,133 @@ fn build_volume_node(
                 tracing::warn!("{}", msg);
                 warnings.push(msg);
             }
+            // kPhi replicates in ANGLE, the Cartesian axes in LENGTH, so the
+            // width/offset units cannot be converted until the axis is known.
+            let is_phi = replica.curvilinear_axis.as_deref() == Some("phi");
+            let is_rho = replica.curvilinear_axis.as_deref() == Some("rho");
             let width_val = engine.resolve_value(&replica.width);
-            let width_unit = replica.width_unit.as_deref().unwrap_or("mm");
-            let width_mm = crate::gdml::units::length_to_mm(width_val, width_unit);
-
             let offset_val = engine.resolve_value(&replica.offset);
-            let offset_unit = replica.offset_unit.as_deref().unwrap_or("mm");
-            let offset_mm = crate::gdml::units::length_to_mm(offset_val, offset_unit);
-            // Only Cartesian replication is implemented; rho/phi fall through to
-            // the z branch of the axis selector below, which would render a
-            // radial or angular stack as a z-stack with nothing said.
-            if let Some(ref axis) = replica.curvilinear_axis {
-                warnings.push(format!(
-                    "replicavol '{}': replication along {} is not supported; it is drawn \
-                     as a z-axis stack, so this part of the geometry is wrong.",
-                    replica.volume_ref, axis
-                ));
-            }
-
-            if offset_mm.abs() > 1e-9 {
-                // States what this viewer does, not what Geant4 does.
-                // G4GDMLReadStructure passes offset straight to
-                // G4ReflectionFactory::Replicate without validating it, and
-                // G4PVReplica.cc -- where any rejection would live -- is not
-                // among the vendored reference sources, so the earlier claim
-                // that "Geant4 rejects it" could not be substantiated.
-                warnings.push(format!(
-                    "replicavol '{}': non-zero offset ({} mm) is ignored; the stack is \
-                     drawn centred in its mother.",
-                    replica.volume_ref, offset_mm
-                ));
-            }
-
-            // Determine axis index: x=0, y=1, z=2
-            let axis = if replica.direction[0]
-                .as_deref()
-                .map(|v| engine.resolve_value(v))
-                .unwrap_or(0.0)
-                .abs()
-                > 0.5
-            {
-                0
-            } else if replica.direction[1]
-                .as_deref()
-                .map(|v| engine.resolve_value(v))
-                .unwrap_or(0.0)
-                .abs()
-                > 0.5
-            {
-                1
-            } else {
-                2
+            let convert = |v: f64, unit: Option<&str>| -> f64 {
+                if is_phi {
+                    crate::gdml::units::angle_to_rad(v, unit.unwrap_or("rad"))
+                } else {
+                    crate::gdml::units::length_to_mm(v, unit.unwrap_or("mm"))
+                }
             };
+            let width = convert(width_val, replica.width_unit.as_deref());
+            let offset = convert(offset_val, replica.offset_unit.as_deref());
 
-            for n in 0..number {
-                let mut pos = [0.0_f64; 3];
-                // Geant4 centers the replica stack in the mother
-                // (G4ReplicaNavigation): x_n = -width*(N-1)/2 + n*width.
-                pos[axis] =
-                    -width_mm * 0.5 * (number.saturating_sub(1) as f64) + (n as f64) * width_mm;
-                let replica_instance_id =
-                    format!("{}/replica[{}]:{}", instance_id, n, replica.volume_ref);
+            if is_rho {
+                // G4ReplicaNavigation::ComputeTransformation has "No setup
+                // required for radial case" for kRho -- there is no placement
+                // transform at all. Each slice is a different SOLID, its radial
+                // extent computed during navigation, which needs per-replica
+                // re-tessellation this viewer does not do. Emitting `number`
+                // coincident copies would cost N times the geometry and show
+                // exactly what one copy shows, so draw one and say so.
+                warnings.push(format!(
+                    "replicavol '{}': radial (kRho) replication subdivides the solid                      itself, which is not modelled; one un-subdivided copy is drawn                      in place of the {} slices.",
+                    replica.volume_ref, number
+                ));
                 let child_node = build_volume_node(
                     child_vol,
                     vol_map,
                     density_map,
                     engine,
-                    pos,
+                    [0.0; 3],
                     [0.0; 3],
                     false,
                     visited,
-                    replica_instance_id,
+                    format!("{}/replica[rho]:{}", instance_id, replica.volume_ref),
                     warnings,
                     depth + 1,
                     budget,
                 );
                 children.push(child_node);
+            } else if is_phi {
+                for n in 0..number {
+                    // G4ReplicaNavigation.cc:682 sets
+                    //   val = -(offset + width*(replicaNo + 0.5))
+                    // and applies rotateZ(val) to the physical volume. That
+                    // stored matrix is the mother-from-daughter rotation, i.e.
+                    // the inverse of the daughter's orientation, which is the
+                    // same convention SceneNode::rotation uses (the viewer
+                    // negates it) -- so `val` goes in directly.
+                    let val = -(offset + width * (n as f64 + 0.5));
+                    let child_node = build_volume_node(
+                        child_vol,
+                        vol_map,
+                        density_map,
+                        engine,
+                        [0.0; 3],
+                        [0.0, 0.0, val],
+                        false,
+                        visited,
+                        format!("{}/replica[{}]:{}", instance_id, n, replica.volume_ref),
+                        warnings,
+                        depth + 1,
+                        budget,
+                    );
+                    children.push(child_node);
+                }
+            } else {
+                if offset.abs() > 1e-9 {
+                    // Matches Geant4: ComputeTransformation's kXAxis/kYAxis/
+                    // kZAxis cases compute the centred position from width and
+                    // replicaNo alone and never read `offset`
+                    // (G4ReplicaNavigation.cc:667-679). Said here because the
+                    // number in the file has no effect on what is drawn.
+                    warnings.push(format!(
+                        "replicavol '{}': offset ({} mm) does not move a Cartesian                          stack -- Geant4 ignores it here too; the stack is centred                          in its mother.",
+                        replica.volume_ref, offset
+                    ));
+                }
+
+                // Determine axis index: x=0, y=1, z=2
+                let axis = if replica.direction[0]
+                    .as_deref()
+                    .map(|v| engine.resolve_value(v))
+                    .unwrap_or(0.0)
+                    .abs()
+                    > 0.5
+                {
+                    0
+                } else if replica.direction[1]
+                    .as_deref()
+                    .map(|v| engine.resolve_value(v))
+                    .unwrap_or(0.0)
+                    .abs()
+                    > 0.5
+                {
+                    1
+                } else {
+                    2
+                };
+
+                for n in 0..number {
+                    let mut pos = [0.0_f64; 3];
+                    // G4ReplicaNavigation.cc:667 --
+                    //   val = -width*0.5*(nReplicas-1) + width*replicaNo
+                    pos[axis] =
+                        -width * 0.5 * (number.saturating_sub(1) as f64) + (n as f64) * width;
+                    let replica_instance_id =
+                        format!("{}/replica[{}]:{}", instance_id, n, replica.volume_ref);
+                    let child_node = build_volume_node(
+                        child_vol,
+                        vol_map,
+                        density_map,
+                        engine,
+                        pos,
+                        [0.0; 3],
+                        false,
+                        visited,
+                        replica_instance_id,
+                        warnings,
+                        depth + 1,
+                        budget,
+                    );
+                    children.push(child_node);
+                }
             }
         }
     }
@@ -2066,5 +2117,133 @@ mod tests {
         let xs: Vec<f64> = graph.children.iter().map(|c| c.position[0]).collect();
         assert_eq!(xs, vec![-15.0, -5.0, 5.0, 15.0]);
         assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
+    }
+    /// Build a scene whose world replicates "Slice" along `axis`.
+    fn replica_scene(
+        curvilinear: Option<&str>,
+        direction: [Option<String>; 3],
+        number: &str,
+        width: &str,
+        width_unit: Option<&str>,
+        offset: &str,
+        offset_unit: Option<&str>,
+    ) -> (SceneNode, Vec<String>) {
+        let mut doc = base_doc("test.gdml", "World");
+        let mut world = volume("World", "Vacuum");
+        world.replica = Some(crate::gdml::model::ReplicaVol {
+            volume_ref: "Slice".to_string(),
+            curvilinear_axis: curvilinear.map(|s| s.to_string()),
+            number: number.to_string(),
+            direction,
+            width: width.to_string(),
+            width_unit: width_unit.map(|s| s.to_string()),
+            offset: offset.to_string(),
+            offset_unit: offset_unit.map(|s| s.to_string()),
+        });
+        doc.structure.volumes.push(world);
+        doc.structure.volumes.push(volume("Slice", "Vacuum"));
+
+        let engine = EvalEngine::new();
+        let mut warnings = Vec::new();
+        let graph = build_scene_graph(&doc, &engine, &mut warnings);
+        (graph, warnings)
+    }
+
+    #[test]
+    fn phi_replicas_are_rotated_not_stacked_along_z() {
+        // G4ReplicaNavigation.cc:682 --
+        //   val = -(offset + width*(replicaNo + 0.5)); rotateZ(val)
+        // Four 90-degree slices with no offset sit at -45, -135, -225, -315
+        // degrees in the stored (inverse) convention SceneNode::rotation uses.
+        let (graph, warnings) = replica_scene(
+            Some("phi"),
+            [const { None }; 3],
+            "4",
+            "90",
+            Some("deg"),
+            "0",
+            Some("deg"),
+        );
+
+        let d = std::f64::consts::PI / 180.0;
+        let rz: Vec<f64> = graph.children.iter().map(|c| c.rotation[2]).collect();
+        let want = [-45.0 * d, -135.0 * d, -225.0 * d, -315.0 * d];
+        assert_eq!(rz.len(), 4);
+        for (got, exp) in rz.iter().zip(want.iter()) {
+            assert!((got - exp).abs() < 1e-9, "rotation {got}, expected {exp}");
+        }
+        // Nothing may be displaced -- a phi replica is a pure rotation.
+        for c in &graph.children {
+            assert_eq!(c.position, [0.0, 0.0, 0.0], "phi replica was translated");
+        }
+        assert!(
+            warnings.is_empty(),
+            "phi replication should no longer warn: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn phi_replica_offset_shifts_every_slice() {
+        // Unlike the Cartesian axes, kPhi really does read `offset`.
+        let (graph, _) = replica_scene(
+            Some("phi"),
+            [const { None }; 3],
+            "2",
+            "90",
+            Some("deg"),
+            "10",
+            Some("deg"),
+        );
+        let d = std::f64::consts::PI / 180.0;
+        let rz: Vec<f64> = graph.children.iter().map(|c| c.rotation[2]).collect();
+        for (got, exp) in rz.iter().zip([-55.0 * d, -145.0 * d].iter()) {
+            assert!((got - exp).abs() < 1e-9, "rotation {got}, expected {exp}");
+        }
+    }
+
+    #[test]
+    fn rho_replication_draws_one_copy_and_says_so() {
+        // ComputeTransformation has "No setup required for radial case": there
+        // is no placement transform, because each slice is a different solid.
+        let (graph, warnings) = replica_scene(
+            Some("rho"),
+            [const { None }; 3],
+            "5",
+            "10",
+            Some("mm"),
+            "0",
+            None,
+        );
+        assert_eq!(
+            graph.children.len(),
+            1,
+            "five coincident copies show exactly what one shows"
+        );
+        assert_eq!(graph.children[0].position, [0.0, 0.0, 0.0]);
+        assert!(
+            warnings.iter().any(|w| w.contains("kRho")),
+            "radial replication must be reported: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn cartesian_replica_offset_is_reported_as_inert() {
+        // ComputeTransformation's kXAxis case never reads `offset`, so a file
+        // carrying one gets a stack that ignores it -- in Geant4 too.
+        let (_, warnings) = replica_scene(
+            None,
+            [Some("1".to_string()), None, None],
+            "2",
+            "10",
+            Some("mm"),
+            "5",
+            Some("mm"),
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("Geant4 ignores it here too")),
+            "expected the offset note: {warnings:?}"
+        );
     }
 }
