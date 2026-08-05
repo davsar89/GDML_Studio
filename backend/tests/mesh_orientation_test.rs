@@ -500,3 +500,61 @@ fn remaining_primitives_closed_and_outward() {
     let sections = [(-10.0, 0.0, 0.0, 1.0), (10.0, 0.0, 0.0, 1.0)];
     assert_closed_outward(&tessellate_xtru(&verts, &sections), "xtru square");
 }
+
+#[test]
+fn generic_polyhedra_radii_are_corner_radii_not_apothems() {
+    // Geant4 has two G4Polyhedra constructors and the GDML reader picks a
+    // different one per solid:
+    //
+    //   <polyhedra>        G4GDMLReadSolids.cc:1509 -> G4Polyhedra.cc:71
+    //                      the GEANT3 z-plane form. Computes
+    //                      convertRad = cos(0.5*phiTotal/numSide) and stores
+    //                      rInner/convertRad, so its radii are APOTHEMS.
+    //
+    //   <genericPolyhedra> G4GDMLReadSolids.cc:1629 -> G4Polyhedra.cc:154
+    //                      the (r,z) form. Hands r[] straight to
+    //                      G4ReduciblePolygon and Create with NO scaling, so
+    //                      its radii are already CORNER radii.
+    //
+    // Both were being treated as apothems, inflating every genericPolyhedra.
+    let n = 6u32;
+    let r = 10.0;
+    let half_height = 5.0;
+
+    // A closed (r,z) rectangle: a solid prism of corner radius r.
+    let contour = [
+        (0.0, -half_height),
+        (r, -half_height),
+        (r, half_height),
+        (0.0, half_height),
+    ];
+    let m = tessellate_generic_polycone(&contour, 0.0, 2.0 * PI, SEG, Some(n));
+
+    // Regular n-gon of CIRCUMradius r: area = (n/2) r^2 sin(2*pi/n).
+    let area = 0.5 * n as f64 * r * r * (2.0 * PI / n as f64).sin();
+    let expected = area * 2.0 * half_height;
+    assert_volume(&m, expected, 0.01, "genericPolyhedra prism");
+    assert_normals_match_winding(&m, "genericPolyhedra prism");
+
+    // Guard the specific regression: treating r as an apothem scales every
+    // radius by 1/cos(pi/n), which for n=6 is a 33.3% volume error.
+    let inflated = expected / (PI / n as f64).cos().powi(2);
+    assert!(
+        (inflated - expected).abs() / expected > 0.3,
+        "test would not distinguish the two conventions"
+    );
+}
+
+#[test]
+fn polyhedra_radii_are_still_apothems() {
+    // The sibling convention, asserted here so the two cannot be conflated
+    // again: <polyhedra> really does take inscribed-circle radii.
+    let n = 6u32;
+    let apothem = 10.0;
+    let planes = [(-5.0, 0.0, apothem), (5.0, 0.0, apothem)];
+    let m = tessellate_polyhedra(&planes, 0.0, 2.0 * PI, n);
+
+    let r_vertex = apothem / (PI / n as f64).cos();
+    let area = 0.5 * n as f64 * r_vertex * r_vertex * (2.0 * PI / n as f64).sin();
+    assert_volume(&m, area * 10.0, 0.01, "polyhedra hexagonal prism");
+}

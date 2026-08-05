@@ -21,8 +21,9 @@ use std::f64::consts::PI;
 ///
 /// `sides` selects the two GDML solids:
 /// - `None` — smooth revolution in `segments` steps (`genericPolycone`).
-/// - `Some(n)` — `n` flat facets (`genericPolyhedra`). As with `<polyhedra>`,
-///   the radii are apothems and are converted to corner radii.
+/// - `Some(n)` — `n` flat facets (`genericPolyhedra`). Unlike `<polyhedra>`,
+///   the radii are already corner radii and are used as given; see the note on
+///   the two G4Polyhedra constructors below.
 pub fn tessellate_generic_polycone(
     rz: &[(f64, f64)], // (r, z) contour points
     startphi: f64,
@@ -82,11 +83,20 @@ pub fn tessellate_generic_polycone(
         pts.reverse();
     }
 
-    // Apothem -> corner radius, the same convention `<polyhedra>` uses.
-    let radius_scale = match sides {
-        Some(n) => 1.0 / (deltaphi / (2.0 * n as f64)).cos(),
-        None => 1.0,
-    };
+    // No apothem conversion here, unlike `<polyhedra>`.
+    //
+    // Geant4 has two G4Polyhedra constructors and the GDML reader picks a
+    // different one per solid. `<polyhedra>` goes to the z-plane form
+    // (`G4Polyhedra.cc:71`, called from `G4GDMLReadSolids.cc:1509`), which is
+    // the historical GEANT3 signature: it computes
+    // `convertRad = cos(0.5*phiTotal/numSide)` and stores `rInner/convertRad`,
+    // so those radii are inscribed-circle values. `<genericPolyhedra>` goes to
+    // the (r,z) form (`G4Polyhedra.cc:154`, from `G4GDMLReadSolids.cc:1629`),
+    // which hands `r[]` straight to G4ReduciblePolygon and Create with no
+    // scaling at all -- its radii are already corner radii.
+    //
+    // Applying the conversion here inflated every genericPolyhedra by
+    // 1/cos(deltaphi/2n): 15.5% for a full six-sided solid.
 
     let phi_at = |k: u32| startphi + deltaphi * (k as f64) / (steps as f64);
     let n_pts = pts.len();
@@ -96,7 +106,6 @@ pub fn tessellate_generic_polycone(
         let j = (i + 1) % n_pts;
         let (ri, zi) = pts[i];
         let (rj, zj) = pts[j];
-        let (ri, rj) = (ri * radius_scale, rj * radius_scale);
 
         // Outward normal in the (r,z) plane is the edge direction rotated by
         // -90 degrees, which points out of a counter-clockwise contour.
@@ -139,7 +148,7 @@ pub fn tessellate_generic_polycone(
 
     // ─── Flat faces closing a partial sweep ──────────────────────────────────
     if !full_circle {
-        let contour: Vec<(f64, f64)> = pts.iter().map(|&(r, z)| (r * radius_scale, z)).collect();
+        let contour: Vec<(f64, f64)> = pts.clone();
         let tris = ear_clip_triangulate(&contour, true);
 
         for (is_start, phi) in [(true, startphi), (false, startphi + deltaphi)] {
