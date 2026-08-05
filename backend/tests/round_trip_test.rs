@@ -931,3 +931,61 @@ fn twistedtubs_mid_radius_attributes_survive() {
     }
     assert_tokens_preserved(&src, &out);
 }
+
+#[test]
+fn a_loop_inside_a_volume_survives_a_save() {
+    // The <loop> start tag used to be unhandled inside a volume body, so the
+    // parser read its children as if they were direct children of the volume:
+    // the wrapper vanished on save and N placements collapsed to one. Saving
+    // such a file silently deleted geometry.
+    let src = doc_with(
+        "",
+        r#"    <volume name="Inner">
+      <materialref ref="Vacuum"/>
+      <solidref ref="WorldBox"/>
+    </volume>
+    <volume name="Mother">
+      <materialref ref="Vacuum"/>
+      <solidref ref="WorldBox"/>
+      <loop for="i" from="1" to="4" step="1">
+        <physvol><volumeref ref="Inner"/><position name="p" z="i*10"/></physvol>
+      </loop>
+    </volume>"#,
+    );
+    let doc = parse_gdml_from_bytes(src.as_bytes(), "loopvol.gdml".to_string()).unwrap();
+    let mother = doc
+        .structure
+        .volumes
+        .iter()
+        .find(|v| v.name == "Mother")
+        .expect("Mother volume missing");
+
+    assert_eq!(mother.loops.len(), 1, "the <loop> was not captured");
+    assert!(
+        mother.physvols.is_empty(),
+        "the loop body leaked into the volume as a bare physvol: {:?}",
+        mother.physvols.len()
+    );
+
+    let out = serialize_gdml(&doc).unwrap();
+    assert!(
+        out.contains("<loop"),
+        "the <loop> was dropped on save:\n{out}"
+    );
+    assert!(
+        out.contains(r#"for="i""#) && out.contains(r#"to="4""#),
+        "loop attributes were dropped:\n{out}"
+    );
+    assert_tokens_preserved(&src, &out);
+
+    // And a second trip must not duplicate or flatten it.
+    let doc2 = parse_gdml_from_bytes(out.as_bytes(), "loopvol2.gdml".to_string()).unwrap();
+    let mother2 = doc2
+        .structure
+        .volumes
+        .iter()
+        .find(|v| v.name == "Mother")
+        .unwrap();
+    assert_eq!(mother2.loops.len(), 1);
+    assert!(mother2.physvols.is_empty());
+}

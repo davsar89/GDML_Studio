@@ -1780,6 +1780,7 @@ fn read_volume_body(
     let mut auxiliaries = Vec::new();
     let mut replica = None;
     let mut body_comments: Vec<String> = Vec::new();
+    let mut loops: Vec<RawElement> = Vec::new();
     let mut buf = Vec::new();
 
     loop {
@@ -1834,6 +1835,18 @@ fn read_volume_body(
                     }
                     // Unsupported placement constructs: skip the whole subtree so
                     // their children can't leak into this volume, and warn.
+                    // Capture the whole subtree. Falling through to the
+                    // catch-all meant the <loop> start tag was ignored and its
+                    // children were read as direct children of the volume, so
+                    // the wrapper vanished on save and N placements became one.
+                    b"loop" => {
+                        let xml = capture_raw_subtree(reader, inner.clone().into_owned())?;
+                        loops.push(RawElement {
+                            tag: "loop".to_string(),
+                            section: Some("structure".to_string()),
+                            xml,
+                        });
+                    }
                     b"divisionvol" | b"paramvol" => {
                         let t = String::from_utf8_lossy(tag.as_ref()).to_string();
                         skipped.push(format!(
@@ -1868,6 +1881,7 @@ fn read_volume_body(
         auxiliaries,
         replica,
         body_comments,
+        loops,
     });
     Ok(())
 }

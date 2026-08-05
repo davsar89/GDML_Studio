@@ -890,6 +890,16 @@ pub struct Volume {
     /// and section banners, for which that is adequate.
     #[serde(default)]
     pub body_comments: Vec<String>,
+    /// `<loop>` elements in this volume's body, captured verbatim.
+    ///
+    /// A loop here used to be unhandled entirely: the parser ignored the
+    /// `<loop>` start tag and read its children as if they were direct
+    /// children of the volume, so the wrapper was gone on save and N
+    /// placements collapsed to one. Keeping the subtree makes the export
+    /// faithful; expansion for the preview is a separate step that builds a
+    /// render document and leaves this untouched.
+    #[serde(default)]
+    pub loops: Vec<RawElement>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

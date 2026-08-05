@@ -1726,6 +1726,13 @@ fn write_structure(
             write_auxiliary(writer, aux)?;
         }
 
+        // Verbatim, after the physvols. GDML places no ordering constraint
+        // between placements, and Geant4 reads them in one pass, so the
+        // interleaving with <physvol> is not preserved -- the elements are.
+        for raw in &vol.loops {
+            write_raw(writer, raw)?;
+        }
+
         writer.write_event(Event::End(BytesEnd::new("volume")))?;
     }
 

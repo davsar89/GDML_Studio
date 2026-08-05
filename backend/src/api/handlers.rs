@@ -1684,6 +1684,7 @@ mod tests {
             auxiliaries: Vec::new(),
             replica: None,
             body_comments: Vec::new(),
+            loops: Vec::new(),
         }
     }
 
