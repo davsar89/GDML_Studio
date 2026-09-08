@@ -82,14 +82,6 @@ pub fn apply_unit(value: f64, unit: &str) -> f64 {
     }
 }
 
-pub fn default_length_unit() -> &'static str {
-    "mm"
-}
-
-pub fn default_angle_unit() -> &'static str {
-    "rad"
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

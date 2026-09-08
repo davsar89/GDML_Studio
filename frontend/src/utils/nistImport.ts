@@ -1,33 +1,20 @@
-import type { MaterialInfo, MaterialComponent, NistMaterial } from '../store/types';
+import type { MaterialInfo, MaterialComponent, NistMaterial, ElementInfo } from '../store/types';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 
-/**
- * Import a NIST material into the document, auto-creating referenced elements.
- * Returns the constructed MaterialInfo.
- */
-export async function importNistMaterial(nist: NistMaterial): Promise<MaterialInfo> {
-  const store = useAppStore.getState();
-
-  // Auto-create referenced elements
-  for (const comp of nist.components) {
-    const existingEl = store.elements.find((el) => el.name === comp.ref);
-    if (!existingEl) {
-      try {
-        const { material: refNist } = await api.getNistMaterial(comp.ref);
-        await api.addElement({
-          name: refNist.name,
-          formula: refNist.formula,
-          z: refNist.z != null ? String(refNist.z) : null,
-          atom_value: refNist.atom_value != null ? String(refNist.atom_value) : null,
-          atom_unit: null,
-          atom_type: null,
-          fractions: [],
-        });
-      } catch {
-        // Element may already exist or ref not found — continue gracefully
-      }
-    }
+/** Prepare a material and its missing elements without changing the document. */
+export async function prepareNistMaterial(nist: NistMaterial): Promise<{ material: MaterialInfo; elements: ElementInfo[] }> {
+  const existing = useAppStore.getState().elements;
+  const elements: ElementInfo[] = [];
+  for (const name of new Set(nist.components.map((comp) => comp.ref))) {
+    if (existing.some((el) => el.name === name)) continue;
+    const { material: refNist } = await api.getNistMaterial(name);
+    elements.push({
+      name: refNist.name, formula: refNist.formula,
+      z: refNist.z != null ? String(refNist.z) : null,
+      atom_value: refNist.atom_value != null ? String(refNist.atom_value) : null,
+      atom_unit: null, atom_type: null, fractions: [],
+    });
   }
 
   // Build components
@@ -41,7 +28,7 @@ export async function importNistMaterial(nist: NistMaterial): Promise<MaterialIn
     name: nist.name,
     formula: nist.formula,
     z: nist.z != null ? String(nist.z) : null,
-    state: nist.state || null,
+    state: nist.state.toLowerCase() || null,
     density: { value: String(nist.density), unit: 'g/cm3' },
     density_ref: null,
     temperature: null,
@@ -56,5 +43,5 @@ export async function importNistMaterial(nist: NistMaterial): Promise<MaterialIn
     components,
   };
 
-  return mat;
+  return { material: mat, elements };
 }

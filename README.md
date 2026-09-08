@@ -79,9 +79,9 @@ The **Materials** tab in the left panel lists all materials and elements defined
 - **Formula** — set or clear the chemical formula
 - **Z** — set or clear the atomic number (for simple materials)
 - **Components** — add or remove element references with fraction or composite weights
-- **Auto-rename** — when you change a material's formula, GDML Studio offers to rename the material to match
+- **Name** — rename the material and update its references
 
-Use the **NIST Material Lookup** button to search the built-in database of 309 Geant4 predefined materials (elemental, compound, HEP, space, and biochemical categories) and apply a NIST density to the selected material.
+Use **NIST Material Lookup** to prepare a material from the built-in database of 309 Geant4 predefined materials. Fields, composition, renaming, and any missing NIST elements stay in a draft until **Apply** commits them together. **Cancel** restores the last applied material. Invalid edits remain in the editor for correction.
 
 ### Volume Material Assignment
 
@@ -96,10 +96,23 @@ touches your filesystem. Your original file on disk is left untouched.
 - **Save** — downloads the current state (materials, elements, volumes) using the original filename
 - **Save As** — same, but prompts for the filename first
 
+Save and material selection resolve pending drafts with **Apply / Discard / Cancel**.
+Opening another file also asks **Save / Discard / Cancel** for applied changes that
+have not been exported. Cancelling the file picker or Save As filename prompt
+leaves the current document and draft intact.
+
 Because these are ordinary browser downloads, they land in your download
 directory, and your browser will typically rename rather than replace an
 existing file (`model (1).gdml`). To update the original, move the downloaded
 file over it yourself.
+
+### Geometry interpretation
+
+Geometry expressions use real-valued arithmetic (`1/2` is `0.5`). Declared length
+and angle units apply after expression evaluation, as in Geant4; a ratio of two
+length quantities is therefore still multiplied by the attribute's `lunit`.
+Multi-file export retains imported isotopes and scales and writes referenced
+volumes before their parents.
 
 ## Sample Files
 

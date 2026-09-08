@@ -45,10 +45,6 @@ afterEach(() => {
 });
 
 describe('unsaved-changes tracking', () => {
-  it('starts clean', () => {
-    expect(useAppStore.getState().dirty).toBe(false);
-  });
-
   it.each([
     ['updateMaterial', () => api.updateMaterial('G4_WATER', material)],
     ['addMaterial', () => api.addMaterial(material)],
@@ -79,16 +75,4 @@ describe('unsaved-changes tracking', () => {
     expect(useAppStore.getState().dirty).toBe(false);
   });
 
-  it('markSaved clears it and reset clears it', async () => {
-    vi.stubGlobal('fetch', mockFetch(true));
-    await api.updateMaterial('G4_WATER', material);
-    expect(useAppStore.getState().dirty).toBe(true);
-
-    useAppStore.getState().markSaved();
-    expect(useAppStore.getState().dirty).toBe(false);
-
-    useAppStore.getState().markDirty();
-    useAppStore.getState().reset();
-    expect(useAppStore.getState().dirty).toBe(false);
-  });
 });

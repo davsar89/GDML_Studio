@@ -2,11 +2,13 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '../../store';
 import type { MaterialInfo, ElementInfo, MaterialComponent, NistMaterial } from '../../store/types';
 import * as api from '../../api/client';
-import { importNistMaterial } from '../../utils/nistImport';
-import { refreshMaterials, refreshMaterialsAndMeshes } from '../../utils/refresh';
+import { prepareNistMaterial } from '../../utils/nistImport';
+import { refreshMaterials } from '../../utils/refresh';
+import { applyMaterialDraft, resolveMaterialDraft, runDocumentAction } from '../../utils/documentActions';
 
 export default function MaterialsPanel() {
   const materials = useAppStore((s) => s.materials);
+  const busy = useAppStore((s) => s.documentBusy || s.loading);
   const elements = useAppStore((s) => s.elements);
   const selectedMaterial = useAppStore((s) => s.selectedMaterial);
   const setSelectedMaterial = useAppStore((s) => s.setSelectedMaterial);
@@ -16,7 +18,7 @@ export default function MaterialsPanel() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <fieldset disabled={busy} style={{ display: 'flex', flexDirection: 'column', gap: 8, border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <MaterialsList
         materials={materials}
         selectedMaterial={selectedMaterial}
@@ -30,7 +32,7 @@ export default function MaterialsPanel() {
         />
       )}
       <ElementsList elements={elements} />
-    </div>
+    </fieldset>
   );
 }
 
@@ -46,51 +48,52 @@ function MaterialsList({
   onSelect: (name: string | null) => void;
 }) {
   const handleAdd = async () => {
-    const materials = useAppStore.getState().materials;
-    const newMat: MaterialInfo = {
-      name: '',
-      formula: null,
-      z: null,
-      state: null,
-      density: { value: '1.0', unit: 'g/cm3' },
-      density_ref: null,
-      temperature: null,
-      pressure: null,
-      mee: null,
-      rl: null,
-      al: null,
-      properties: [],
-      atom_value: null,
-      atom_unit: null,
-      atom_type: null,
-      components: [],
-    };
-    newMat.name = generateDefaultMaterialName(newMat, materials);
-    try {
+    await runDocumentAction(async () => {
+      if (!await resolveMaterialDraft()) return;
+      const { materials, elements } = useAppStore.getState();
+      const names = new Set([...materials, ...elements].map((item) => item.name));
+      let name = 'Material_d1.0';
+      for (let i = 2; names.has(name); i++) name = `Material_d1.0_${i}`;
+      const newMat: MaterialInfo = {
+        name,
+        formula: null,
+        z: null,
+        state: null,
+        density: { value: '1.0', unit: 'g/cm3' },
+        density_ref: null,
+        temperature: null,
+        pressure: null,
+        mee: null,
+        rl: null,
+        al: null,
+        properties: [],
+        atom_value: null,
+        atom_unit: null,
+        atom_type: null,
+        components: [],
+      };
       await api.addMaterial(newMat);
       await refreshMaterials();
-      onSelect(newMat.name);
-    } catch (e: unknown) {
-      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
-    }
+      useAppStore.setState({ selectedMaterial: newMat.name });
+    });
   };
 
   const handleDelete = async (name: string) => {
-    if (!window.confirm(`Delete material "${name}"?`)) return;
-    try {
-      await api.deleteMaterial(name);
+    await runDocumentAction(async () => {
+      if (!await resolveMaterialDraft()) return;
+      const target = selectedMaterial === name ? useAppStore.getState().selectedMaterial ?? name : name;
+      if (!window.confirm(`Delete material "${target}"?`)) return;
+      await api.deleteMaterial(target);
       await refreshMaterials();
-      if (selectedMaterial === name) onSelect(null);
-    } catch (e: unknown) {
-      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
-    }
+      if (selectedMaterial === name) useAppStore.setState({ selectedMaterial: null });
+    });
   };
 
   return (
     <div>
       <div style={{ ...sectionHeader, marginBottom: 4 }}>
         <span>Materials ({materials.length})</span>
-        <button onClick={handleAdd} style={smallBtn}>+</button>
+        <button aria-label="Add material" onClick={handleAdd} style={smallBtn}>+</button>
       </div>
       <div style={{ maxHeight: 160, overflow: 'auto' }}>
         {materials.map((m) => (
@@ -141,244 +144,54 @@ function MaterialsList({
 
 // ─── Material Editor ────────────────────────────────────────────────────────
 
-function MaterialEditor({
-  materialName,
-  materials,
-  elements,
-}: {
-  materialName: string;
-  materials: MaterialInfo[];
-  elements: ElementInfo[];
+function MaterialEditor({ materialName, materials, elements }: {
+  materialName: string; materials: MaterialInfo[]; elements: ElementInfo[];
 }) {
-  const mat = materials.find((m) => m.name === materialName);
-  const [renaming, setRenaming] = useState(false);
-  const [renameTo, setRenameTo] = useState('');
-
-  if (!mat) return null;
-
-  const handleStartRename = () => {
-    setRenameTo(mat.name);
-    setRenaming(true);
-  };
-
-  const handleCommitRename = async () => {
-    const newName = renameTo.trim();
-    if (!newName || newName === mat.name) {
-      setRenaming(false);
-      return;
-    }
-    try {
-      const updated = { ...mat, name: newName };
-      await api.updateMaterial(mat.name, updated);
-      await refreshMaterialsAndMeshes();
-      useAppStore.getState().setSelectedMaterial(newName);
-      setRenaming(false);
-    } catch (e: unknown) {
-      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
+  const draft = useAppStore((s) => s.materialDraft);
+  const draftError = useAppStore((s) => s.draftError);
+  const update = useAppStore((s) => s.updateMaterialDraft);
+  const original = materials.find((m) => m.name === materialName);
+  const material = draft?.original.name === materialName ? draft.material : original;
+  if (!material) return null;
+  const availableElements = [...elements, ...(draft?.elements ?? []).filter((el) => !elements.some((existing) => existing.name === el.name))];
   return (
     <div style={{ borderTop: '1px solid #0f3460', paddingTop: 6 }}>
-      <div style={sectionHeader}>
-        {renaming ? (
-          <input
-            value={renameTo}
-            onChange={(e) => setRenameTo(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleCommitRename();
-              if (e.key === 'Escape') setRenaming(false);
-            }}
-            onBlur={handleCommitRename}
-            style={{ ...inputStyle, flex: 1, fontSize: 11, fontWeight: 700 }}
-            autoFocus
-          />
-        ) : (
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            Edit: {mat.name}
-          </span>
-        )}
-        {!renaming && (
-          <button onClick={handleStartRename} style={smallBtn} title="Rename material">
-            &#9998;
-          </button>
-        )}
+      <div style={sectionHeader}>Edit: {materialName}</div>
+      <FieldRow label="Name">
+        <input aria-label="Material name" value={material.name} onChange={(e) => update({ name: e.target.value })} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
+      </FieldRow>
+      <MaterialFields material={material} onChange={update} />
+      <ComponentsList material={material} materials={materials} elements={availableElements} onChange={update} />
+      <NistMaterialPicker material={material} />
+      {draftError && <div role="alert" style={{ color: '#ff9999', fontSize: 12, marginTop: 6 }}>{draftError}</div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button disabled={!draft} onClick={() => runDocumentAction(applyMaterialDraft)} style={smallBtn}>Apply</button>
+        <button disabled={!draft} onClick={() => useAppStore.getState().discardMaterialDraft()} style={smallBtn}>Cancel</button>
       </div>
-      {/*
-        Keyed on the name only. Keying on the field values too meant the
-        component's own save remounted it -- the POST came back, the store
-        updated, the key changed, and the inputs re-initialised from a snapshot
-        that predated whatever had been typed while the request was in flight.
-        MaterialFields re-syncs itself from the prop instead; see fieldsOf.
-      */}
-      <MaterialFields key={mat.name} material={mat} />
-      <ComponentsList material={mat} materials={materials} elements={elements} />
-      <NistMaterialPicker material={mat} />
     </div>
   );
 }
 
-/** The four fields MaterialFields owns, projected out of a material. */
-function fieldsOf(m: MaterialInfo) {
-  return {
-    densityVal: m.density?.value || '',
-    densityUnit: m.density?.unit || 'g/cm3',
-    formula: m.formula || '',
-    z: m.z || '',
-  };
-}
-
-function MaterialFields({ material }: { material: MaterialInfo }) {
-  const [densityVal, setDensityVal] = useState(material.density?.value || '');
-  const [densityUnit, setDensityUnit] = useState(material.density?.unit || 'g/cm3');
-  const [formula, setFormula] = useState(material.formula || '');
-  const [z, setZ] = useState(material.z || '');
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // What our own save last POSTed. Used to tell our echo apart from an edit
-  // made somewhere else; see the re-sync block below.
-  const [lastSent, setLastSent] = useState(() => fieldsOf(material));
-
-  // GDML density/Z values are xs:double; refuse to persist non-numeric input
-  // (the field shows red and the previous valid value is kept on save).
-  const densityValid = densityVal.trim() !== '' && Number.isFinite(Number(densityVal));
-  const zValid = z.trim() === '' || Number.isFinite(Number(z));
-
-  const save = useCallback(async (overrides: Partial<MaterialInfo> = {}) => {
-    // Spread the original rather than listing fields: `update_material` replaces
-    // the stored material wholesale, so any field omitted here is erased from the
-    // document (and from the exported GDML). Only the edited fields are named.
-    const updated: MaterialInfo = {
-      ...material,
-      density: densityValid ? { value: densityVal, unit: densityUnit } : material.density,
-      formula: formula || null,
-      z: zValid ? z || null : material.z,
-      ...overrides,
-    };
-    // Record before awaiting: the refresh this triggers has to be recognisable
-    // as our own echo even while the request is still in flight. If the POST
-    // fails, this holds a value that was never persisted -- correct, because
-    // the next refresh will then differ and pull the server's truth back in.
-    setLastSent(fieldsOf(updated));
-    try {
-      await api.updateMaterial(material.name, updated);
-      await refreshMaterialsAndMeshes();
-    } catch (e: unknown) {
-      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [material, densityVal, densityUnit, formula, z, densityValid, zValid]);
-
-  // `save`'s identity changes on every keystroke (its deps include the field
-  // values). The debounce timeout and the unmount flush must always call the
-  // LATEST save — going through a ref avoids both saving stale values and
-  // re-running a flush effect per keystroke.
-  const saveRef = useRef(save);
-  useEffect(() => {
-    saveRef.current = save;
-  }, [save]);
-
-  // Re-sync the inputs when the material is changed by something other than
-  // this component -- the NIST picker replaces density, formula and Z wholesale,
-  // and without this the fields would keep showing the old values.
-  //
-  // Most refreshes are just the echo of our own save coming back, and adopting
-  // those would discard anything typed while the POST was in flight. Comparing
-  // against what we last sent separates the two cases: identical means it's our
-  // echo, so ignore it; different means an external write, so take it.
-  //
-  // Done during render rather than in an effect -- React's documented "adjusting
-  // state when a prop changes" pattern. React re-runs this component
-  // immediately without committing, so no painted frame ever shows the stale
-  // value, and the `material !== prevMaterial` guard stops it re-entering.
-  // An effect would commit the stale render first, producing a visible flash.
-  const [prevMaterial, setPrevMaterial] = useState(material);
-  if (material !== prevMaterial) {
-    setPrevMaterial(material);
-    const incoming = fieldsOf(material);
-    if (
-      incoming.densityVal !== lastSent.densityVal ||
-      incoming.densityUnit !== lastSent.densityUnit ||
-      incoming.formula !== lastSent.formula ||
-      incoming.z !== lastSent.z
-    ) {
-      setLastSent(incoming);
-      setDensityVal(incoming.densityVal);
-      setDensityUnit(incoming.densityUnit);
-      setFormula(incoming.formula);
-      setZ(incoming.z);
-    }
-  }
-
-  const scheduleSave = useCallback((overrides?: Partial<MaterialInfo>) => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    saveTimeoutRef.current = setTimeout(() => {
-      saveTimeoutRef.current = null;
-      saveRef.current(overrides);
-    }, 500);
-  }, []);
-
-  // Flush pending save on unmount ONLY (empty deps; latest save via ref).
-  useEffect(() => {
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveRef.current();
-      }
-    };
-  }, []);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-      saveRef.current();
-      e.currentTarget.blur();
-    }
-  }, []);
-
+function MaterialFields({ material, onChange }: {
+  material: MaterialInfo; onChange: (changes: Partial<MaterialInfo>) => void;
+}) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
       <FieldRow label="Density">
-        <input
-          value={densityVal}
-          onChange={(e) => { setDensityVal(e.target.value); scheduleSave(); }}
-          onKeyDown={handleKeyDown}
-          style={{
-            ...inputStyle,
-            width: 80,
-            ...(densityValid ? {} : { border: '1px solid #e94560' }),
-          }}
-          title={densityValid ? undefined : 'Density must be a number'}
-        />
-        <select
-          value={densityUnit}
-          onChange={(e) => { setDensityUnit(e.target.value); save({ density: { value: densityVal, unit: e.target.value } }); }}
-          style={{ ...inputStyle, width: 70 }}
-        >
-          <option value="g/cm3">g/cm3</option>
-          <option value="kg/m3">kg/m3</option>
-          <option value="mg/cm3">mg/cm3</option>
+        <input aria-label="Density" value={material.density?.value ?? ''}
+          onChange={(e) => onChange({ density: { value: e.target.value, unit: material.density?.unit ?? 'g/cm3' }, density_ref: null })}
+          style={{ ...inputStyle, width: 80 }} />
+        <select aria-label="Density unit" value={material.density?.unit ?? 'g/cm3'}
+          onChange={(e) => onChange({ density: { value: material.density?.value ?? '', unit: e.target.value }, density_ref: null })}
+          style={{ ...inputStyle, width: 70 }}>
+          <option value="g/cm3">g/cm3</option><option value="kg/m3">kg/m3</option><option value="mg/cm3">mg/cm3</option>
         </select>
       </FieldRow>
       <FieldRow label="Formula">
-        <input
-          value={formula}
-          onChange={(e) => { setFormula(e.target.value); scheduleSave(); }}
-          onKeyDown={handleKeyDown}
-          style={{ ...inputStyle, flex: 1 }}
-        />
+        <input aria-label="Formula" value={material.formula ?? ''} onChange={(e) => onChange({ formula: e.target.value || null })} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
       </FieldRow>
       <FieldRow label="Z">
-        <input
-          value={z}
-          onChange={(e) => { setZ(e.target.value); scheduleSave(); }}
-          onKeyDown={handleKeyDown}
-          style={{
-            ...inputStyle,
-            width: 50,
-            ...(zValid ? {} : { border: '1px solid #e94560' }),
-          }}
-          title={zValid ? undefined : 'Z must be a number'}
-        />
+        <input aria-label="Atomic number" value={material.z ?? ''} onChange={(e) => onChange({ z: e.target.value || null })} style={{ ...inputStyle, width: 50 }} />
       </FieldRow>
     </div>
   );
@@ -399,41 +212,28 @@ function ComponentsList({
   material,
   materials,
   elements,
+  onChange,
 }: {
   material: MaterialInfo;
   materials: MaterialInfo[];
   elements: ElementInfo[];
+  onChange: (changes: Partial<MaterialInfo>) => void;
 }) {
   const [addingComp, setAddingComp] = useState(false);
   const [compType, setCompType] = useState<'Fraction' | 'Composite'>('Fraction');
   const [compRef, setCompRef] = useState('');
   const [compN, setCompN] = useState('');
 
-  const saveComponents = async (components: MaterialComponent[]) => {
-    const updated: MaterialInfo = { ...material, components };
-    try {
-      await api.updateMaterial(material.name, updated);
-      await refreshMaterialsAndMeshes();
-    } catch (e: unknown) {
-      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
-  const handleAddComponent = async () => {
+  const handleAddComponent = () => {
     if (!compRef || !compN) return;
     const newComp: MaterialComponent =
       compType === 'Fraction'
         ? { Fraction: { n: compN, ref_name: compRef } }
         : { Composite: { n: compN, ref_name: compRef } };
-    await saveComponents([...material.components, newComp]);
+    onChange({ components: [...material.components, newComp] });
     setAddingComp(false);
     setCompRef('');
     setCompN('');
-  };
-
-  const handleRemoveComponent = async (idx: number) => {
-    const next = material.components.filter((_, i) => i !== idx);
-    await saveComponents(next);
   };
 
   return (
@@ -453,12 +253,12 @@ function ComponentsList({
             <span style={{ color: '#8899aa' }}>{type}</span>
             <span style={{ color: '#56d6c8' }}>{ref}</span>
             <span style={{ color: '#666' }}>n={n}</span>
-            <span
-              onClick={() => handleRemoveComponent(i)}
-              style={{ cursor: 'pointer', color: '#e94560', fontSize: 9, opacity: 0.6 }}
+            <button aria-label={`Remove component ${ref}`}
+              onClick={() => onChange({ components: material.components.filter((_, index) => index !== i) })}
+              style={{ background: 'none', border: 0, cursor: 'pointer', color: '#e94560', fontSize: 9, opacity: 0.6 }}
             >
               x
-            </span>
+            </button>
           </div>
         );
       })}
@@ -526,24 +326,15 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
     return () => clearTimeout(t);
   }, [open, search, category, doSearch]);
 
-  const handleApply = async (nist: NistMaterial) => {
-    const oldName = material.name;
-    try {
-      const nistMat = await importNistMaterial(nist);
-      // The NIST database has no mean-excitation-energy column, and this is an
-      // update of an existing material rather than a fresh one — keep the MEE
-      // the document already had instead of erasing it.
-      const updated: MaterialInfo = { ...nistMat, mee: material.mee };
-      await api.updateMaterial(oldName, updated);
-      await refreshMaterialsAndMeshes();
-      if (updated.name !== oldName) {
-        useAppStore.getState().setSelectedMaterial(updated.name);
-      }
-      setOpen(false);
-    } catch (e: unknown) {
-      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  const handleApply = (nist: NistMaterial) => runDocumentAction(async () => {
+    const prepared = await prepareNistMaterial(nist);
+    // The catalog supplies composition and density, not these GDML properties.
+    const { temperature, pressure, mee, rl, al, properties } = material;
+    useAppStore.getState().updateMaterialDraft({
+      ...prepared.material, temperature, pressure, mee, rl, al, properties,
+    }, prepared.elements);
+    setOpen(false);
+  });
 
   return (
     <div style={{ marginTop: 4 }}>
@@ -644,7 +435,7 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
 
   const handleAdd = async () => {
     if (!newName.trim()) return;
-    try {
+    await runDocumentAction(async () => {
       await api.addElement({
         name: newName.trim(),
         formula: null,
@@ -661,19 +452,15 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
       setNewAtom('');
       setElSuggestions([]);
       setShowElSuggestions(false);
-    } catch (e: unknown) {
-      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
-    }
+    });
   };
 
   const handleDelete = async (name: string) => {
-    if (!window.confirm(`Delete element "${name}"?`)) return;
-    try {
+    await runDocumentAction(async () => {
+      if (!window.confirm(`Delete element "${name}"?`)) return;
       await api.deleteElement(name);
       await refreshMaterials();
-    } catch (e: unknown) {
-      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
-    }
+    });
   };
 
   return (
@@ -765,47 +552,6 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
     </div>
   );
 }
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function generateDefaultMaterialName(
-  mat: MaterialInfo,
-  allMaterials: MaterialInfo[],
-): string {
-  // Determine base
-  let base = 'Material';
-  if (mat.formula) {
-    base = mat.formula;
-  } else if (mat.components.length > 0) {
-    const first = mat.components[0].Fraction?.ref_name
-      ?? mat.components[0].Composite?.ref_name ?? 'Material';
-    base = mat.components.length > 1 ? `${first}+${mat.components.length}` : first;
-  } else if (mat.z) {
-    base = `Z${mat.z}`;
-  }
-
-  // Density suffix
-  let suffix = '';
-  if (mat.density?.value) {
-    const unitTag = (!mat.density.unit || mat.density.unit === 'g/cm3')
-      ? '' : `_${mat.density.unit.replace(/\//g, '')}`;
-    suffix = `_d${mat.density.value}${unitTag}`;
-  }
-
-  let name = `${base}${suffix}`;
-
-  // Uniqueness — skip self
-  const others = allMaterials
-    .filter((m) => m.name !== mat.name)
-    .map((m) => m.name);
-  if (others.includes(name)) {
-    let i = 2;
-    while (others.includes(`${name}_${i}`)) i++;
-    name = `${name}_${i}`;
-  }
-  return name;
-}
-
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 

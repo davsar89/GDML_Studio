@@ -1,6 +1,7 @@
 use anyhow::Result;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{Cursor, Write};
 use std::sync::LazyLock;
 
@@ -1572,6 +1573,89 @@ fn write_auxiliary(writer: &mut Writer<Cursor<Vec<u8>>>, aux: &Auxiliary) -> Res
     Ok(())
 }
 
+/// Stable dependency order: Geant4 resolves a volumeref while reading its parent.
+/// Uninterpreted references (e.g. assemblies) remain in the preserved XML path.
+fn ordered_volumes(structure: &StructureSection) -> Result<Vec<&Volume>> {
+    let volumes = &structure.volumes;
+    let index: HashMap<&str, usize> = volumes
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (v.name.as_str(), i))
+        .collect();
+    let mut parents = vec![Vec::new(); volumes.len()];
+    let mut remaining = vec![0usize; volumes.len()];
+    for (parent, volume) in volumes.iter().enumerate() {
+        let mut refs: Vec<String> = volume
+            .physvols
+            .iter()
+            .filter(|pv| pv.file_ref.is_none())
+            .map(|pv| pv.volume_ref.clone())
+            .collect();
+        if let Some(replica) = &volume.replica {
+            refs.push(replica.volume_ref.clone());
+        }
+        // A placement inside a preserved loop has the same dependency as a
+        // direct physvol, even though the loop itself must not be expanded here.
+        for raw in &volume.loops {
+            let mut reader = quick_xml::Reader::from_str(&raw.xml);
+            loop {
+                match reader.read_event()? {
+                    Event::Empty(e) | Event::Start(e)
+                        if e.local_name().as_ref() == b"volumeref" =>
+                    {
+                        for attr in e.attributes() {
+                            let attr = attr?;
+                            if attr.key.as_ref() == b"ref" {
+                                refs.push(
+                                    attr.decode_and_unescape_value(reader.decoder())?
+                                        .into_owned(),
+                                );
+                            }
+                        }
+                    }
+                    Event::Eof => break,
+                    _ => {}
+                }
+            }
+        }
+        let children: HashSet<usize> = refs
+            .iter()
+            .filter_map(|name| index.get(name.as_str()).copied())
+            .collect();
+        remaining[parent] = children.len();
+        for child in children {
+            parents[child].push(parent);
+        }
+    }
+    let mut ready: BTreeSet<usize> = remaining
+        .iter()
+        .enumerate()
+        .filter_map(|(i, n)| (*n == 0).then_some(i))
+        .collect();
+    let mut ordered = Vec::with_capacity(volumes.len());
+    while let Some(child) = ready.pop_first() {
+        ordered.push(&volumes[child]);
+        for &parent in &parents[child] {
+            remaining[parent] -= 1;
+            if remaining[parent] == 0 {
+                ready.insert(parent);
+            }
+        }
+    }
+    anyhow::ensure!(
+        ordered.len() == volumes.len(),
+        "Cyclic volume dependencies prevent export: {}",
+        remaining
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| **n > 0)
+            .map(|(i, _)| volumes[i].name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    Ok(ordered)
+}
+
 fn write_structure(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     structure: &StructureSection,
@@ -1580,7 +1664,7 @@ fn write_structure(
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("structure")))?;
 
-    for vol in &structure.volumes {
+    for vol in ordered_volumes(structure)? {
         write_comments(writer, order, "structure", Some(&vol.name))?;
         let mut elem = BytesStart::new("volume");
         elem.push_attribute(("name", vol.name.as_str()));

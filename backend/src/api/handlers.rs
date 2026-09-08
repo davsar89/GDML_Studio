@@ -72,7 +72,6 @@ where
 fn merge_by_name<T, F>(
     target: &mut Vec<T>,
     incoming: &[T],
-    existing_names: &HashSet<String>,
     name_of: F,
     kind: &str,
     file_ref_name: &str,
@@ -83,15 +82,11 @@ fn merge_by_name<T, F>(
 {
     for item in incoming {
         let name = name_of(item);
-        if !existing_names.contains(name) {
+        let Some(existing) = target.iter().find(|existing| name_of(existing) == name) else {
             target.push(item.clone());
             continue;
-        }
-        let conflicting = target
-            .iter()
-            .find(|existing| name_of(existing) == name)
-            .map(|existing| !definitions_equivalent(existing, item).unwrap_or(false))
-            .unwrap_or(false);
+        };
+        let conflicting = !definitions_equivalent(existing, item).unwrap_or(false);
         if conflicting {
             warnings.push(format!(
                 "File \"{file_ref_name}\" defines {kind} \"{name}\" differently from the \
@@ -123,32 +118,6 @@ fn merge_child_into_main(
         ));
         return Ok(());
     }
-
-    // Collect existing names to detect duplicates
-    let existing_solids: HashSet<String> = main_doc
-        .solids
-        .solids
-        .iter()
-        .map(|s| s.name().to_string())
-        .collect();
-    let existing_materials: HashSet<String> = main_doc
-        .materials
-        .materials
-        .iter()
-        .map(|m| m.name.clone())
-        .collect();
-    let existing_elements: HashSet<String> = main_doc
-        .materials
-        .elements
-        .iter()
-        .map(|e| e.name.clone())
-        .collect();
-    let existing_volumes: HashSet<String> = main_doc
-        .structure
-        .volumes
-        .iter()
-        .map(|v| v.name.clone())
-        .collect();
 
     // Merge defines (constants, quantities, variables, expressions, positions, rotations)
     merge_named_items(
@@ -194,6 +163,43 @@ fn merge_child_into_main(
         |item| item.name.as_str(),
     )?;
 
+    merge_named_items(
+        &mut main_doc.defines.scales,
+        &child_doc.defines.scales,
+        "scale",
+        file_ref_name,
+        |item| item.name.as_str(),
+    )?;
+    // Append only new slots, in the child's declaration order. Collection order
+    // alone is insufficient: a constant can depend on an earlier quantity.
+    for slot in &child_doc.order.define_slots {
+        if !main_doc.order.define_slots.contains(slot) {
+            main_doc.order.define_slots.push(slot.clone());
+            if child_doc
+                .materials_define
+                .as_ref()
+                .is_some_and(|names| names.contains(&slot.name))
+            {
+                main_doc
+                    .materials_define
+                    .get_or_insert_with(Vec::new)
+                    .push(slot.name.clone());
+            }
+        }
+    }
+    main_doc
+        .order
+        .anchors
+        .extend(child_doc.order.anchors.iter().cloned());
+    merge_by_name(
+        &mut main_doc.materials.isotopes,
+        &child_doc.materials.isotopes,
+        |item| item.name.as_str(),
+        "isotope",
+        file_ref_name,
+        warnings,
+    );
+
     // Merge elements, materials, solids and volumes by name.
     //
     // Geant4 does not flatten like this: G4GDMLReadStructure::FileRead builds a
@@ -205,7 +211,6 @@ fn merge_child_into_main(
     merge_by_name(
         &mut main_doc.materials.elements,
         &child_doc.materials.elements,
-        &existing_elements,
         |e| e.name.as_str(),
         "element",
         file_ref_name,
@@ -214,7 +219,6 @@ fn merge_child_into_main(
     merge_by_name(
         &mut main_doc.materials.materials,
         &child_doc.materials.materials,
-        &existing_materials,
         |m| m.name.as_str(),
         "material",
         file_ref_name,
@@ -223,7 +227,6 @@ fn merge_child_into_main(
     merge_by_name(
         &mut main_doc.solids.solids,
         &child_doc.solids.solids,
-        &existing_solids,
         |s| s.name(),
         "solid",
         file_ref_name,
@@ -232,7 +235,6 @@ fn merge_child_into_main(
     merge_by_name(
         &mut main_doc.structure.volumes,
         &child_doc.structure.volumes,
-        &existing_volumes,
         |v| v.name.as_str(),
         "volume",
         file_ref_name,
@@ -335,7 +337,7 @@ fn ensure_material_ref_exists(doc: &GdmlDocument, candidate: &str) -> Result<(),
 }
 
 fn validate_material_components(
-    doc: &GdmlDocument,
+    doc: &MaterialSection,
     material: &Material,
     excluding_material: Option<&str>,
 ) -> Result<(), ApiError> {
@@ -352,9 +354,8 @@ fn validate_material_components(
             )));
         }
 
-        let element_exists = doc.materials.elements.iter().any(|e| e.name == *ref_name);
+        let element_exists = doc.elements.iter().any(|e| e.name == *ref_name);
         let material_exists = doc
-            .materials
             .materials
             .iter()
             .any(|m| m.name == *ref_name && Some(m.name.as_str()) != excluding_material);
@@ -422,17 +423,30 @@ pub async fn upload_file(
         ));
     }
 
-    // Evaluate expressions
+    // Bootstrap loop bounds without evaluating vectors that may use generated defines.
     let mut engine = EvalEngine::new();
-    engine
-        .evaluate_all(&doc.defines)
-        .map_err(|e| ApiError::internal(&format!("Expression evaluation error: {}", e)))?;
+    if req.content.contains("<loop") {
+        let bootstrap_defines = DefineSection {
+            constants: doc.defines.constants.clone(),
+            quantities: doc.defines.quantities.clone(),
+            variables: doc.defines.variables.clone(),
+            expressions: doc.defines.expressions.clone(),
+            ..DefineSection::default()
+        };
+        engine
+            .evaluate_all(&bootstrap_defines)
+            .map_err(|e| ApiError::bad_request(&format!("Expression evaluation error: {e}")))?;
+    }
 
     // Expand <loop> for the preview. The parsed `doc` keeps its loops verbatim
     // so the export stays faithful; geometry is built from the twin.
     let mut loop_warnings = Vec::new();
     let render = build_render_document(&req.content, &req.filename, &engine, &mut loop_warnings);
     let geometry = render.as_ref().unwrap_or(&doc);
+    // Rebuild the final context from the document actually used for geometry.
+    engine
+        .evaluate_all(&geometry.defines)
+        .map_err(|e| ApiError::bad_request(&format!("Expression evaluation error: {e}")))?;
 
     // Tessellate solids
     let segments = req.segments.unwrap_or_else(config::mesh_segments);
@@ -1051,8 +1065,19 @@ fn build_volume_node(
                 }
             };
 
-            let pos = resolve_placement_pos(&pv.position, engine);
-            let rot = resolve_placement_rot(&pv.rotation, engine);
+            let placement = engine
+                .resolve_position(&pv.position)
+                .and_then(|pos| engine.resolve_rotation(&pv.rotation).map(|rot| (pos, rot)));
+            let (pos, rot) = match placement {
+                Ok(transform) => transform,
+                Err(e) => {
+                    warnings.push(format!(
+                        "volume '{}', placement {}: {}; skipping placement",
+                        vol.name, idx, e
+                    ));
+                    return None;
+                }
+            };
             let child_instance_id = match pv.name.as_deref() {
                 Some(name) if !name.is_empty() => {
                     format!(
@@ -1243,66 +1268,6 @@ fn build_volume_node(
     }
 }
 
-fn resolve_placement_pos(pos: &Option<PlacementPos>, engine: &EvalEngine) -> [f64; 3] {
-    match pos {
-        Some(PlacementPos::Inline(p)) => {
-            let unit = p.unit.as_deref().unwrap_or("mm");
-            // Skip the unit conversion for expressions that reference
-            // already-converted length quantities (they are in mm).
-            let comp = |expr: &Option<String>| -> f64 {
-                match expr {
-                    Some(e) => {
-                        let v = engine.resolve_value(e);
-                        if engine.expression_uses_length_symbols(e) {
-                            v
-                        } else {
-                            crate::gdml::units::length_to_mm(v, unit)
-                        }
-                    }
-                    None => 0.0,
-                }
-            };
-            [comp(&p.x), comp(&p.y), comp(&p.z)]
-        }
-        Some(PlacementPos::Ref(name)) => engine
-            .position_values
-            .get(name)
-            .copied()
-            .unwrap_or([0.0; 3]),
-        None => [0.0; 3],
-    }
-}
-
-fn resolve_placement_rot(rot: &Option<PlacementRot>, engine: &EvalEngine) -> [f64; 3] {
-    match rot {
-        Some(PlacementRot::Inline(r)) => {
-            let unit = r.unit.as_deref().unwrap_or("rad");
-            // Skip the unit conversion for expressions that reference
-            // already-converted angle quantities (they are in radians).
-            let comp = |expr: &Option<String>| -> f64 {
-                match expr {
-                    Some(e) => {
-                        let v = engine.resolve_value(e);
-                        if engine.expression_uses_angle_symbols(e) {
-                            v
-                        } else {
-                            crate::gdml::units::angle_to_rad(v, unit)
-                        }
-                    }
-                    None => 0.0,
-                }
-            };
-            [comp(&r.x), comp(&r.y), comp(&r.z)]
-        }
-        Some(PlacementRot::Ref(name)) => engine
-            .rotation_values
-            .get(name)
-            .copied()
-            .unwrap_or([0.0; 3]),
-        None => [0.0; 3],
-    }
-}
-
 // ─── NIST Materials ─────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -1335,12 +1300,14 @@ pub async fn get_nist_material(
 // ─── Material CRUD ──────────────────────────────────────────────────────────
 
 fn ensure_material_name_available(
-    doc: &GdmlDocument,
+    doc: &MaterialSection,
     candidate: &str,
     excluding_material: Option<&str>,
 ) -> Result<(), ApiError> {
+    if candidate.trim().is_empty() {
+        return Err(ApiError::bad_request("A name is required"));
+    }
     let material_conflict = doc
-        .materials
         .materials
         .iter()
         .any(|m| m.name == candidate && Some(m.name.as_str()) != excluding_material);
@@ -1351,7 +1318,7 @@ fn ensure_material_name_available(
         )));
     }
 
-    let element_conflict = doc.materials.elements.iter().any(|e| e.name == candidate);
+    let element_conflict = doc.elements.iter().any(|e| e.name == candidate);
     if element_conflict {
         return Err(ApiError::bad_request(&format!(
             "Name '{}' is already used by an element",
@@ -1363,12 +1330,14 @@ fn ensure_material_name_available(
 }
 
 fn ensure_element_name_available(
-    doc: &GdmlDocument,
+    doc: &MaterialSection,
     candidate: &str,
     excluding_element: Option<&str>,
 ) -> Result<(), ApiError> {
+    if candidate.trim().is_empty() {
+        return Err(ApiError::bad_request("A name is required"));
+    }
     let element_conflict = doc
-        .materials
         .elements
         .iter()
         .any(|e| e.name == candidate && Some(e.name.as_str()) != excluding_element);
@@ -1379,7 +1348,7 @@ fn ensure_element_name_available(
         )));
     }
 
-    let material_conflict = doc.materials.materials.iter().any(|m| m.name == candidate);
+    let material_conflict = doc.materials.iter().any(|m| m.name == candidate);
     if material_conflict {
         return Err(ApiError::bad_request(&format!(
             "Name '{}' is already used by a material",
@@ -1417,10 +1386,111 @@ fn is_name_referenced_in_material_components(materials: &[Material], name: &str)
     })
 }
 
+/// Stage NIST dependencies without mutating the loaded document on failure.
+fn with_staged_elements(
+    materials: &MaterialSection,
+    elements: &[Element],
+    engine: &EvalEngine,
+) -> Result<MaterialSection, ApiError> {
+    let mut staged = materials.clone();
+    for element in elements {
+        if let Some(existing) = staged.elements.iter().find(|e| e.name == element.name) {
+            if !definitions_equivalent(existing, element)? {
+                return Err(ApiError::bad_request(&format!(
+                    "Element '{}' already has a different definition",
+                    element.name
+                )));
+            }
+            continue;
+        }
+        ensure_element_name_available(&staged, &element.name, None)?;
+        if element.fractions.is_empty() && (element.z.is_none() || element.atom_value.is_none()) {
+            return Err(ApiError::bad_request(&format!(
+                "Element '{}' needs atomic number and mass, or isotope fractions",
+                element.name
+            )));
+        }
+        for (value, label, integral) in [
+            (&element.z, "atomic number", true),
+            (&element.atom_value, "atomic mass", false),
+        ] {
+            if let Some(value) = value {
+                let value = engine.eval_expr(value).map_err(|e| {
+                    ApiError::bad_request(&format!(
+                        "Element '{}': invalid {label}: {e}",
+                        element.name
+                    ))
+                })?;
+                if value <= 0.0 || (integral && value.fract() != 0.0) {
+                    return Err(ApiError::bad_request(&format!(
+                        "Element '{}': invalid {label}",
+                        element.name
+                    )));
+                }
+            }
+        }
+        for fraction in &element.fractions {
+            let weight = engine
+                .eval_expr(&fraction.n)
+                .map_err(|e| ApiError::bad_request(&format!("Invalid isotope fraction: {e}")))?;
+            if !(0.0..=1.0).contains(&weight) {
+                return Err(ApiError::bad_request(
+                    "Isotope fraction must be between 0 and 1",
+                ));
+            }
+            if !staged.isotopes.iter().any(|i| i.name == fraction.ref_name) {
+                return Err(ApiError::bad_request(&format!(
+                    "Element '{}' references unknown isotope '{}'",
+                    element.name, fraction.ref_name
+                )));
+            }
+        }
+        staged.elements.push(element.clone());
+    }
+    Ok(staged)
+}
+
+fn validate_material_values(material: &Material, engine: &EvalEngine) -> Result<(), ApiError> {
+    let positive = |value: &str, field: &str| -> Result<f64, ApiError> {
+        let v = engine
+            .eval_expr(value)
+            .map_err(|e| ApiError::bad_request(&format!("Invalid {field}: {e}")))?;
+        if v <= 0.0 {
+            return Err(ApiError::bad_request(&format!("{field} must be positive")));
+        }
+        Ok(v)
+    };
+    if let Some(density) = &material.density {
+        positive(&density.value, "Density")?;
+    }
+    if let Some(z) = &material.z {
+        if positive(z, "Atomic number")?.fract() != 0.0 {
+            return Err(ApiError::bad_request("Atomic number must be an integer"));
+        }
+    }
+    for component in &material.components {
+        match component {
+            MaterialComponent::Fraction { n, .. } => {
+                if positive(n, "Mass fraction")? > 1.0 {
+                    return Err(ApiError::bad_request("Mass fraction cannot exceed 1"));
+                }
+            }
+            MaterialComponent::Composite { n, .. } => {
+                if positive(n, "Atom count")?.fract() != 0.0 {
+                    return Err(ApiError::bad_request("Atom count must be an integer"));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 pub struct UpdateMaterialRequest {
     pub name: String,
     pub material: Material,
+    #[serde(default)]
+    pub elements: Vec<Element>,
 }
 
 pub async fn update_material(
@@ -1435,34 +1505,24 @@ pub async fn update_material(
 
     let old_name = req.name.clone();
     let new_name = req.material.name.clone();
-    ensure_material_name_available(&loaded.document, &new_name, Some(old_name.as_str()))?;
-    validate_material_components(&loaded.document, &req.material, Some(old_name.as_str()))?;
-
-    let mat_idx = loaded
-        .document
-        .materials
+    let mut staged =
+        with_staged_elements(&loaded.document.materials, &req.elements, &loaded.engine)?;
+    ensure_material_name_available(&staged, &new_name, Some(&old_name))?;
+    validate_material_components(&staged, &req.material, Some(&old_name))?;
+    validate_material_values(&req.material, &loaded.engine)?;
+    let index = staged
         .materials
         .iter()
         .position(|m| m.name == old_name)
         .ok_or_else(|| ApiError::not_found(&format!("Material '{}' not found", req.name)))?;
-
-    loaded.document.materials.materials[mat_idx] = req.material;
-
+    staged.materials[index] = req.material;
     if old_name != new_name {
-        // Cascade rename to volumes
-        for vol in &mut loaded.document.structure.volumes {
-            if vol.material_ref == old_name {
-                vol.material_ref = new_name.clone();
-            }
-        }
-
-        // Cascade rename to material component references.
-        cascade_component_ref_rename(
-            &mut loaded.document.materials.materials,
-            old_name.as_str(),
-            new_name.as_str(),
-        );
+        loaded
+            .change_material_refs(None, &old_name, &new_name)
+            .map_err(|e| ApiError::bad_request(&format!("Cannot rename material: {e}")))?;
+        cascade_component_ref_rename(&mut staged.materials, &old_name, &new_name);
     }
+    loaded.document.materials = staged;
 
     Ok(Json(json!({ "ok": true })))
 }
@@ -1470,6 +1530,8 @@ pub async fn update_material(
 #[derive(Deserialize)]
 pub struct AddMaterialRequest {
     pub material: Material,
+    #[serde(default)]
+    pub elements: Vec<Element>,
 }
 
 pub async fn add_material(
@@ -1482,10 +1544,13 @@ pub async fn add_material(
         .as_mut()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
-    ensure_material_name_available(&loaded.document, &req.material.name, None)?;
-    validate_material_components(&loaded.document, &req.material, None)?;
-
-    loaded.document.materials.materials.push(req.material);
+    let mut staged =
+        with_staged_elements(&loaded.document.materials, &req.elements, &loaded.engine)?;
+    ensure_material_name_available(&staged, &req.material.name, None)?;
+    validate_material_components(&staged, &req.material, None)?;
+    validate_material_values(&req.material, &loaded.engine)?;
+    staged.materials.push(req.material);
+    loaded.document.materials = staged;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -1567,7 +1632,11 @@ pub async fn update_element(
 
     let old_name = req.name.clone();
     let new_name = req.element.name.clone();
-    ensure_element_name_available(&loaded.document, &new_name, Some(old_name.as_str()))?;
+    ensure_element_name_available(
+        &loaded.document.materials,
+        &new_name,
+        Some(old_name.as_str()),
+    )?;
 
     let el_idx = loaded
         .document
@@ -1605,7 +1674,7 @@ pub async fn add_element(
         .as_mut()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
-    ensure_element_name_available(&loaded.document, &req.element.name, None)?;
+    ensure_element_name_available(&loaded.document.materials, &req.element.name, None)?;
 
     loaded.document.materials.elements.push(req.element);
     Ok(Json(json!({ "ok": true })))
@@ -1676,15 +1745,18 @@ pub async fn update_volume_material_ref(
 
     ensure_material_ref_exists(&loaded.document, &req.material_ref)?;
 
-    let vol = loaded
+    let old = loaded
         .document
         .structure
         .volumes
-        .iter_mut()
+        .iter()
         .find(|v| v.name == req.volume_name)
-        .ok_or_else(|| ApiError::not_found(&format!("Volume '{}' not found", req.volume_name)))?;
-
-    vol.material_ref = req.material_ref;
+        .ok_or_else(|| ApiError::not_found(&format!("Volume '{}' not found", req.volume_name)))?
+        .material_ref
+        .clone();
+    loaded
+        .change_material_refs(Some(&req.volume_name), &old, &req.material_ref)
+        .map_err(|e| ApiError::bad_request(&format!("Cannot assign material: {e}")))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -1869,6 +1941,7 @@ mod tests {
         }
 
         let req = UpdateMaterialRequest {
+            elements: Vec::new(),
             name: "Steel".to_string(),
             material: material("SteelRenamed"),
         };
@@ -1918,6 +1991,7 @@ mod tests {
         }
 
         let req = UpdateMaterialRequest {
+            elements: Vec::new(),
             name: "A".to_string(),
             material: material("B"),
         };
@@ -1990,7 +2064,10 @@ mod tests {
 
         let err = add_material(
             State(state.clone()),
-            Json(AddMaterialRequest { material: invalid }),
+            Json(AddMaterialRequest {
+                elements: Vec::new(),
+                material: invalid,
+            }),
         )
         .await
         .unwrap_err();
@@ -2025,6 +2102,7 @@ mod tests {
         let err = update_material(
             State(state.clone()),
             Json(UpdateMaterialRequest {
+                elements: Vec::new(),
                 name: "Steel".to_string(),
                 material: invalid,
             }),

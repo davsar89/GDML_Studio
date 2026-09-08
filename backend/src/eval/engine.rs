@@ -3,8 +3,8 @@ use evalexpr::*;
 use std::collections::{HashMap, HashSet};
 
 use super::context::EvalContext;
-use super::dependency::{extract_identifiers, topological_sort, DefineEntry};
-use crate::gdml::model::{DefineSection, Position, Rotation};
+use super::dependency::{topological_sort, DefineEntry};
+use crate::gdml::model::{DefineSection, PlacementPos, PlacementRot, Position, Rotation};
 use crate::gdml::units;
 
 pub struct EvalEngine {
@@ -12,8 +12,6 @@ pub struct EvalEngine {
     pub position_values: HashMap<String, [f64; 3]>,
     pub scale_values: HashMap<String, [f64; 3]>,
     pub rotation_values: HashMap<String, [f64; 3]>,
-    pub length_symbols: HashSet<String>,
-    pub angle_symbols: HashSet<String>,
     /// Non-fatal evaluation warnings collected during value resolution
     /// (e.g. expressions that failed and were treated as 0). Behind a `Mutex`
     /// rather than a `RefCell` so `EvalEngine` stays `Sync` (it lives inside
@@ -34,8 +32,6 @@ impl EvalEngine {
             position_values: HashMap::new(),
             rotation_values: HashMap::new(),
             scale_values: HashMap::new(),
-            length_symbols: HashSet::new(),
-            angle_symbols: HashSet::new(),
             warnings: std::sync::Mutex::new(Vec::new()),
         }
     }
@@ -46,8 +42,6 @@ impl EvalEngine {
         self.position_values.clear();
         self.scale_values.clear();
         self.rotation_values.clear();
-        self.length_symbols.clear();
-        self.angle_symbols.clear();
         if let Ok(mut w) = self.warnings.lock() {
             w.clear();
         }
@@ -93,41 +87,9 @@ impl EvalEngine {
             .iter()
             .filter_map(|q| q.unit.as_ref().map(|u| (q.name.clone(), u.clone())))
             .collect();
-        // `type` is optional and Geant4's QuantityRead never reads it — the unit
-        // is applied unconditionally. So a quantity's kind comes from its unit
-        // when the type is absent or unrecognised; gating purely on `type` left
-        // `<quantity name="w" value="5" unit="cm"/>` unconverted, giving 5 mm
-        // where Geant4 gives 50.
-        let quantity_kind = |q: &crate::gdml::model::Quantity| -> Option<units::UnitKind> {
-            match q.r#type.as_deref() {
-                Some("length") => Some(units::UnitKind::Length),
-                Some("angle") => Some(units::UnitKind::Angle),
-                Some("density") => None,
-                _ => q.unit.as_deref().and_then(units::unit_kind),
-            }
-        };
-
-        let length_quantity_names: HashSet<&str> = defines
-            .quantities
-            .iter()
-            .filter(|q| quantity_kind(q) == Some(units::UnitKind::Length))
-            .map(|q| q.name.as_str())
-            .collect();
-        let angle_quantity_names: HashSet<&str> = defines
-            .quantities
-            .iter()
-            .filter(|q| quantity_kind(q) == Some(units::UnitKind::Angle))
-            .map(|q| q.name.as_str())
-            .collect();
-
-        // Evaluate in order
+        // QuantityRead applies the declared unit independently of the type hint.
         for idx in order {
             let entry = &entries[idx];
-            let refs = extract_identifiers(&entry.expression);
-            let is_length_symbol = length_quantity_names.contains(entry.name.as_str())
-                || refs.iter().any(|name| self.length_symbols.contains(name));
-            let is_angle_symbol = angle_quantity_names.contains(entry.name.as_str())
-                || refs.iter().any(|name| self.angle_symbols.contains(name));
 
             // A define that cannot be evaluated is a warning, not a fatal error.
             // The identical expression appearing in a solid attribute already
@@ -153,31 +115,11 @@ impl EvalEngine {
                 }
             };
 
-            // Apply unit conversion for quantities
-            let final_value = if let Some(unit) = quantity_units.get(&entry.name) {
-                let qty = defines.quantities.iter().find(|q| q.name == entry.name);
-                if let Some(q) = qty {
-                    match quantity_kind(q) {
-                        Some(units::UnitKind::Length) => units::length_to_mm(value, unit),
-                        Some(units::UnitKind::Angle) => units::angle_to_rad(value, unit),
-                        // type="density" and anything with an unrecognised unit
-                        // are carried through as written.
-                        None => value,
-                    }
-                } else {
-                    value
-                }
-            } else {
-                value
-            };
-
-            self.context.set(&entry.name, final_value);
-            if is_length_symbol {
-                self.length_symbols.insert(entry.name.clone());
-            }
-            if is_angle_symbol {
-                self.angle_symbols.insert(entry.name.clone());
-            }
+            let final_value = quantity_units
+                .get(&entry.name)
+                .map(|unit| units::apply_unit(value, unit))
+                .unwrap_or(value);
+            self.context.set(&entry.name, finite_value(final_value)?);
         }
 
         // Evaluate positions
@@ -212,12 +154,12 @@ impl EvalEngine {
 
         // Try direct numeric parse first
         if let Ok(v) = expr.parse::<f64>() {
-            return Ok(v);
+            return finite_value(v);
         }
 
         // Try direct variable lookup
         if let Some(v) = self.context.get(expr) {
-            return Ok(v);
+            return finite_value(v);
         }
 
         // Build evalexpr context with all known values
@@ -231,56 +173,48 @@ impl EvalEngine {
         // Rewrite GDML/CLHEP conventions for evalexpr:
         //  - bare math functions (sin, sqrt, …) live under the `math::` namespace
         //  - `**` is power in some GDML; evalexpr spells power as `^`
-        // We use `eval_number_with_context` (not `eval_float_*`) so integer-valued
-        // results (e.g. "2*3", "360/8") are coerced to f64 instead of erroring.
-        let prepared = rewrite_math_functions(expr).replace("**", "^");
-        let result = eval_number_with_context(&prepared, &eval_context);
-        match result {
-            Ok(v) => Ok(v),
-            Err(_) => {
-                // Try with some fixups for GDML patterns (e.g. "360.*deg" -> "360.0*deg")
-                let fixed = fix_gdml_expr(&prepared);
-                eval_number_with_context(&fixed, &eval_context)
-                    .map_err(|e| anyhow::anyhow!("evalexpr error for '{}': {}", expr, e))
-            }
-        }
+        let prepared = fix_gdml_expr(&rewrite_math_functions(expr).replace("**", "^"));
+        let mut tree = build_operator_tree(&prepared)
+            .map_err(|e| anyhow::anyhow!("Invalid expression '{expr}': {e}"))?;
+        // GDML arithmetic is real-valued. Casting only the final result is too
+        // late: evalexpr otherwise evaluates 1/2 as integer division first.
+        float_literals(&mut tree);
+        let value = tree
+            .eval_number_with_context(&eval_context)
+            .map_err(|e| anyhow::anyhow!("Invalid expression '{expr}': {e}"))?;
+        finite_value(value)
     }
 
     fn eval_position(&self, pos: &Position) -> Result<[f64; 3]> {
         let unit = pos.unit.as_deref().unwrap_or("mm");
-        // Components whose expression references an already-converted length
-        // quantity are in mm already; converting again would double-apply the unit.
+        if units::length_factor(unit).is_none() {
+            self.record_unit_warning(unit, "length");
+        }
         let comp = |expr: &Option<String>| -> Result<f64> {
-            match expr {
-                Some(e) => {
-                    let v = self.eval_expr(e)?;
-                    Ok(if self.expression_uses_length_symbols(e) {
-                        v
-                    } else {
-                        units::length_to_mm(v, unit)
-                    })
-                }
-                None => Ok(0.0),
-            }
+            finite_value(units::length_to_mm(
+                expr.as_deref()
+                    .map(|e| self.eval_expr(e))
+                    .transpose()?
+                    .unwrap_or(0.0),
+                unit,
+            ))
         };
         Ok([comp(&pos.x)?, comp(&pos.y)?, comp(&pos.z)?])
     }
 
     fn eval_rotation(&self, rot: &Rotation) -> Result<[f64; 3]> {
         let unit = rot.unit.as_deref().unwrap_or("rad");
-        // Same guard as eval_position, for angle quantities already in radians.
+        if units::angle_factor(unit).is_none() {
+            self.record_unit_warning(unit, "angle");
+        }
         let comp = |expr: &Option<String>| -> Result<f64> {
-            match expr {
-                Some(e) => {
-                    let v = self.eval_expr(e)?;
-                    Ok(if self.expression_uses_angle_symbols(e) {
-                        v
-                    } else {
-                        units::angle_to_rad(v, unit)
-                    })
-                }
-                None => Ok(0.0),
-            }
+            finite_value(units::angle_to_rad(
+                expr.as_deref()
+                    .map(|e| self.eval_expr(e))
+                    .transpose()?
+                    .unwrap_or(0.0),
+                unit,
+            ))
         };
         Ok([comp(&rot.x)?, comp(&rot.y)?, comp(&rot.z)?])
     }
@@ -297,13 +231,6 @@ impl EvalEngine {
                 0.0
             }
         }
-    }
-
-    /// Record a non-fatal evaluation warning (deduplicated, capped to avoid flooding).
-    /// Record a warning from outside the evaluator (deduplicated and capped
-    /// alongside evaluation warnings, and surfaced through the same channel).
-    pub fn record_warning_public(&self, msg: String) {
-        self.record_warning(msg);
     }
 
     /// Report a `lunit`/`aunit` string that is not in Geant4's unit table.
@@ -336,53 +263,51 @@ impl EvalEngine {
             .unwrap_or_default()
     }
 
-    pub fn expression_uses_length_symbols(&self, expr: &str) -> bool {
-        let trimmed = expr.trim();
-        if self.length_symbols.contains(trimmed) {
-            return true;
-        }
-        extract_identifiers(trimmed)
-            .iter()
-            .any(|name| self.length_symbols.contains(name))
+    pub fn named_position(&self, name: &str) -> Result<[f64; 3]> {
+        self.position_values
+            .get(name)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("Undefined position '{name}'"))
     }
 
-    pub fn expression_uses_angle_symbols(&self, expr: &str) -> bool {
-        let trimmed = expr.trim();
-        if self.angle_symbols.contains(trimmed) {
-            return true;
-        }
-        extract_identifiers(trimmed)
-            .iter()
-            .any(|name| self.angle_symbols.contains(name))
-    }
-
-    pub fn resolve_position(&self, pos: &PlacementPosRef) -> [f64; 3] {
+    pub fn resolve_position(&self, pos: &Option<PlacementPos>) -> Result<[f64; 3]> {
         match pos {
-            PlacementPosRef::Values(v) => *v,
-            PlacementPosRef::Name(name) => {
-                self.position_values.get(name).copied().unwrap_or([0.0; 3])
-            }
+            Some(PlacementPos::Inline(p)) => self.eval_position(p),
+            Some(PlacementPos::Ref(name)) => self.named_position(name),
+            None => Ok([0.0; 3]),
         }
     }
 
-    pub fn resolve_rotation(&self, rot: &PlacementRotRef) -> [f64; 3] {
+    pub fn resolve_rotation(&self, rot: &Option<PlacementRot>) -> Result<[f64; 3]> {
         match rot {
-            PlacementRotRef::Values(v) => *v,
-            PlacementRotRef::Name(name) => {
-                self.rotation_values.get(name).copied().unwrap_or([0.0; 3])
-            }
+            Some(PlacementRot::Inline(r)) => self.eval_rotation(r),
+            Some(PlacementRot::Ref(name)) => self
+                .rotation_values
+                .get(name)
+                .copied()
+                .ok_or_else(|| anyhow::anyhow!("Undefined rotation '{name}'")),
+            None => Ok([0.0; 3]),
         }
     }
 }
 
-pub enum PlacementPosRef {
-    Values([f64; 3]),
-    Name(String),
+fn finite_value(value: f64) -> Result<f64> {
+    anyhow::ensure!(value.is_finite(), "Expression produced a non-finite value");
+    Ok(value)
 }
 
-pub enum PlacementRotRef {
-    Values([f64; 3]),
-    Name(String),
+fn float_literals(node: &mut Node) {
+    if let Operator::Const {
+        value: Value::Int(v),
+    } = node.operator()
+    {
+        *node.operator_mut() = Operator::Const {
+            value: Value::Float(*v as f64),
+        };
+    }
+    for child in node.children_mut() {
+        float_literals(child);
+    }
 }
 
 /// Fix common GDML expression patterns for evalexpr.

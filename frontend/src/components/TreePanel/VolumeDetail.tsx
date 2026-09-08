@@ -2,14 +2,16 @@ import { useRef } from 'react';
 import { useAppStore } from '../../store';
 import type { NistMaterial } from '../../store/types';
 import * as api from '../../api/client';
-import { importNistMaterial } from '../../utils/nistImport';
-import { refreshMaterialsAndMeshes } from '../../utils/refresh';
+import { prepareNistMaterial } from '../../utils/nistImport';
+import { refreshMaterialsAndScene } from '../../utils/refresh';
+import { runDocumentAction, resolveMaterialDraft } from '../../utils/documentActions';
 import SearchableCombobox from '../SearchableCombobox';
 
 export default function VolumeDetail() {
   const selectedVolume = useAppStore((s) => s.selectedVolume);
   const volumes = useAppStore((s) => s.volumes);
   const materials = useAppStore((s) => s.materials);
+  const busy = useAppStore((s) => s.documentBusy || s.loading);
   const comboboxRef = useRef<HTMLInputElement>(null);
 
   if (!selectedVolume) return null;
@@ -20,24 +22,24 @@ export default function VolumeDetail() {
   const mat = materials.find((m) => m.name === vol.material_ref);
 
   const handleMaterialSelect = async (name: string, isNist: boolean, nistData?: NistMaterial) => {
-    try {
+    await runDocumentAction(async () => {
+      if (!await resolveMaterialDraft()) return;
       if (isNist && nistData) {
         // Auto-import from NIST, then assign
-        const newMat = await importNistMaterial(nistData);
-        await api.addMaterial(newMat);
-        await api.updateVolumeMaterialRef(vol.name, newMat.name);
+        const newMat = await prepareNistMaterial(nistData);
+        await api.addMaterial(newMat.material, newMat.elements);
+        await api.updateVolumeMaterialRef(vol.name, newMat.material.name);
       } else {
         await api.updateVolumeMaterialRef(vol.name, name);
       }
-      await refreshMaterialsAndMeshes();
-    } catch (e: unknown) {
-      useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
-    }
+      await refreshMaterialsAndScene();
+    });
   };
 
   return (
-    <div
+    <fieldset disabled={busy}
       style={{
+        margin: 0, padding: 0, border: 0, minWidth: 0,
         borderTop: '1px solid #0f3460',
         marginTop: 8,
         paddingTop: 6,
@@ -99,6 +101,6 @@ export default function VolumeDetail() {
           </div>
         )}
       </div>
-    </div>
+    </fieldset>
   );
 }

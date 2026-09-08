@@ -656,18 +656,8 @@ fn export_is_idempotent_across_the_corpus() {
 
 #[test]
 fn export_drops_nothing_from_the_corpus() {
-    // The net that catches regressions in constructs with no dedicated fixture.
-    // Known gaps are listed explicitly so the test fails when one is fixed and
-    // the exemption becomes stale, rather than silently passing forever.
-    // No exemptions. Every construct any sample uses now survives export.
-    const KNOWN_DROPPED: &[&str] = &[];
-    // Everything previously exempted here — loop, physvol, auxiliary, atom,
-    // multiUnionNode, gdml, setup, scaledSolid, scale, solidref, and finally
-    // the nested <materials><define> — is now either fixed or provably
-    // unexercised by any sample. Constructs still unmodelled (atom's unit/type,
-    // a second <setup>, <scaleref>, material <property>/<RL>/<AL>) will fail
-    // this test the moment a sample uses one, which is the intent.
-
+    // Compare original XML tokens to export, independently of what our parser
+    // understands. This catches lost fields without treating old output as truth.
     let mut failures = Vec::new();
 
     for path in sample_files() {
@@ -680,9 +670,6 @@ fn export_drops_nothing_from_the_corpus() {
         let after = token_counts(&exported);
 
         for (tok, n_before) in &before {
-            if KNOWN_DROPPED.iter().any(|p| tok.starts_with(p)) {
-                continue;
-            }
             let n_after = after.get(tok).copied().unwrap_or(0);
             if n_after < *n_before {
                 failures.push(format!(

@@ -81,9 +81,9 @@ fn substitute_identifier(expr: &str, var: &str, value: i64) -> String {
 ///
 /// The `- 1` is Geant4's, not a typo: a name indexed from 1 in the file becomes
 /// a suffix counting from 0.
-fn solve_brackets(name: &str, engine: &EvalEngine) -> String {
+fn solve_brackets(name: &str, engine: &EvalEngine) -> Result<String> {
     if !name.contains('[') {
-        return name.to_string();
+        return Ok(name.to_string());
     }
     let mut out = String::with_capacity(name.len());
     let mut rest = name;
@@ -91,19 +91,19 @@ fn solve_brackets(name: &str, engine: &EvalEngine) -> String {
         let Some(close_rel) = rest[open + 1..].find(']') else {
             // Unbalanced: leave the remainder alone rather than mangle it.
             out.push_str(rest);
-            return out;
+            return Ok(out);
         };
         let close = open + 1 + close_rel;
         out.push_str(&rest[..open]);
         for part in rest[open + 1..close].split(',') {
-            let idx = engine.resolve_value(part.trim()).round() as i64 - 1;
+            let idx = engine.eval_expr(part.trim())?.round() as i64 - 1;
             out.push('_');
             out.push_str(&idx.to_string());
         }
         rest = &rest[close + 1..];
     }
     out.push_str(rest);
-    out
+    Ok(out)
 }
 
 /// The values a loop's variable takes, in order.
@@ -144,23 +144,26 @@ fn rewrite_element(
     e: &BytesStart,
     bindings: &[(String, i64)],
     engine: &EvalEngine,
-) -> BytesStart<'static> {
+) -> Result<BytesStart<'static>> {
     let name = String::from_utf8_lossy(e.name().as_ref()).to_string();
     let mut out = BytesStart::new(name);
-    for attr in e.attributes().flatten() {
+    for attr in e.attributes() {
+        let attr = attr?;
         let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
         let raw = String::from_utf8_lossy(&attr.value).to_string();
-        let substituted = apply_bindings(&raw, bindings);
+        // Attributes are escaped again by push_attribute; decode before rewriting.
+        let decoded = quick_xml::escape::unescape(&raw)?;
+        let substituted = apply_bindings(&decoded, bindings);
         // `name` and `ref` go through GenerateName in Geant4, which is where
         // SolveBrackets is applied; value attributes only need the variable.
         let final_value = if key == "name" || key == "ref" {
-            solve_brackets(&substituted, engine)
+            solve_brackets(&substituted, engine)?
         } else {
             substituted
         };
         out.push_attribute((key.as_str(), final_value.as_str()));
     }
-    out
+    Ok(out)
 }
 
 /// Expand every `<loop>` in `xml`, returning the rewritten document.
@@ -205,15 +208,19 @@ fn expand_fragment(
                 let Some(loop_var) = attrs("for") else {
                     bail!("<loop> has no `for` attribute naming its variable");
                 };
-                let resolve = |expr: Option<String>, default: f64| -> f64 {
+                let resolve = |expr: Option<String>, default: f64| -> Result<f64> {
                     match expr {
-                        Some(s) => engine.resolve_value(&apply_bindings(&s, bindings)),
-                        None => default,
+                        Some(s) => engine.eval_expr(&apply_bindings(&s, bindings)),
+                        None => Ok(default),
                     }
                 };
-                let from = resolve(attrs("from"), 0.0).round() as i64;
-                let to = resolve(attrs("to"), 0.0).round() as i64;
-                let step = resolve(attrs("step"), 1.0).round() as i64;
+                let from = match attrs("from") {
+                    Some(expr) => resolve(Some(expr), 0.0)?,
+                    None => engine.eval_expr(&loop_var)?,
+                }
+                .round() as i64;
+                let to = resolve(attrs("to"), 0.0)?.round() as i64;
+                let step = resolve(attrs("step"), 1.0)?.round() as i64;
 
                 for value in iterations(from, to, step)? {
                     let mut inner: Vec<(String, i64)> = bindings.to_vec();
@@ -226,7 +233,7 @@ fn expand_fragment(
                 let ev = if bindings.is_empty() {
                     e.clone().into_owned()
                 } else {
-                    rewrite_element(e, bindings, engine)
+                    rewrite_element(e, bindings, engine)?
                 };
                 writer.write_event(Event::Start(ev))?;
             }
@@ -234,7 +241,7 @@ fn expand_fragment(
                 let ev = if bindings.is_empty() {
                     e.clone().into_owned()
                 } else {
-                    rewrite_element(e, bindings, engine)
+                    rewrite_element(e, bindings, engine)?
                 };
                 writer.write_event(Event::Empty(ev))?;
             }

@@ -10,19 +10,8 @@ export function refreshMaterials(): Promise<void> {
   });
 }
 
-/**
- * Refresh materials and the derived scene graph after a material/element edit.
- *
- * Deliberately does NOT refetch meshes. `update_material` only mutates the
- * materials list — tessellation runs solely on upload — so the vertex data is
- * unchanged. Refetching it meant every debounced keystroke pulled the entire
- * mesh payload (~16 MB on the largest sample) and, because `setMeshes` installs
- * fresh arrays and MeshObject keys its geometry effect on `[solidName,
- * meshData]`, rebuilt and re-uploaded every BufferGeometry in the document.
- *
- * The scene graph still has to come back: node colour is derived from density.
- */
-export async function refreshMaterialsAndMeshes(): Promise<void> {
+/** Refresh material data, placement references and colours; retain unchanged mesh buffers. */
+export async function refreshMaterialsAndScene(): Promise<void> {
   await refreshMaterials();
   try {
     const [sceneData, structData] = await Promise.all([

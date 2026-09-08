@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { runDocumentAction, resolveMaterialDraft } from '../utils/documentActions';
+import type { DocumentDecision } from '../utils/documentActions';
 import type { SceneNode, MeshData, DocumentSummary, DefineValue, VolumeInfo, MaterialInfo, ElementInfo, SnapPoint, Measurement } from './types';
 import { clearAllGeometries } from '../components/Viewport/geometryCache';
 
@@ -16,6 +18,13 @@ interface AppState {
    * path is up to date".
    */
   dirty: boolean;
+  editRevision: number;
+  documentBusy: boolean;
+  decision: DocumentDecision | null;
+  materialDraft: { original: MaterialInfo; material: MaterialInfo; elements: ElementInfo[] } | null;
+  draftError: string | null;
+  updateMaterialDraft: (changes: Partial<MaterialInfo>, elements?: ElementInfo[]) => void;
+  discardMaterialDraft: () => void;
   summary: DocumentSummary | null;
   meshes: Record<string, MeshData>;
   sceneGraph: SceneNode | null;
@@ -45,7 +54,7 @@ interface AppState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   markDirty: () => void;
-  markSaved: () => void;
+  markSaved: (revision?: number) => void;
   setWarnings: (warnings: string[]) => void;
   clearWarnings: () => void;
   setSummary: (summary: DocumentSummary) => void;
@@ -74,11 +83,16 @@ interface AppState {
 
   reset: () => void;
 }
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   loading: false,
   error: null,
   warnings: [],
   dirty: false,
+  editRevision: 0,
+  documentBusy: false,
+  decision: null,
+  materialDraft: null,
+  draftError: null,
   summary: null,
   meshes: {},
   sceneGraph: null,
@@ -103,8 +117,23 @@ export const useAppStore = create<AppState>((set) => ({
 
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
-  markDirty: () => set({ dirty: true }),
-  markSaved: () => set({ dirty: false }),
+  markDirty: () => set((state) => ({ dirty: true, editRevision: state.editRevision + 1 })),
+  markSaved: (revision) => set((state) => revision === undefined || revision === state.editRevision ? { dirty: false } : {}),
+  updateMaterialDraft: (changes, elements) => set((state) => {
+    const original = state.materialDraft?.original ?? state.materials.find((m) => m.name === state.selectedMaterial);
+    if (!original) return {};
+    const material = { ...(state.materialDraft?.material ?? original), ...changes };
+    const dependencies = elements ?? state.materialDraft?.elements ?? [];
+    return {
+      materialDraft: JSON.stringify(material) === JSON.stringify(original) && dependencies.length === 0
+        ? null : { original, material, elements: dependencies },
+      draftError: null,
+    };
+  }),
+  discardMaterialDraft: () => set((state) => ({
+    materialDraft: null, draftError: null,
+    error: state.error === state.draftError ? null : state.error,
+  })),
   setWarnings: (warnings) => set({ warnings }),
   clearWarnings: () => set({ warnings: [] }),
   setSummary: (summary) => set({ summary }),
@@ -114,16 +143,27 @@ export const useAppStore = create<AppState>((set) => ({
   setVolumes: (volumes) => set({ volumes }),
   setMaterials: (materials) => set({ materials }),
   setElements: (elements) => set({ elements }),
-  setSelectedVolume: (name) =>
-    set((state) => {
-      if (!name) return { selectedVolume: null };
-      const vol = state.volumes.find((v) => v.name === name);
-      return {
-        selectedVolume: name,
-        selectedMaterial: vol?.material_ref ?? state.selectedMaterial,
-      };
-    }),
-  setSelectedMaterial: (name) => set({ selectedMaterial: name }),
+  setSelectedVolume: (name) => {
+    const state = get();
+    if (state.documentBusy || state.loading) return;
+    const material = state.volumes.find((v) => v.name === name)?.material_ref ?? state.selectedMaterial;
+    if (material === state.selectedMaterial || !state.materialDraft) {
+      set({ selectedVolume: name, selectedMaterial: material }); return;
+    }
+    void runDocumentAction(async () => {
+      if (!await resolveMaterialDraft()) return;
+      const material = get().volumes.find((v) => v.name === name)?.material_ref ?? get().selectedMaterial;
+      set({ selectedVolume: name, selectedMaterial: material });
+    });
+  },
+  setSelectedMaterial: (name) => {
+    const state = get();
+    if (state.documentBusy || state.loading || name === state.selectedMaterial) return;
+    if (!state.materialDraft) { set({ selectedMaterial: name }); return; }
+    void runDocumentAction(async () => {
+      if (await resolveMaterialDraft()) set({ selectedMaterial: name });
+    });
+  },
   setActiveTreeTab: (tab) => set({ activeTreeTab: tab }),
   setMeshOpacity: (opacity) => set({ meshOpacity: opacity }),
   toggleInstanceVisibility: (instanceId) =>
@@ -170,12 +210,18 @@ export const useAppStore = create<AppState>((set) => ({
   clearMeasurements: () => set({ measurements: [], pendingPoint: null, surfaceCandidates: [] }),
 
   reset: () => {
+    get().decision?.resolve('cancel');
     clearAllGeometries();
     set({
       loading: false,
       error: null,
       warnings: [],
       dirty: false,
+      editRevision: 0,
+      documentBusy: false,
+      decision: null,
+      materialDraft: null,
+      draftError: null,
       summary: null,
       meshes: {},
       sceneGraph: null,

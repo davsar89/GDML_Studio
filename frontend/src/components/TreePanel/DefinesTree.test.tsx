@@ -41,24 +41,18 @@ describe('DefinesTree', () => {
     expect(screen.queryByText(`d${HUGE - 1}`)).not.toBeInTheDocument();
   });
 
-  it('sizes the spacer to the full list so the scrollbar is honest', () => {
+  it('reaches the middle and final entries using the declared scroll extent', () => {
     useAppStore.getState().setDefines(makeDefines(HUGE));
     const { container } = render(<DefinesTree />);
-
+    const scroller = screen.getByTestId('defines-scroll');
     const spacer = container.querySelector('[data-testid="defines-scroll"] > div') as HTMLElement;
-    // ROW_HEIGHT is 16.
-    expect(spacer.style.height).toBe(`${HUGE * 16}px`);
-  });
+    const extent = parseFloat(spacer.style.height);
 
-  it('swaps in later rows when scrolled', () => {
-    useAppStore.getState().setDefines(makeDefines(HUGE));
-    const { container } = render(<DefinesTree />);
-    const scroller = container.querySelector('[data-testid="defines-scroll"]') as HTMLElement;
-
-    fireEvent.scroll(scroller, { target: { scrollTop: 10_000 * 16 } });
-
-    expect(screen.getByText('d10000')).toBeInTheDocument();
+    fireEvent.scroll(scroller, { target: { scrollTop: extent / 2 } });
+    expect(screen.getByText(`d${Math.floor(HUGE / 2)}`)).toBeInTheDocument();
     expect(screen.queryByText('d0')).not.toBeInTheDocument();
+    fireEvent.scroll(scroller, { target: { scrollTop: extent - 1 } });
+    expect(screen.getByText(`d${HUGE - 1}`)).toBeInTheDocument();
   });
 
   it('renders every row when the list is small', () => {

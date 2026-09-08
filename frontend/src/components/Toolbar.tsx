@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { clearAllGeometries } from './Viewport/geometryCache';
+import { runDocumentAction, resolveMaterialDraft, resolveDocumentReplacement, exportCurrentDocument } from '../utils/documentActions';
 
 /** Scan GDML text for <file name="..."> references and return the referenced filenames. */
 function findFileRefs(content: string): string[] {
@@ -42,28 +43,6 @@ function detectMainFile(files: Record<string, string>): string {
   return names.sort((a, b) => (refCountMap[b] || 0) - (refCountMap[a] || 0))[0];
 }
 
-function downloadFile(content: string, filename: string) {
-  const blob = new Blob([content], { type: 'application/xml' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  // Defer cleanup: revoking the object URL synchronously after click() can abort
-  // the download in some browsers before it has started reading the blob.
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 0);
-}
-
-// Monotonic load counter: lets us discard results from a load that was superseded
-// by a newer one (the backend holds a single global document, so interleaved loads
-// would otherwise mix documents in the store).
-let loadSeq = 0;
-
 export default function Toolbar() {
   const loading = useAppStore((s) => s.loading);
   const summary = useAppStore((s) => s.summary);
@@ -72,15 +51,18 @@ export default function Toolbar() {
   const measureMode = useAppStore((s) => s.measureMode);
   const measurements = useAppStore((s) => s.measurements);
   const dirty = useAppStore((s) => s.dirty);
+  const hasDraft = useAppStore((s) => s.materialDraft !== null);
+  const documentBusy = useAppStore((s) => s.documentBusy);
+  const unavailable = loading || documentBusy;
 
   // Edits live only in the backend's in-memory document; closing the tab
   // discards them, and nothing else warns about that.
   useEffect(() => {
-    if (!dirty) return;
+    if (!dirty && !hasDraft) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
-  }, [dirty]);
+  }, [dirty, hasDraft]);
 
   const handleOpenFile = () => {
     const input = document.createElement('input');
@@ -91,114 +73,56 @@ export default function Toolbar() {
       const fileList = input.files;
       if (!fileList || fileList.length === 0) return;
 
-      const store = useAppStore.getState();
-      // Only the newest load is allowed to write to the store / toggle loading.
-      const mySeq = ++loadSeq;
-      const isCurrent = () => mySeq === loadSeq;
-
-      store.setLoading(true);
-      store.setError(null);
-      store.setWarnings([]);
-
-      try {
-        // Read all selected files
-        const fileMap: Record<string, string> = {};
-        for (let i = 0; i < fileList.length; i++) {
-          const f = fileList[i];
-          fileMap[f.name] = await f.text();
+      await runDocumentAction(async () => {
+        if (!await resolveDocumentReplacement()) return;
+        const store = useAppStore.getState();
+        store.setLoading(true);
+        let uploaded = false;
+        try {
+          const fileMap: Record<string, string> = {};
+          for (const file of Array.from(fileList)) fileMap[file.name] = await file.text();
+          const result = fileList.length === 1
+            ? await api.uploadFile(fileList[0].name, fileMap[fileList[0].name])
+            : await api.uploadFiles(fileMap, detectMainFile(fileMap));
+          uploaded = true;
+          const [meshData, defData, structData, matData] = await Promise.all([
+            api.getMeshes(), api.getDefines(), api.getStructure(), api.getMaterials(),
+          ]);
+          clearAllGeometries();
+          useAppStore.setState({
+            summary: result, warnings: [...(result.warnings ?? []), ...(meshData.warnings ?? [])],
+            meshes: meshData.meshes, sceneGraph: meshData.scene_graph,
+            defines: defData.defines, volumes: structData.volumes,
+            materials: matData.materials, elements: matData.elements,
+            selectedVolume: null, selectedMaterial: null, hiddenInstances: new Set(),
+            materialDraft: null, draftError: null, dirty: false, editRevision: 0,
+            measureMode: false, measurements: [], pendingPoint: null,
+            hoverSnap: null, hoverCandidates: [], surfaceCandidates: [], contextMenu: null,
+          });
+        } catch (e: unknown) {
+          // A rejected upload leaves the previous backend document intact.
+          // If fetching its replacement failed, discard the mismatched preview.
+          if (uploaded) store.reset();
+          const message = e instanceof Error ? e.message : String(e);
+          store.setError(`Failed to load ${Array.from(fileList).map((f) => f.name).join(', ')}: ${message}`);
+        } finally {
+          store.setLoading(false);
         }
-
-        let result: Awaited<ReturnType<typeof api.uploadFile>>;
-        if (fileList.length === 1) {
-          const name = fileList[0].name;
-          result = await api.uploadFile(name, fileMap[name]);
-        } else {
-          // Multiple files — auto-detect main and use multi-upload
-          const mainFile = detectMainFile(fileMap);
-          result = await api.uploadFiles(fileMap, mainFile);
-        }
-        if (!isCurrent()) return;
-
-        // Fetch everything for THIS load before touching the store, so a later
-        // failure can't leave the store with a half-updated (mismatched) document.
-        const meshData = await api.getMeshes();
-        if (!isCurrent()) return;
-        const defData = await api.getDefines();
-        if (!isCurrent()) return;
-        const structData = await api.getStructure();
-        if (!isCurrent()) return;
-        const matData = await api.getMaterials();
-        if (!isCurrent()) return;
-
-        // Measurements reference world coordinates of the previous document.
-        store.setMeasureMode(false);
-        store.clearMeasurements();
-
-        // Dispose the previous document's geometries here, not before the
-        // upload. The "Loading..." indicator is an overlay -- the Canvas stays
-        // mounted and the old scene keeps rendering -- so clearing first meant
-        // three.js re-uploaded buffers it had just disposed, and since the cache
-        // entry was gone the later releaseGeometry() no-op'd and those buffers
-        // were never freed again. Clearing here, immediately before the new
-        // scene graph replaces the old one, leaves no window to render into.
-        clearAllGeometries();
-
-        // A freshly loaded document matches the file it came from.
-        store.markSaved();
-        store.setSummary(result);
-        store.setWarnings([...(result.warnings ?? []), ...(meshData.warnings ?? [])]);
-        store.setMeshes(meshData.meshes);
-        store.setSceneGraph(meshData.scene_graph);
-        store.setDefines(defData.defines);
-        store.setVolumes(structData.volumes);
-        store.setMaterials(matData.materials);
-        store.setElements(matData.elements);
-      } catch (e: unknown) {
-        if (!isCurrent()) return;
-        const msg = e instanceof Error ? e.message : String(e);
-        const names = Array.from(fileList).map((f) => f.name).join(', ');
-        // Discard any partial state from this failed load, then surface the error.
-        store.reset();
-        store.setError(`Failed to load ${names}: ${msg}`);
-      } finally {
-        if (isCurrent()) store.setLoading(false);
-      }
+      });
     };
     input.click();
   };
 
-  const handleSaveAs = async () => {
-    try {
-      const { gdml } = await api.exportGdml();
-      const filename = prompt('Save as:', summary?.filename || 'output.gdml');
-      if (filename) {
-        downloadFile(gdml, filename);
-        // Only once a file has actually been written. Cancelling the prompt
-        // leaves the edits still unsaved.
-        useAppStore.getState().markSaved();
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      useAppStore.getState().setError(`Export failed: ${msg}`);
-    }
-  };
+  const handleSaveAs = () => runDocumentAction(async () => {
+    // Cancelling the filename prompt leaves even an unapplied draft intact.
+    const filename = prompt('Save as:', useAppStore.getState().summary?.filename || 'output.gdml');
+    if (!filename || !await resolveMaterialDraft()) return;
+    await exportCurrentDocument(filename);
+  });
 
-  // Downloads the document under its original filename. This does NOT touch the
-  // file the user opened — the backend never writes to disk, and the browser
-  // saves to the download directory (renaming rather than replacing on
-  // collision). The confirm this used to show warned about an overwrite that
-  // cannot happen; Save As performs the identical operation with no prompt.
-  const handleSave = async () => {
-    const fname = summary?.filename || 'output.gdml';
-    try {
-      const { gdml } = await api.exportGdml();
-      downloadFile(gdml, fname);
-      useAppStore.getState().markSaved();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      useAppStore.getState().setError(`Export failed: ${msg}`);
-    }
-  };
+  const handleSave = () => runDocumentAction(async () => {
+    if (await resolveMaterialDraft()) await exportCurrentDocument();
+  });
 
   return (
     <div
@@ -216,7 +140,7 @@ export default function Toolbar() {
       <span style={{ fontWeight: 700, fontSize: 14, color: '#e94560', marginRight: 8 }}>
         GDML Studio
       </span>
-      <button onClick={handleOpenFile} disabled={loading} style={btnStyle}>
+      <button onClick={handleOpenFile} disabled={unavailable} style={btnStyle}>
         {loading ? 'Loading...' : 'Open File(s)'}
       </button>
       <button
@@ -244,16 +168,16 @@ export default function Toolbar() {
       )}
       {summary && (
         <>
-          <button onClick={handleSave} style={btnStyle}>Save</button>
-          <button onClick={handleSaveAs} style={btnStyle}>Save As</button>
+          <button onClick={handleSave} disabled={unavailable} style={btnStyle}>Save</button>
+          <button onClick={handleSaveAs} disabled={unavailable} style={btnStyle}>Save As</button>
           <span style={{ fontSize: 12, color: '#8899aa' }}>
             {summary.filename}
-            {dirty && (
+            {(dirty || hasDraft) && (
               <span
                 style={{ color: '#e9a545', marginLeft: 4 }}
                 title="This document has edits that are not in any saved file"
               >
-                &bull; unsaved
+                &bull; {hasDraft ? 'unapplied changes' : 'unsaved'}
               </span>
             )}
             {' — '}

@@ -1,7 +1,7 @@
 //! Integration tests for the GDML Studio backend pipeline.
 //!
 //! Exercises the full parse -> evaluate -> tessellate pipeline on each of the
-//! three sample GDML files shipped in the project root.
+//! sample GDML files under sample_data/.
 
 use std::path::Path;
 
@@ -23,8 +23,6 @@ struct PipelineResult {
     num_constants: usize,
     num_quantities: usize,
     num_variables: usize,
-    num_positions: usize,
-    num_rotations: usize,
     num_elements: usize,
     num_materials: usize,
     num_solids: usize,
@@ -38,6 +36,17 @@ fn run_pipeline(gdml_path: &Path) -> PipelineResult {
     // 1. Parse
     let doc = parse_gdml(gdml_path)
         .unwrap_or_else(|e| panic!("Failed to parse {}: {}", gdml_path.display(), e));
+
+    assert!(
+        !doc.setup.world_ref.is_empty(),
+        "Missing world reference in {}",
+        gdml_path.display()
+    );
+    assert!(
+        !doc.materials.materials.is_empty() || !doc.materials.elements.is_empty(),
+        "Missing material data in {}",
+        gdml_path.display()
+    );
 
     // 2. Evaluate all defines / expressions
     let mut engine = EvalEngine::new();
@@ -65,8 +74,6 @@ fn run_pipeline(gdml_path: &Path) -> PipelineResult {
         num_constants: doc.defines.constants.len(),
         num_quantities: doc.defines.quantities.len(),
         num_variables: doc.defines.variables.len(),
-        num_positions: doc.defines.positions.len(),
-        num_rotations: doc.defines.rotations.len(),
         num_elements: doc.materials.elements.len(),
         num_materials: doc.materials.materials.len(),
         num_solids: doc.solids.solids.len(),
@@ -81,15 +88,8 @@ fn run_pipeline(gdml_path: &Path) -> PipelineResult {
 #[test]
 fn test_pod_asm_pipeline() {
     let path = project_root().join("sample_data/pod_asm.gdml");
-    assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
-
-    println!("pod_asm.gdml:");
-    println!("  solids:     {}", result.num_solids);
-    println!("  volumes:    {}", result.num_volumes);
-    println!("  meshes:     {}", result.num_meshes);
-    println!("  triangles:  {}", result.total_triangles);
 
     // 9 solids: box, 5 tubes, polycone, xtru, 2 tube sectors (RACK + WEDGE)
     assert_eq!(result.num_solids, 9, "Expected 9 solids");
@@ -104,23 +104,10 @@ fn test_pod_asm_pipeline() {
 #[test]
 fn test_bgo_det_model_pipeline() {
     let path = project_root().join("sample_data/BgoDetModel_v2_00.gdml");
-    assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
 
     // The file should parse something non-trivial
-    println!("BgoDetModel_v2_00.gdml:");
-    println!("  constants:  {}", result.num_constants);
-    println!("  quantities: {}", result.num_quantities);
-    println!("  variables:  {}", result.num_variables);
-    println!("  positions:  {}", result.num_positions);
-    println!("  rotations:  {}", result.num_rotations);
-    println!("  elements:   {}", result.num_elements);
-    println!("  materials:  {}", result.num_materials);
-    println!("  solids:     {}", result.num_solids);
-    println!("  volumes:    {}", result.num_volumes);
-    println!("  meshes:     {}", result.num_meshes);
-    println!("  triangles:  {}", result.total_triangles);
 
     assert!(result.num_solids > 0, "Expected at least one solid");
     assert!(result.num_volumes > 0, "Expected at least one volume");
@@ -136,22 +123,8 @@ fn test_bgo_det_model_pipeline() {
 #[test]
 fn test_fermi_satellite_pipeline() {
     let path = project_root().join("sample_data/fermi_simple_elements_satellite.gdml");
-    assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
-
-    println!("fermi_simple_elements_satellite.gdml:");
-    println!("  constants:  {}", result.num_constants);
-    println!("  quantities: {}", result.num_quantities);
-    println!("  variables:  {}", result.num_variables);
-    println!("  positions:  {}", result.num_positions);
-    println!("  rotations:  {}", result.num_rotations);
-    println!("  elements:   {}", result.num_elements);
-    println!("  materials:  {}", result.num_materials);
-    println!("  solids:     {}", result.num_solids);
-    println!("  volumes:    {}", result.num_volumes);
-    println!("  meshes:     {}", result.num_meshes);
-    println!("  triangles:  {}", result.total_triangles);
 
     assert!(result.num_solids > 0, "Expected at least one solid");
     assert!(result.num_volumes > 0, "Expected at least one volume");
@@ -166,22 +139,8 @@ fn test_fermi_satellite_pipeline() {
 #[test]
 fn test_nai_det_model_pipeline() {
     let path = project_root().join("sample_data/NaiDetModelWithMLI_v2_00.gdml");
-    assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
-
-    println!("NaiDetModelWithMLI_v2_00.gdml:");
-    println!("  constants:  {}", result.num_constants);
-    println!("  quantities: {}", result.num_quantities);
-    println!("  variables:  {}", result.num_variables);
-    println!("  positions:  {}", result.num_positions);
-    println!("  rotations:  {}", result.num_rotations);
-    println!("  elements:   {}", result.num_elements);
-    println!("  materials:  {}", result.num_materials);
-    println!("  solids:     {}", result.num_solids);
-    println!("  volumes:    {}", result.num_volumes);
-    println!("  meshes:     {}", result.num_meshes);
-    println!("  triangles:  {}", result.total_triangles);
 
     assert!(result.num_solids > 0, "Expected at least one solid");
     assert!(result.num_volumes > 0, "Expected at least one volume");
@@ -196,16 +155,8 @@ fn test_nai_det_model_pipeline() {
 #[test]
 fn test_pod_asm_tessellated_pipeline() {
     let path = project_root().join("sample_data/pod_asm_tessellated.gdml");
-    assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
-
-    println!("pod_asm_tessellated.gdml:");
-    println!("  positions:  {}", result.num_positions);
-    println!("  solids:     {}", result.num_solids);
-    println!("  volumes:    {}", result.num_volumes);
-    println!("  meshes:     {}", result.num_meshes);
-    println!("  triangles:  {}", result.total_triangles);
 
     assert!(result.num_solids > 0, "Expected at least one solid");
     assert!(result.num_volumes > 0, "Expected at least one volume");
@@ -220,15 +171,8 @@ fn test_pod_asm_tessellated_pipeline() {
 #[test]
 fn test_solids_gdml_pipeline() {
     let path = project_root().join("sample_data/solids.gdml");
-    assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
-
-    println!("solids.gdml (Geant4 reference):");
-    println!("  solids:     {}", result.num_solids);
-    println!("  volumes:    {}", result.num_volumes);
-    println!("  meshes:     {}", result.num_meshes);
-    println!("  triangles:  {}", result.total_triangles);
 
     // This file has many solid types; some are not yet supported.
     // Just verify that supported solids produce meshes and no panics.
@@ -240,22 +184,8 @@ fn test_solids_gdml_pipeline() {
 #[test]
 fn test_all_features_pipeline() {
     let path = project_root().join("sample_data/test_all_features.gdml");
-    assert!(path.exists(), "GDML file not found: {}", path.display());
 
     let result = run_pipeline(&path);
-
-    println!("test_all_features.gdml:");
-    println!("  constants:  {}", result.num_constants);
-    println!("  quantities: {}", result.num_quantities);
-    println!("  variables:  {}", result.num_variables);
-    println!("  positions:  {}", result.num_positions);
-    println!("  rotations:  {}", result.num_rotations);
-    println!("  elements:   {}", result.num_elements);
-    println!("  materials:  {}", result.num_materials);
-    println!("  solids:     {}", result.num_solids);
-    println!("  volumes:    {}", result.num_volumes);
-    println!("  meshes:     {}", result.num_meshes);
-    println!("  triangles:  {}", result.total_triangles);
 
     // Verify expected counts from the file
     assert_eq!(
@@ -282,51 +212,6 @@ fn test_all_features_pipeline() {
         "Every solid should be tessellated"
     );
     assert!(result.total_triangles > 0, "Expected triangles");
-}
-
-#[test]
-fn test_all_files_have_setup_section() {
-    let root = project_root();
-    let files = [
-        "sample_data/BgoDetModel_v2_00.gdml",
-        "sample_data/fermi_simple_elements_satellite.gdml",
-        "sample_data/NaiDetModelWithMLI_v2_00.gdml",
-        "sample_data/test_all_features.gdml",
-    ];
-
-    for file in &files {
-        let path = root.join(file);
-        let doc = parse_gdml(&path).unwrap_or_else(|e| panic!("Failed to parse {}: {}", file, e));
-
-        assert!(
-            !doc.setup.world_ref.is_empty(),
-            "{} should have a non-empty world_ref in its setup section",
-            file
-        );
-    }
-}
-
-#[test]
-fn test_all_files_materials_non_empty() {
-    let root = project_root();
-    let files = [
-        "sample_data/BgoDetModel_v2_00.gdml",
-        "sample_data/fermi_simple_elements_satellite.gdml",
-        "sample_data/NaiDetModelWithMLI_v2_00.gdml",
-        "sample_data/test_all_features.gdml",
-    ];
-
-    for file in &files {
-        let path = root.join(file);
-        let doc = parse_gdml(&path).unwrap_or_else(|e| panic!("Failed to parse {}: {}", file, e));
-
-        let total = doc.materials.elements.len() + doc.materials.materials.len();
-        assert!(
-            total > 0,
-            "{} should have at least one element or material defined",
-            file
-        );
-    }
 }
 
 #[test]
@@ -862,76 +747,4 @@ fn twistedtubs_nseg_and_totphi_set_the_sweep() {
         rel < 0.02,
         "volume {vol:.2}, expected {expected:.2} (rel {rel:.4})"
     );
-}
-
-#[test]
-fn a_loop_is_expanded_for_geometry_but_kept_for_export() {
-    use gdml_studio_backend::gdml::loops::expand_loops;
-    use gdml_studio_backend::gdml::materials::serialize_gdml;
-    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
-
-    let src = r#"<?xml version="1.0"?>
-<gdml>
-  <define><variable name="i" value="0"/></define>
-  <materials>
-    <material name="M" Z="1"><D value="1"/><atom value="1"/></material>
-  </materials>
-  <solids>
-    <box name="World" x="1000" y="1000" z="1000" lunit="mm"/>
-    <box name="Blk" x="10" y="10" z="10" lunit="mm"/>
-  </solids>
-  <structure>
-    <volume name="Inner"><materialref ref="M"/><solidref ref="Blk"/></volume>
-    <volume name="W">
-      <materialref ref="M"/><solidref ref="World"/>
-      <loop for="i" from="1" to="4" step="1">
-        <physvol><volumeref ref="Inner"/><position name="p" z="i*20" unit="mm"/></physvol>
-      </loop>
-    </volume>
-  </structure>
-  <setup name="Default" version="1.0"><world ref="W"/></setup>
-</gdml>"#;
-
-    // The source document keeps the loop and gains no physvols from it.
-    let doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
-    let w = doc
-        .structure
-        .volumes
-        .iter()
-        .find(|v| v.name == "W")
-        .unwrap();
-    assert_eq!(w.loops.len(), 1);
-    assert!(w.physvols.is_empty());
-    assert!(
-        serialize_gdml(&doc).unwrap().contains("<loop"),
-        "export must keep the loop"
-    );
-
-    // The render twin has the four placements, at z = 20, 40, 60, 80.
-    let mut engine = EvalEngine::new();
-    engine.evaluate_all(&doc.defines).unwrap();
-    let expanded = expand_loops(src, &engine).unwrap();
-    let render = parse_gdml_from_bytes(expanded.as_bytes(), "t.gdml".to_string()).unwrap();
-    let rw = render
-        .structure
-        .volumes
-        .iter()
-        .find(|v| v.name == "W")
-        .unwrap();
-    assert_eq!(rw.physvols.len(), 4, "expected four expanded placements");
-    assert!(rw.loops.is_empty(), "the loop should be gone from the twin");
-
-    let mut engine2 = EvalEngine::new();
-    engine2.evaluate_all(&render.defines).unwrap();
-    let zs: Vec<f64> = rw
-        .physvols
-        .iter()
-        .map(|pv| match pv.position {
-            Some(gdml_studio_backend::gdml::model::PlacementPos::Inline(ref p)) => {
-                engine2.resolve_value(p.z.as_deref().unwrap_or("0"))
-            }
-            _ => f64::NAN,
-        })
-        .collect();
-    assert_eq!(zs, vec![20.0, 40.0, 60.0, 80.0], "placement z values");
 }

@@ -114,19 +114,19 @@ async function mutate<T>(request: Promise<T>): Promise<T> {
 
 // ─── Material CRUD ──────────────────────────────────────────────────────────
 
-export async function updateMaterial(name: string, material: MaterialInfo) {
+export async function updateMaterial(name: string, material: MaterialInfo, elements: ElementInfo[] = []) {
   return mutate(fetchJson<{ ok: boolean }>('/api/document/materials/update', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, material }),
+    body: JSON.stringify({ name, material, elements }),
   }));
 }
 
-export async function addMaterial(material: MaterialInfo) {
+export async function addMaterial(material: MaterialInfo, elements: ElementInfo[] = []) {
   return mutate(fetchJson<{ ok: boolean }>('/api/document/materials/add', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ material }),
+    body: JSON.stringify({ material, elements }),
   }));
 }
 

@@ -34,7 +34,7 @@ pub fn tessellate_all_solids(
         let name = solid.name().to_string();
         match solid {
             Solid::Boolean(_) | Solid::Scaled(_) | Solid::Reflected(_) | Solid::MultiUnion(_) => {} // skip for phase 2
-            _ => match tessellate_solid(solid, engine, segments) {
+            _ => match tessellate_primitive(solid, engine, segments) {
                 Ok(mesh) => {
                     meshes.insert(name, mesh);
                 }
@@ -47,99 +47,38 @@ pub fn tessellate_all_solids(
         }
     }
 
-    // Phase 2: Resolve composite solids (scaled, boolean — may reference each other)
+    // Composite roots and nested operands use the same dispatch. Keep the
+    // primitive pass so large standalone meshes enter the cache without a copy.
     for solid in &solids.solids {
-        match solid {
-            Solid::MultiUnion(mu) => {
-                let mut resolving = HashSet::new();
-                match tessellate_multiunion_solid(
-                    mu,
-                    &solid_map,
-                    &mut meshes,
-                    engine,
-                    segments,
-                    &mut resolving,
-                ) {
-                    Ok(mesh) => {
-                        meshes.insert(mu.name.clone(), mesh);
-                    }
-                    Err(e) => {
-                        let msg = format!("Failed to tessellate multiUnion '{}': {}", mu.name, e);
-                        tracing::warn!("{}", msg);
-                        warnings.push(msg);
-                    }
-                }
+        if !matches!(
+            solid,
+            Solid::Boolean(_) | Solid::Scaled(_) | Solid::Reflected(_) | Solid::MultiUnion(_)
+        ) {
+            continue;
+        }
+        match tessellate_solid(
+            solid,
+            &solid_map,
+            &mut meshes,
+            engine,
+            segments,
+            &mut HashSet::new(),
+        ) {
+            Ok(mesh) => {
+                meshes.insert(solid.name().to_string(), mesh);
             }
-            Solid::Reflected(rs) => {
-                let mut resolving = HashSet::new();
-                match tessellate_reflected_solid(
-                    rs,
-                    &solid_map,
-                    &mut meshes,
-                    engine,
-                    segments,
-                    &mut resolving,
-                ) {
-                    Ok(mesh) => {
-                        meshes.insert(rs.name.clone(), mesh);
-                    }
-                    Err(e) => {
-                        let msg =
-                            format!("Failed to tessellate reflected solid '{}': {}", rs.name, e);
-                        tracing::warn!("{}", msg);
-                        warnings.push(msg);
-                    }
-                }
+            Err(e) => {
+                let msg = format!("Failed to tessellate solid '{}': {}", solid.name(), e);
+                tracing::warn!("{}", msg);
+                warnings.push(msg);
             }
-            Solid::Scaled(ss) => {
-                let mut resolving = HashSet::new();
-                match tessellate_scaled_solid(
-                    ss,
-                    &solid_map,
-                    &mut meshes,
-                    engine,
-                    segments,
-                    &mut resolving,
-                ) {
-                    Ok(mesh) => {
-                        meshes.insert(ss.name.clone(), mesh);
-                    }
-                    Err(e) => {
-                        let msg = format!("Failed to tessellate scaled solid '{}': {}", ss.name, e);
-                        tracing::warn!("{}", msg);
-                        warnings.push(msg);
-                    }
-                }
-            }
-            Solid::Boolean(bs) => {
-                let mut resolving = HashSet::new();
-                match tessellate_boolean_solid(
-                    bs,
-                    &solid_map,
-                    &mut meshes,
-                    engine,
-                    segments,
-                    &mut resolving,
-                ) {
-                    Ok(mesh) => {
-                        meshes.insert(bs.name.clone(), mesh);
-                    }
-                    Err(e) => {
-                        let msg =
-                            format!("Failed to tessellate boolean solid '{}': {}", bs.name, e);
-                        tracing::warn!("{}", msg);
-                        warnings.push(msg);
-                    }
-                }
-            }
-            _ => {}
         }
     }
 
     Ok((meshes, warnings))
 }
 
-fn tessellate_solid(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
+fn tessellate_primitive(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
     match solid {
         Solid::Box(s) => tessellate_box_solid(s, engine),
         Solid::Tube(s) => tessellate_tube_solid(s, engine, segments),
@@ -208,17 +147,10 @@ fn tessellate_scaled_solid(
         // the reference fell through to the (1,1,1) defaults and the solid
         // rendered unscaled, with nothing to indicate it.
         let [sx, sy, sz] = match &ss.scale_ref {
-            Some(name) => match engine.scale_values.get(name) {
-                Some(v) => *v,
-                None => {
-                    engine.record_warning_public(format!(
-                        "scaledSolid \"{}\" references scale \"{}\", which is not defined; \
-                         rendering unscaled.",
-                        ss.name, name
-                    ));
-                    [1.0, 1.0, 1.0]
-                }
-            },
+            Some(name) => *engine
+                .scale_values
+                .get(name)
+                .ok_or_else(|| anyhow::anyhow!("Undefined scale '{name}'"))?,
             None => [
                 resolve(engine, &ss.scale_x),
                 resolve(engine, &ss.scale_y),
@@ -320,7 +252,7 @@ fn tessellate_multiunion_solid(
             resolving,
         )?;
         result_mesh =
-            apply_placement_transform(&result_mesh, &first.position, &first.rotation, engine);
+            apply_placement_transform(&result_mesh, &first.position, &first.rotation, engine)?;
 
         // Iteratively union remaining nodes
         for node in &mu.nodes[1..] {
@@ -333,7 +265,7 @@ fn tessellate_multiunion_solid(
                 resolving,
             )?;
             let node_mesh =
-                apply_placement_transform(&node_mesh, &node.position, &node.rotation, engine);
+                apply_placement_transform(&node_mesh, &node.position, &node.rotation, engine)?;
             result_mesh = csg::union(&result_mesh, &node_mesh);
         }
 
@@ -440,11 +372,11 @@ fn tessellate_boolean_solid(
 
         // Apply first solid transform if specified
         let first_mesh =
-            apply_placement_transform(&first_mesh, &bs.first_position, &bs.first_rotation, engine);
+            apply_placement_transform(&first_mesh, &bs.first_position, &bs.first_rotation, engine)?;
 
         // Apply second solid transform (position/rotation of second relative to first)
         let second_mesh =
-            apply_placement_transform(&second_mesh, &bs.position, &bs.rotation, engine);
+            apply_placement_transform(&second_mesh, &bs.position, &bs.rotation, engine)?;
 
         // Perform CSG operation
         let result = match bs.operation {
@@ -478,35 +410,33 @@ fn resolve_operand(
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Boolean operand '{}' not found", name))?;
 
+    let mesh = tessellate_solid(solid, solid_map, meshes, engine, segments, resolving)?;
+    meshes.insert(name.to_string(), mesh.clone());
+    Ok(mesh)
+}
+
+fn tessellate_solid(
+    solid: &Solid,
+    solid_map: &HashMap<&str, &Solid>,
+    meshes: &mut HashMap<String, TriangleMesh>,
+    engine: &EvalEngine,
+    segments: u32,
+    resolving: &mut HashSet<String>,
+) -> Result<TriangleMesh> {
     match solid {
-        Solid::Boolean(bs) => {
-            let mesh =
-                tessellate_boolean_solid(bs, solid_map, meshes, engine, segments, resolving)?;
-            meshes.insert(name.to_string(), mesh.clone());
-            Ok(mesh)
+        Solid::Boolean(s) => {
+            tessellate_boolean_solid(s, solid_map, meshes, engine, segments, resolving)
         }
-        Solid::Scaled(ss) => {
-            let mesh = tessellate_scaled_solid(ss, solid_map, meshes, engine, segments, resolving)?;
-            meshes.insert(name.to_string(), mesh.clone());
-            Ok(mesh)
+        Solid::Scaled(s) => {
+            tessellate_scaled_solid(s, solid_map, meshes, engine, segments, resolving)
         }
-        Solid::Reflected(rs) => {
-            let mesh =
-                tessellate_reflected_solid(rs, solid_map, meshes, engine, segments, resolving)?;
-            meshes.insert(name.to_string(), mesh.clone());
-            Ok(mesh)
+        Solid::Reflected(s) => {
+            tessellate_reflected_solid(s, solid_map, meshes, engine, segments, resolving)
         }
-        Solid::MultiUnion(mu) => {
-            let mesh =
-                tessellate_multiunion_solid(mu, solid_map, meshes, engine, segments, resolving)?;
-            meshes.insert(name.to_string(), mesh.clone());
-            Ok(mesh)
+        Solid::MultiUnion(s) => {
+            tessellate_multiunion_solid(s, solid_map, meshes, engine, segments, resolving)
         }
-        _ => {
-            let mesh = tessellate_solid(solid, engine, segments)?;
-            meshes.insert(name.to_string(), mesh.clone());
-            Ok(mesh)
-        }
+        _ => tessellate_primitive(solid, engine, segments),
     }
 }
 
@@ -515,49 +445,12 @@ fn apply_placement_transform(
     pos: &Option<PlacementPos>,
     rot: &Option<PlacementRot>,
     engine: &EvalEngine,
-) -> TriangleMesh {
-    let position = resolve_placement_pos(pos, engine);
-    let rotation = resolve_placement_rot(rot, engine);
-
-    csg::transform_mesh(mesh, position, rotation)
-}
-
-fn resolve_placement_pos(pos: &Option<PlacementPos>, engine: &EvalEngine) -> [f64; 3] {
-    match pos {
-        Some(PlacementPos::Inline(p)) => {
-            let unit = p.unit.as_deref().unwrap_or("mm");
-            [
-                resolve_opt_with_lunit(engine, &p.x, unit),
-                resolve_opt_with_lunit(engine, &p.y, unit),
-                resolve_opt_with_lunit(engine, &p.z, unit),
-            ]
-        }
-        Some(PlacementPos::Ref(name)) => engine
-            .position_values
-            .get(name)
-            .copied()
-            .unwrap_or([0.0; 3]),
-        None => [0.0; 3],
-    }
-}
-
-fn resolve_placement_rot(rot: &Option<PlacementRot>, engine: &EvalEngine) -> [f64; 3] {
-    match rot {
-        Some(PlacementRot::Inline(r)) => {
-            let unit = r.unit.as_deref().unwrap_or("rad");
-            [
-                resolve_opt_with_aunit(engine, &r.x, unit),
-                resolve_opt_with_aunit(engine, &r.y, unit),
-                resolve_opt_with_aunit(engine, &r.z, unit),
-            ]
-        }
-        Some(PlacementRot::Ref(name)) => engine
-            .rotation_values
-            .get(name)
-            .copied()
-            .unwrap_or([0.0; 3]),
-        None => [0.0; 3],
-    }
+) -> Result<TriangleMesh> {
+    Ok(csg::transform_mesh(
+        mesh,
+        engine.resolve_position(pos)?,
+        engine.resolve_rotation(rot)?,
+    ))
 }
 
 fn resolve(engine: &EvalEngine, expr: &str) -> f64 {
@@ -571,44 +464,12 @@ fn resolve_opt(engine: &EvalEngine, expr: &Option<String>) -> f64 {
     }
 }
 
-/// Resolve a length expression, applying lunit conversion only for literal values.
-/// If the expression references any symbols that are already length values in mm,
-/// skip the lunit conversion to avoid double-converting.
-///
-/// **This deliberately diverges from Geant4 and is left as-is for now.**
-/// `G4GDMLReadSolids::BoxRead` does `x = eval.Evaluate(attValue); x *= 0.5 *
-/// lunit;` unconditionally, with no knowledge of where the value came from. So
-/// for `<quantity name="a" type="length" value="5" unit="cm"/>` used as
-/// `<box x="a" lunit="cm"/>`, Geant4 gives a 500 mm box and this gives 50 mm.
-/// Two known consequences:
-///
-/// - sibling attributes of one element can end up in different unit regimes —
-///   in `<box x="a" y="20" lunit="cm"/>`, `x` skips the conversion and `y` does
-///   not;
-/// - length-ness is contagious (`EvalEngine` marks any define referencing a
-///   length symbol as one itself), so a dimensionless ratio like
-///   `<constant name="k" value="a/b"/>` also loses its `lunit`, where the
-///   anti-double-conversion rationale does not apply at all.
-///
-/// Matching Geant4 exactly would be the principled fix, but it changes how every
-/// existing file renders and no shipped sample exercises the difference, so it
-/// needs a corpus to validate against first. See
-/// `resolve_with_lunit_does_not_double_convert_length_expressions` for the
-/// behaviour this preserves.
+/// Geant4 applies lunit after evaluation, including expressions using quantities.
 fn resolve_with_lunit(engine: &EvalEngine, expr: &str, lunit: &str) -> f64 {
-    let val = engine.resolve_value(expr);
-    if engine.expression_uses_length_symbols(expr) {
-        val
-    } else {
-        // Geant4 resolves lunit through G4UnitDefinition::GetValueOf and raises
-        // a FatalException when the category is wrong, so a file naming an
-        // unknown unit would not load there at all. Treating it as millimetres
-        // renders wrong geometry with nothing else to go on, so say so.
-        if units::length_factor(lunit).is_none() {
-            engine.record_unit_warning(lunit, "length");
-        }
-        units::length_to_mm(val, lunit)
+    if units::length_factor(lunit).is_none() {
+        engine.record_unit_warning(lunit, "length");
     }
+    units::length_to_mm(engine.resolve_value(expr), lunit)
 }
 
 fn resolve_opt_with_lunit(engine: &EvalEngine, expr: &Option<String>, lunit: &str) -> f64 {
@@ -618,20 +479,12 @@ fn resolve_opt_with_lunit(engine: &EvalEngine, expr: &Option<String>, lunit: &st
     }
 }
 
-/// Resolve an angle expression, applying aunit conversion only for literal values.
-/// If the expression references any symbols that are already angle values in
-/// radians (converted `type="angle"` quantities), skip the aunit conversion to
-/// avoid double-converting. Mirrors `resolve_with_lunit`.
+/// The declared angle unit is also independent of the expression's symbols.
 fn resolve_with_aunit(engine: &EvalEngine, expr: &str, aunit: &str) -> f64 {
-    let val = engine.resolve_value(expr);
-    if engine.expression_uses_angle_symbols(expr) {
-        val
-    } else {
-        if units::angle_factor(aunit).is_none() {
-            engine.record_unit_warning(aunit, "angle");
-        }
-        units::angle_to_rad(val, aunit)
+    if units::angle_factor(aunit).is_none() {
+        engine.record_unit_warning(aunit, "angle");
     }
+    units::angle_to_rad(engine.resolve_value(expr), aunit)
 }
 
 fn resolve_opt_with_aunit(engine: &EvalEngine, expr: &Option<String>, aunit: &str) -> f64 {
@@ -933,12 +786,7 @@ fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Re
     let mut normals = Vec::new();
     let mut indices = Vec::new();
 
-    let lookup =
-        |name: &str| -> Result<[f64; 3]> {
-            engine.position_values.get(name).copied().ok_or_else(|| {
-                anyhow::anyhow!("Tessellated vertex '{}' not found in defines", name)
-            })
-        };
+    let lookup = |name: &str| engine.named_position(name);
 
     for facet in &s.facets {
         match facet {
@@ -1188,13 +1036,7 @@ fn tessellate_eltube_solid(
 }
 
 fn tessellate_tet_solid(s: &TetSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
-    let lookup = |name: &str| -> Result<[f64; 3]> {
-        engine
-            .position_values
-            .get(name)
-            .copied()
-            .ok_or_else(|| anyhow::anyhow!("Tet vertex '{}' not found in defines", name))
-    };
+    let lookup = |name: &str| engine.named_position(name);
 
     let v1 = lookup(&s.vertex1)?;
     let v2 = lookup(&s.vertex2)?;
@@ -1442,7 +1284,7 @@ mod tests {
     use crate::gdml::model::{DefineSection, Quantity};
 
     #[test]
-    fn resolve_with_lunit_does_not_double_convert_length_expressions() {
+    fn declared_lunit_applies_to_quantities_and_literals() {
         let mut engine = EvalEngine::new();
         let mut defines = DefineSection::default();
         defines.quantities.push(Quantity {
@@ -1459,9 +1301,9 @@ mod tests {
         });
         engine.evaluate_all(&defines).unwrap();
 
-        // A and B are already converted to mm in the eval engine.
+        // Geant4 applies the solid's lunit after evaluating A + B.
         let expr_val = resolve_with_lunit(&engine, "A + B", "cm");
-        assert!((expr_val - 50.0).abs() < 1e-9);
+        assert!((expr_val - 500.0).abs() < 1e-9);
 
         // Literal values still respect the solid's lunit.
         let literal_val = resolve_with_lunit(&engine, "2.0", "cm");
@@ -1469,7 +1311,7 @@ mod tests {
     }
 
     #[test]
-    fn resolve_with_aunit_does_not_double_convert_angle_expressions() {
+    fn declared_aunit_applies_to_quantities_and_literals() {
         let mut engine = EvalEngine::new();
         let mut defines = DefineSection::default();
         defines.quantities.push(Quantity {
@@ -1480,11 +1322,10 @@ mod tests {
         });
         engine.evaluate_all(&defines).unwrap();
 
-        // The quantity is converted to radians at definition time, so it must
-        // come through unchanged regardless of the solid's aunit.
+        // The quantity's unit and the attribute's unit are separate operations.
         let half_pi = std::f64::consts::FRAC_PI_2;
         assert!((resolve_with_aunit(&engine, "ang", "rad") - half_pi).abs() < 1e-9);
-        assert!((resolve_with_aunit(&engine, "ang", "deg") - half_pi).abs() < 1e-9);
+        assert!((resolve_with_aunit(&engine, "ang", "deg") - half_pi.to_radians()).abs() < 1e-9);
 
         // Literal values still respect the solid's aunit.
         assert!((resolve_with_aunit(&engine, "90", "deg") - half_pi).abs() < 1e-9);

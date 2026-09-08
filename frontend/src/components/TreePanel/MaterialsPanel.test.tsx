@@ -1,149 +1,272 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, within, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-vi.mock('../Viewport/geometryCache', () => ({
-  clearAllGeometries: vi.fn(),
-}));
-vi.mock('../../api/client', () => ({
-  getMaterials: vi.fn(),
-  getScene: vi.fn(),
-  getStructure: vi.fn(),
-  getMeshes: vi.fn(),
-  updateMaterial: vi.fn(),
-  addMaterial: vi.fn(),
-  deleteMaterial: vi.fn(),
-  addElement: vi.fn(),
-  getNistMaterials: vi.fn(),
-  getNistMaterial: vi.fn(),
-}));
-
+vi.mock('../Viewport/geometryCache', () => ({ clearAllGeometries: vi.fn() }));
 import * as api from '../../api/client';
 import { useAppStore } from '../../store';
-import type { MaterialInfo } from '../../store/types';
+import type { MaterialInfo, ElementInfo, DocumentSummary, NistMaterial, SceneNode } from '../../store/types';
 import MaterialsPanel from './MaterialsPanel';
+import Toolbar from '../Toolbar';
+import DocumentDialog from '../DocumentDialog';
 
 const mocked = vi.mocked(api);
-
-/** The debounce in MaterialFields, plus a margin. */
-const DEBOUNCE_MS = 500;
-const settle = () => new Promise((r) => setTimeout(r, DEBOUNCE_MS + 200));
-
-function makeMaterial(density: string): MaterialInfo {
-  return {
-    name: 'G4_WATER',
-    formula: null,
-    z: null,
-    state: 'liquid',
-    density: { value: density, unit: 'g/cm3' },
-    density_ref: null,
-    temperature: null,
-    pressure: null,
-    mee: null,
-    rl: null,
-    al: null,
-    properties: [],
-    atom_value: null,
-    atom_unit: null,
-    atom_type: null,
-    components: [],
-  };
-}
-
-function deferred<T>() {
-  let resolve!: (v: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
-  });
-  return { promise, resolve };
-}
-
-function densityInput() {
-  const row = screen.getByText('Density').parentElement;
-  if (!row) throw new Error('Density row not found');
-  return within(row).getByRole('textbox');
-}
+const NativeURL = URL;
+const makeMaterial = (name = 'M'): MaterialInfo => ({
+  name, formula: null, z: null, state: 'liquid', density: { value: '1.0', unit: 'g/cm3' },
+  density_ref: null, temperature: null, pressure: null, mee: { value: '75', unit: 'eV' },
+  rl: null, al: null, properties: [{ name: 'RINDEX', ref_name: 'optics', values: null }],
+  atom_value: null, atom_unit: null, atom_type: null, components: [],
+});
+const summary: DocumentSummary = { filename: 'original.gdml', defines_count: 0, positions_count: 0, rotations_count: 0,
+  materials_count: 2, elements_count: 0, solids_count: 0, volumes_count: 0, meshes_count: 0, world_ref: 'W', warnings: [] };
+const scene: SceneNode = { name: 'W', volume_name: 'W', instance_id: '/W', solid_name: '', material_name: 'M',
+  color: null, density: 1, position: [0,0,0], rotation: [0,0,0], is_world: true, children: [] };
+const nist: NistMaterial = { name: 'CatalogMaterial', formula: 'H', density: 0.5, state: 'Gas', category: 'HEP',
+  z: null, atom_value: null, components: [{ type: 'Fraction', ref: 'NewElement', n: 1 }] };
+let serverMaterials: MaterialInfo[];
+let serverElements: ElementInfo[];
+let exportedDensity: string | undefined;
 
 beforeEach(() => {
-  vi.clearAllMocks();
   useAppStore.getState().reset();
-  useAppStore.getState().setMaterials([makeMaterial('1')]);
-  useAppStore.getState().setSelectedMaterial('G4_WATER');
-
-  mocked.updateMaterial.mockResolvedValue({ ok: true });
-  mocked.getMaterials.mockResolvedValue({ materials: [makeMaterial('1')], elements: [] });
-  mocked.getScene.mockResolvedValue({ scene_graph: null as never });
-  mocked.getStructure.mockResolvedValue({ volumes: [], world_ref: 'World' });
-  mocked.getNistMaterials.mockResolvedValue({ materials: [] });
+  vi.resetAllMocks();
+  serverMaterials = [makeMaterial(), makeMaterial('N')];
+  serverElements = [];
+  exportedDensity = undefined;
+  useAppStore.setState({ summary, materials: serverMaterials, selectedMaterial: 'M' });
+  // Keep the real client: serialization, HTTP errors and dirty tracking must
+  // execute in production code, not be reproduced by an API mock.
+  for (const name of ['updateMaterial', 'addElement', 'exportGdml', 'uploadFile'] as const) vi.spyOn(api, name);
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    const path = url.split('?')[0];
+    let body: unknown;
+    switch (path) {
+      case '/api/document/materials': body = { materials: serverMaterials, elements: serverElements }; break;
+      case '/api/document/scene': body = { scene_graph: scene }; break;
+      case '/api/document/structure': body = { volumes: [], world_ref: 'W' }; break;
+      case '/api/document/meshes': body = { meshes: {}, scene_graph: scene }; break;
+      case '/api/document/defines': body = { defines: [] }; break;
+      case '/api/document/materials/update': {
+        const request = JSON.parse(String(init?.body));
+        serverMaterials = serverMaterials.map((m) => m.name === request.name ? request.material : m);
+        serverElements.push(...(request.elements ?? []));
+        body = { ok: true }; break;
+      }
+      case '/api/document/materials/add':
+        serverMaterials.push(JSON.parse(String(init?.body)).material);
+        body = { ok: true }; break;
+      case '/api/document/export':
+        exportedDensity = serverMaterials[0].density?.value;
+        body = { gdml: `<gdml density="${exportedDensity}"/>`, filename: summary.filename }; break;
+      case '/api/files/upload': body = { ...summary, filename: JSON.parse(String(init?.body)).filename }; break;
+      case '/api/nist/materials': body = { materials: [nist] }; break;
+      case '/api/nist/material': body = { material: { ...nist, name: 'NewElement', z: 1, atom_value: 1, components: [] } }; break;
+      default: throw new Error(`Unexpected request: ${path}`);
+    }
+    return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
+  }));
+  vi.stubGlobal('URL', class extends NativeURL {
+    static createObjectURL = vi.fn(() => 'blob:test');
+    static revokeObjectURL = vi.fn();
+  });
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  // jsdom does not implement modal opening/focus trapping. Browser QA covers the native behavior.
+  HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+  HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
 });
 
-describe('MaterialFields density editing', () => {
-  it('keeps text typed while a save is still in flight', async () => {
-    const user = userEvent.setup();
-    render(<MaterialsPanel />);
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-    // The refresh that follows the save is held open so we can type into the
-    // window where the request is outstanding -- the 6.7 MB sample makes this
-    // window hundreds of milliseconds wide in practice.
-    const refresh = deferred<{ materials: MaterialInfo[]; elements: [] }>();
-    mocked.getMaterials.mockReturnValueOnce(refresh.promise as never);
+function mount() { render(<><Toolbar /><MaterialsPanel /><DocumentDialog /></>); return userEvent.setup(); }
+const densityInput = () => screen.getByRole('textbox', { name: 'Density' });
+async function edit(user: ReturnType<typeof userEvent.setup>, value = '3.25') {
+  await user.clear(densityInput()); await user.type(densityInput(), value);
+}
+async function choose(user: ReturnType<typeof userEvent.setup>, label: string) {
+  const dialog = await screen.findByRole('dialog');
+  await user.click(within(dialog).getByRole('button', { name: label }));
+}
+async function chooseFile(user: ReturnType<typeof userEvent.setup>) {
+  const create = document.createElement.bind(document);
+  let picker: HTMLInputElement | undefined;
+  const spy = vi.spyOn(document, 'createElement').mockImplementation((tag, options) => {
+    const element = create(tag, options);
+    if (tag === 'input') picker = element as HTMLInputElement;
+    return element;
+  });
+  await user.click(screen.getByRole('button', { name: 'Open File(s)' }));
+  spy.mockRestore();
+  if (!picker) throw new Error('File chooser was not created');
+  fireEvent.change(picker, { target: { files: [{ name: 'next.gdml', text: async () => '<gdml/>' }] } });
+}
 
-    await user.type(densityInput(), '2.3');
-    expect(densityInput()).toHaveValue('12.3');
-
-    await act(async () => {
-      await settle();
-    });
-    expect(mocked.updateMaterial).toHaveBeenCalledTimes(1);
-
-    // Still typing while the save round-trips.
-    await user.type(densityInput(), '4');
-    expect(densityInput()).toHaveValue('12.34');
-
-    // The echo carries what was saved -- 12.3 -- not what is now on screen.
-    await act(async () => {
-      refresh.resolve({ materials: [makeMaterial('12.3')], elements: [] });
-      await refresh.promise;
-    });
-
-    // Before the fix MaterialFields was keyed on the material's own values, so
-    // this echo remounted it and re-initialised the input to "12.3", dropping
-    // the 4 and firing a second POST from the unmount flush.
-    expect(densityInput()).toHaveValue('12.34');
-    expect(mocked.updateMaterial).toHaveBeenCalledTimes(1);
+describe('material drafts and document actions', () => {
+  it('creates a default material without colliding with material or element names', async () => {
+    serverMaterials = [makeMaterial('Material_d1.0')];
+    serverElements = [{ name: 'Material_d1.0_2', formula: null, z: '1', atom_value: '1', atom_unit: null, atom_type: null, fractions: [] }];
+    useAppStore.setState({ materials: serverMaterials, elements: serverElements, selectedMaterial: null });
+    const user = mount();
+    await user.click(screen.getByRole('button', { name: 'Add material' }));
+    expect(serverMaterials.map((m) => m.name)).toEqual(['Material_d1.0', 'Material_d1.0_3']);
+    expect(screen.getByRole('textbox', { name: 'Material name' })).toHaveValue('Material_d1.0_3');
   });
 
-  it('adopts a value written by something other than this component', async () => {
-    const user = userEvent.setup();
-    render(<MaterialsPanel />);
-
-    await user.type(densityInput(), '2.3');
-    expect(densityInput()).toHaveValue('12.3');
-
-    // What the NIST picker does: replace density/formula/Z wholesale. The
-    // incoming value differs from what we last sent, so it is not our echo and
-    // the inputs have to re-sync or they would keep showing the stale number.
-    await act(async () => {
-      useAppStore.getState().setMaterials([makeMaterial('0.9998')]);
-    });
-
-    expect(densityInput()).toHaveValue('0.9998');
+  it('keeps edits local until Apply and preserves unedited GDML properties', async () => {
+    const user = mount(); await edit(user);
+    expect(mocked.updateMaterial).not.toHaveBeenCalled();
+    expect(useAppStore.getState().dirty).toBe(false);
+    const close = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(close);
+    expect(close.defaultPrevented).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(mocked.updateMaterial).toHaveBeenCalledTimes(1);
+    expect(serverMaterials[0].density?.value).toBe('3.25');
+    expect(serverMaterials[0].mee).toEqual({ value: '75', unit: 'eV' });
+    expect(serverMaterials[0].properties[0].ref_name).toBe('optics');
+    expect(useAppStore.getState().materialDraft).toBeNull();
+    expect(useAppStore.getState().dirty).toBe(true);
   });
 
-  it('sends the whole material, not just the edited fields', async () => {
-    const user = userEvent.setup();
-    render(<MaterialsPanel />);
+  it.each(['Apply', 'Discard', 'Cancel'])('resolves a just-typed edit before Save: %s', async (choice) => {
+    const user = mount(); await edit(user);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(mocked.exportGdml).not.toHaveBeenCalled();
+    await choose(user, choice);
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    if (choice === 'Cancel') {
+      expect(mocked.exportGdml).not.toHaveBeenCalled();
+      expect(densityInput()).toHaveValue('3.25');
+    } else {
+      expect(exportedDensity).toBe(choice === 'Apply' ? '3.25' : '1.0');
+      expect(useAppStore.getState().dirty).toBe(false);
+      expect(useAppStore.getState().materialDraft).toBeNull();
+    }
+  });
 
-    await user.type(densityInput(), '2.3');
+  it('retains invalid drafts and blocks the pending export when Apply fails', async () => {
+    const user = mount(); await edit(user, '-1');
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Density must be positive' }), { status: 400 }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await choose(user, 'Apply');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Density must be positive');
+    expect(mocked.exportGdml).not.toHaveBeenCalled();
+    expect(densityInput()).toHaveValue('-1');
+    expect(serverMaterials[0].density?.value).toBe('1.0');
+    expect(useAppStore.getState().dirty).toBe(false);
+  });
+
+  it('blocks conflicting controls until an Apply request finishes', async () => {
+    useAppStore.getState().setMaterials([
+      { ...makeMaterial(), components: [{ Fraction: { n: '1', ref_name: 'N' } }] }, makeMaterial('N'),
+    ]);
+    const user = mount(); await edit(user);
+    let finish!: (value: { ok: boolean }) => void;
+    mocked.updateMaterial.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(densityInput()).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Open File(s)' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    const remove = screen.getByRole('button', { name: 'Remove component N' });
+    expect(remove).toBeDisabled();
+    await user.click(remove);
+    expect(useAppStore.getState().materialDraft?.material.components).toHaveLength(1);
+    await act(async () => finish({ ok: true }));
+    await waitFor(() => expect(densityInput()).not.toBeDisabled());
+  });
+
+  it('Cancel restores the applied value without discarding earlier unsaved work', async () => {
+    const user = mount(); act(() => useAppStore.getState().markDirty());
+    await edit(user);
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(densityInput()).toHaveValue('1.0');
+    expect(mocked.updateMaterial).not.toHaveBeenCalled();
+    expect(useAppStore.getState().dirty).toBe(true);
+  });
+
+  it('guards material selection and handles Escape as Cancel', async () => {
+    const user = mount(); await edit(user);
+    await user.click(screen.getByText('N', { exact: true }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    expect(useAppStore.getState().selectedMaterial).toBe('M');
+    expect(densityInput()).toHaveValue('3.25');
+    await user.click(screen.getByText('N', { exact: true })); await choose(user, 'Discard');
+    expect(useAppStore.getState().selectedMaterial).toBe('N');
+    expect(densityInput()).toHaveValue('1.0');
+  });
+
+  it('stages NIST elements and cancels without creating any backend records', async () => {
+    const user = mount();
+    await user.click(screen.getByRole('button', { name: 'NIST Material Lookup' }));
+    await user.click(await screen.findByText('CatalogMaterial', { exact: true }));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Material name' })).toHaveValue('CatalogMaterial'));
+    expect(useAppStore.getState().materialDraft?.elements[0].name).toBe('NewElement');
+    expect(mocked.addElement).not.toHaveBeenCalled(); expect(mocked.updateMaterial).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(useAppStore.getState().materialDraft).toBeNull(); expect(useAppStore.getState().elements).toEqual([]);
+  });
+
+  it.each(['Save', 'Discard', 'Cancel'])('protects applied unsaved changes on file replacement: %s', async (choice) => {
+    const user = mount(); act(() => useAppStore.getState().markDirty());
+    await chooseFile(user);
+    expect(mocked.uploadFile).not.toHaveBeenCalled();
+    await choose(user, choice);
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    expect(mocked.exportGdml).toHaveBeenCalledTimes(choice === 'Save' ? 1 : 0);
+    expect(mocked.uploadFile).toHaveBeenCalledTimes(choice === 'Cancel' ? 0 : 1);
+    expect(useAppStore.getState().summary?.filename).toBe(choice === 'Cancel' ? 'original.gdml' : 'next.gdml');
+  });
+
+  it('applies the NIST material and its dependencies in one request', async () => {
+    const user = mount();
+    await user.click(screen.getByRole('button', { name: 'NIST Material Lookup' }));
+    await user.click(await screen.findByText('CatalogMaterial', { exact: true }));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Material name' })).toHaveValue('CatalogMaterial'));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(mocked.updateMaterial).toHaveBeenCalledTimes(1);
+    expect(serverMaterials[0].name).toBe('CatalogMaterial');
+    expect(serverMaterials[0].state).toBe('gas');
+    expect(serverElements.map((e) => e.name)).toEqual(['NewElement']);
+    expect(mocked.addElement).not.toHaveBeenCalled();
+    expect(serverMaterials[0].properties[0].ref_name).toBe('optics');
+  });
+
+  it('keeps the old document when its replacement upload is rejected', async () => {
+    const user = mount(); act(() => useAppStore.getState().markDirty());
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'Invalid XML' }), { status: 400 }));
+    await chooseFile(user); await choose(user, 'Discard');
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    expect(useAppStore.getState().summary?.filename).toBe('original.gdml');
+    expect(useAppStore.getState().dirty).toBe(true);
+    expect(useAppStore.getState().materials).toEqual(serverMaterials);
+  });
+
+  it('aborts replacement on export failure and preserves the applied document', async () => {
+    const user = mount(); act(() => useAppStore.getState().markDirty());
+    vi.mocked(fetch).mockRejectedValueOnce(new Error('Export failed'));
+    await chooseFile(user); await choose(user, 'Save');
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    expect(mocked.uploadFile).not.toHaveBeenCalled();
+    expect(useAppStore.getState().dirty).toBe(true);
+  });
+
+  it('cancelled Save As leaves the draft untouched and does not Apply or export', async () => {
+    const user = mount(); await edit(user); vi.spyOn(window, 'prompt').mockReturnValueOnce(null);
+    await user.click(screen.getByRole('button', { name: 'Save As' }));
+    expect(mocked.exportGdml).not.toHaveBeenCalled(); expect(mocked.updateMaterial).not.toHaveBeenCalled();
+    expect(densityInput()).toHaveValue('3.25');
+  });
+
+  it('does not clear a newer applied revision when an older export finishes', async () => {
+    const user = mount(); act(() => useAppStore.getState().markDirty());
+    let finish!: (value: { gdml: string; filename: string }) => void;
+    mocked.exportGdml.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await act(async () => {
-      await settle();
+      useAppStore.getState().markDirty(); finish({ gdml: '<gdml/>', filename: 'original.gdml' });
     });
-
-    // update_material replaces the stored material wholesale, so anything the
-    // payload omits is erased from the exported GDML.
-    const [name, sent] = mocked.updateMaterial.mock.calls[0];
-    expect(name).toBe('G4_WATER');
-    expect(sent.state).toBe('liquid');
-    expect(sent.density).toEqual({ value: '12.3', unit: 'g/cm3' });
+    expect(useAppStore.getState().dirty).toBe(true);
   });
 });
