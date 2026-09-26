@@ -628,10 +628,70 @@ async fn twistedtubs_zlen_is_the_full_length() {
     )
     .await;
     let (lo, hi) = bounds(&t, 2);
-    assert!((lo + 5.0).abs() < 1e-4 && (hi - 5.0).abs() < 1e-4, "z {lo}..{hi}");
+    assert!(
+        (lo + 5.0).abs() < 1e-4 && (hi - 5.0).abs() < 1e-4,
+        "z {lo}..{hi}"
+    );
     let (lo, hi) = bounds(&t, 1);
     assert!((lo + hi).abs() < 1e-4 && hi > 7.0, "y {lo}..{hi}");
     let (c, s) = (15f64.to_radians().cos(), 15f64.to_radians().sin());
     let expected = std::f64::consts::FRAC_PI_2 * 5.0 * 75.0 * (c * c + s * s / 3.0);
     assert!((volume(&t) / expected - 1.0).abs() < 0.01, "{}", volume(&t));
+}
+
+/// x, y of the mesh vertices lying in the plane at height `z`.
+fn slice(mesh: &TriangleMesh, z: f64) -> Vec<[f64; 2]> {
+    mesh.positions
+        .chunks_exact(3)
+        .filter(|p| (p[2] as f64 - z).abs() < 1e-4)
+        .map(|p| [p[0] as f64, p[1] as f64])
+        .collect()
+}
+
+#[tokio::test]
+async fn twistedbox_is_untwisted_at_mid_height() {
+    // G4TwistBoxSide::SurfacePoint: the slice at height z is turned by
+    // PhiTwist * z / (2 dz), so the square is axis-aligned at z = 0 and turned
+    // by -+30 deg at the ends, where max x = 7.5 (cos 30 + sin 30).
+    let b = solid_mesh(
+        r#"<twistedbox name="B" PhiTwist="60" x="15" y="15" z="40" aunit="deg"/>"#,
+        "B",
+    )
+    .await;
+    let max_x = |z| slice(&b, z).iter().map(|p| p[0]).fold(f64::MIN, f64::max);
+    let end = 7.5 * (30f64.to_radians().cos() + 30f64.to_radians().sin());
+    for (z, expected) in [(-20.0, end), (0.0, 7.5), (20.0, end)] {
+        assert!((max_x(z) - expected).abs() < 1e-4, "z {z}: {}", max_x(z));
+    }
+    // Each twisted side quad is split into two flat triangles that sit inside
+    // the ruled surface (by area * warp / 12), -1.1% here at 32 segments.
+    assert!((volume(&b) / 9000.0 - 1.0).abs() < 0.02, "{}", volume(&b));
+}
+
+#[tokio::test]
+async fn twistedtrap_theta_shift_is_not_twisted() {
+    // The theta/phi centre line, fdeltaX * phi / PhiTwist = z tan(theta)
+    // cos(Phi) (G4VTwistedFaceted.cc, G4TwistBoxSide::SurfacePoint), is added
+    // after the twist rotation, so the end-cap centroids stay on the x axis.
+    // Twisting keeps every slice's area: G4VTwistedFaceted::GetCubicVolume
+    // ((dx1+dx2+dx3+dx4)(dy1+dy2) + (dx4+dx3-dx2-dx1)(dy2-dy1)/3) dz = 5760.
+    let t = solid_mesh(
+        r#"<twistedtrap name="T" PhiTwist="60" z="40" Theta="30" Phi="0" y1="10" x1="8"
+          x2="12" y2="16" x3="10" x4="14" Alph="10" aunit="deg"/>"#,
+        "T",
+    )
+    .await;
+    for z in [-20.0, 20.0] {
+        let s = slice(&t, z);
+        let n = s.len() as f64;
+        let c = s
+            .iter()
+            .fold([0.0, 0.0], |c, p| [c[0] + p[0] / n, c[1] + p[1] / n]);
+        let expected = z * 30f64.to_radians().tan();
+        assert!(
+            (c[0] - expected).abs() < 1e-4 && c[1].abs() < 1e-4,
+            "z {z}: {c:?}"
+        );
+    }
+    assert!((volume(&t) / 5760.0 - 1.0).abs() < 0.02, "{}", volume(&t));
 }

@@ -6,8 +6,7 @@ use super::csg;
 use super::primitives::{
     arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh,
     generic_polycone_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh,
-    torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_box_mesh, twisted_trap_mesh,
-    twisted_tubs_mesh, xtru_mesh,
+    torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_trap_mesh, twisted_tubs_mesh, xtru_mesh,
 };
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
@@ -727,8 +726,9 @@ fn tessellate_twisted_box_solid(
     let x = resolve_with_lunit(engine, &s.x, lunit);
     let y = resolve_with_lunit(engine, &s.y, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    Ok(twisted_box_mesh::tessellate_twisted_box(
-        phi_twist, x, y, z, segments,
+    // G4TwistedBox is G4VTwistedFaceted(phi, dz, 0, 0, dy, dx, dx, dy, dx, dx, 0)
+    Ok(twisted_trap_mesh::tessellate_twisted_trap(
+        phi_twist, z, 0.0, 0.0, y, x, x, y, x, x, 0.0, segments,
     ))
 }
 

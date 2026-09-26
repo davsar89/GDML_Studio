@@ -1,7 +1,9 @@
 use super::emit_quad;
 use crate::mesh::types::TriangleMesh;
 
-/// Generate a twisted general trapezoid mesh.
+/// Generate a twisted general trapezoid mesh; twistedbox and twistedtrd are
+/// special cases of it, exactly as G4TwistedBox/G4TwistedTrd construct a
+/// G4VTwistedFaceted.
 /// All length parameters are FULL dimensions (halved internally).
 /// All angles are in radians.
 pub fn tessellate_twisted_trap(
@@ -27,8 +29,7 @@ pub fn tessellate_twisted_trap(
     let dx4 = x4 / 2.0;
 
     let tan_theta = theta.tan();
-    let x_shift = dz * tan_theta * phi_angle.cos();
-    let y_shift = dz * tan_theta * phi_angle.sin();
+    let (shift_x, shift_y) = (tan_theta * phi_angle.cos(), tan_theta * phi_angle.sin());
     let tan_a = alph.tan();
 
     let z_segs = segments.max(3);
@@ -38,7 +39,10 @@ pub fn tessellate_twisted_trap(
     let mut normals = Vec::new();
     let mut indices = Vec::new();
 
-    // Compute 4 trap corners at a given z-level, with twist applied
+    // The 4 corners of the slice at height z (G4TwistBoxSide::SurfacePoint):
+    // the trapezoid interpolated in z, rotated by the twist phi = PhiTwist *
+    // z / (2 dz), which is zero at mid-height, THEN shifted by fdeltaX * phi /
+    // PhiTwist = z tan(theta) cos(phi_angle) (G4VTwistedFaceted.cc), unrotated.
     let corners_at = |z_pos: f64| -> [[f32; 3]; 4] {
         // Interpolation parameter: 0 at bottom, 1 at top
         let t = (z_pos + dz) / (2.0 * dz);
@@ -48,28 +52,21 @@ pub fn tessellate_twisted_trap(
         let dx_lo = dx1 + t * (dx3 - dx1); // x at -y edge
         let dx_hi = dx2 + t * (dx4 - dx2); // x at +y edge
 
-        // Interpolate center offset
-        let cx = -x_shift + t * (2.0 * x_shift);
-        let cy = -y_shift + t * (2.0 * y_shift);
-
-        // 4 corners (same formula as trap_mesh.rs)
-        let c0 = [cx - dy * tan_a - dx_lo, cy - dy];
-        let c1 = [cx - dy * tan_a + dx_lo, cy - dy];
-        let c2 = [cx + dy * tan_a + dx_hi, cy + dy];
-        let c3 = [cx + dy * tan_a - dx_hi, cy + dy];
-
-        // Apply twist rotation
-        let twist = phi_twist * t;
-        let (st, ct) = (twist.sin() as f32, twist.cos() as f32);
-        let zf = z_pos as f32;
-
-        let rotate = |xy: [f64; 2]| -> [f32; 3] {
-            let x = xy[0] as f32;
-            let y = xy[1] as f32;
-            [x * ct - y * st, x * st + y * ct, zf]
-        };
-
-        [rotate(c0), rotate(c1), rotate(c2), rotate(c3)]
+        // 4 corners (same formula as trap_mesh.rs), about the slice centre
+        let corners = [
+            [-dy * tan_a - dx_lo, -dy],
+            [-dy * tan_a + dx_lo, -dy],
+            [dy * tan_a + dx_hi, dy],
+            [dy * tan_a - dx_hi, dy],
+        ];
+        let (st, ct) = (phi_twist * (t - 0.5)).sin_cos();
+        corners.map(|[x, y]| {
+            [
+                (x * ct - y * st + z_pos * shift_x) as f32,
+                (x * st + y * ct + z_pos * shift_y) as f32,
+                z_pos as f32,
+            ]
+        })
     };
 
     // 4 side faces, Z-segmented

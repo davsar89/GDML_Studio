@@ -26,9 +26,8 @@ use gdml_studio_backend::mesh::primitives::{
     paraboloid_mesh::tessellate_paraboloid, polycone_mesh::tessellate_polycone,
     polyhedra_mesh::tessellate_polyhedra, sphere_mesh::tessellate_sphere,
     torus_mesh::tessellate_torus, trap_mesh::tessellate_trap, trd_mesh::tessellate_trd,
-    tube_mesh::tessellate_tube, twisted_box_mesh::tessellate_twisted_box,
-    twisted_trap_mesh::tessellate_twisted_trap, twisted_tubs_mesh::tessellate_twisted_tubs,
-    xtru_mesh::tessellate_xtru,
+    tube_mesh::tessellate_tube, twisted_trap_mesh::tessellate_twisted_trap,
+    twisted_tubs_mesh::tessellate_twisted_tubs, xtru_mesh::tessellate_xtru,
 };
 use gdml_studio_backend::mesh::types::TriangleMesh;
 
@@ -445,7 +444,9 @@ fn trd_volume() {
 #[test]
 fn twisted_box_volume() {
     // Twisting rotates each z-slice rigidly, preserving volume.
-    let m = tessellate_twisted_box(0.6, 10.0, 20.0, 30.0, SEG);
+    let m = tessellate_twisted_trap(
+        0.6, 30.0, 0.0, 0.0, 20.0, 10.0, 10.0, 20.0, 10.0, 10.0, 0.0, SEG,
+    );
     assert_volume(&m, 6000.0, 0.01, "twisted_box");
     assert_normals_match_winding(&m, "twisted_box");
 }
