@@ -79,7 +79,7 @@ pub fn tessellate_all_solids(
 }
 
 fn tessellate_primitive(solid: &Solid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
-    match solid {
+    let mesh = match solid {
         Solid::Box(s) => tessellate_box_solid(s, engine),
         Solid::Tube(s) => tessellate_tube_solid(s, engine, segments),
         Solid::Cone(s) => tessellate_cone_solid(s, engine, segments),
@@ -111,7 +111,15 @@ fn tessellate_primitive(solid: &Solid, engine: &EvalEngine, segments: u32) -> Re
         Solid::Reflected(_) => Err(anyhow::anyhow!("Reflected solids resolved in phase 2")),
         Solid::MultiUnion(_) => Err(anyhow::anyhow!("MultiUnion solids resolved in phase 2")),
         Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
-    }
+    }?;
+    // The meshers return nothing for parameters Geant4 rejects (zero or
+    // inverted extents, crossed cuts). Report it here, once, instead of
+    // drawing nothing and letting a boolean drop the operand silently.
+    anyhow::ensure!(
+        !mesh.indices.is_empty(),
+        "its parameters describe no volume, which Geant4 rejects"
+    );
+    Ok(mesh)
 }
 
 fn tessellate_scaled_solid(

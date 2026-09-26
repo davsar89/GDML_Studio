@@ -834,3 +834,30 @@ async fn sphere_deltatheta_stops_at_the_pole() {
         assert!((v / (fraction * ball) - 1.0).abs() < 0.02, "{angles}: {v}");
     }
 }
+
+#[tokio::test]
+async fn invalid_ellipsoid_and_its_boolean_are_reported() {
+    // Crossed cuts are fatal in G4Ellipsoid::CheckParameters (G4Ellipsoid.cc:196).
+    // The empty mesh used to be kept, and the union silently became the box.
+    let state = load(&document(
+        "",
+        r#"<ellipsoid name="E" ax="10" by="10" cz="10" zcut1="5" zcut2="-5"/>
+        <box name="B" x="10" y="10" z="10"/>
+        <union name="U"><first ref="B"/><second ref="E"/></union>"#,
+        r#"<volume name="W"><materialref ref="M"/><solidref ref="U"/></volume>"#,
+    ))
+    .await;
+    let guard = state.read().await;
+    let loaded = guard.loaded.as_ref().unwrap();
+    for name in ["E", "U"] {
+        assert!(
+            loaded
+                .warnings
+                .iter()
+                .any(|w| w.contains(&format!("solid '{name}'"))),
+            "{name}: {:?}",
+            loaded.warnings
+        );
+        assert!(!loaded.meshes.contains_key(name), "{name}");
+    }
+}
