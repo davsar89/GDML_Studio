@@ -1429,6 +1429,7 @@ fn parse_tet_solid(e: &BytesStart, solids: &mut SolidSection) {
         vertex2: get_attr(e, "vertex2").unwrap_or_default(),
         vertex3: get_attr(e, "vertex3").unwrap_or_default(),
         vertex4: get_attr(e, "vertex4").unwrap_or_default(),
+        lunit: get_attr(e, "lunit"),
     }));
 }
 
@@ -1733,6 +1734,7 @@ fn read_tessellated_body(reader: &mut Reader<&[u8]>, name: String) -> Result<Tes
                             vertex2: get_attr_or(inner, "vertex2", ""),
                             vertex3: get_attr_or(inner, "vertex3", ""),
                             r#type: get_attr(inner, "type"),
+                            lunit: get_attr(inner, "lunit"),
                         });
                     }
                     b"quadrangular" => {
@@ -1742,6 +1744,7 @@ fn read_tessellated_body(reader: &mut Reader<&[u8]>, name: String) -> Result<Tes
                             vertex3: get_attr_or(inner, "vertex3", ""),
                             vertex4: get_attr_or(inner, "vertex4", ""),
                             r#type: get_attr(inner, "type"),
+                            lunit: get_attr(inner, "lunit"),
                         });
                     }
                     _ => {}

@@ -969,40 +969,18 @@ fn write_solids(
                 }
                 writer.write_event(Event::Start(elem))?;
                 for facet in &ts.facets {
-                    match facet {
-                        TessellatedFacet::Triangular {
-                            vertex1,
-                            vertex2,
-                            vertex3,
-                            r#type,
-                        } => {
-                            let mut fe = BytesStart::new("triangular");
-                            fe.push_attribute(("vertex1", vertex1.as_str()));
-                            fe.push_attribute(("vertex2", vertex2.as_str()));
-                            fe.push_attribute(("vertex3", vertex3.as_str()));
-                            if let Some(ref t) = r#type {
-                                fe.push_attribute(("type", t.as_str()));
-                            }
-                            writer.write_event(Event::Empty(fe))?;
-                        }
-                        TessellatedFacet::Quadrangular {
-                            vertex1,
-                            vertex2,
-                            vertex3,
-                            vertex4,
-                            r#type,
-                        } => {
-                            let mut fe = BytesStart::new("quadrangular");
-                            fe.push_attribute(("vertex1", vertex1.as_str()));
-                            fe.push_attribute(("vertex2", vertex2.as_str()));
-                            fe.push_attribute(("vertex3", vertex3.as_str()));
-                            fe.push_attribute(("vertex4", vertex4.as_str()));
-                            if let Some(ref t) = r#type {
-                                fe.push_attribute(("type", t.as_str()));
-                            }
-                            writer.write_event(Event::Empty(fe))?;
-                        }
+                    let (tag, vertices, r#type, lunit) = facet.parts();
+                    let mut fe = BytesStart::new(tag);
+                    for (i, v) in vertices.into_iter().enumerate() {
+                        fe.push_attribute((format!("vertex{}", i + 1).as_str(), v));
                     }
+                    if let Some(t) = r#type {
+                        fe.push_attribute(("type", t));
+                    }
+                    if let Some(u) = lunit {
+                        fe.push_attribute(("lunit", u));
+                    }
+                    writer.write_event(Event::Empty(fe))?;
                 }
                 writer.write_event(Event::End(BytesEnd::new("tessellated")))?;
             }
@@ -1133,6 +1111,9 @@ fn write_solids(
                 elem.push_attribute(("vertex2", t.vertex2.as_str()));
                 elem.push_attribute(("vertex3", t.vertex3.as_str()));
                 elem.push_attribute(("vertex4", t.vertex4.as_str()));
+                if let Some(ref u) = t.lunit {
+                    elem.push_attribute(("lunit", u.as_str()));
+                }
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Eltube(e) => {

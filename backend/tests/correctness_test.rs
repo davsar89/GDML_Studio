@@ -695,3 +695,58 @@ async fn twistedtrap_theta_shift_is_not_twisted() {
     }
     assert!((volume(&t) / 5760.0 - 1.0).abs() < 0.02, "{}", volume(&t));
 }
+
+#[tokio::test]
+async fn tessellated_relative_facets_and_lunit_follow_geant4() {
+    // A 10 x 10 x 10 square pyramid (1000/3 mm3) whose base quad and one side
+    // are RELATIVE: vertices after the first are offsets from it. Each facet's
+    // own lunit, and the tet's, scale the named positions (G4GDMLReadSolids.cc
+    // TriangularRead/QuadrangularRead/TetRead: GetPosition(..) * lunit).
+    // Volume about the origin cannot see RELATIVE (det(v0, v0 + d1, v0 + d2) =
+    // det(v0, d1, d2)), so the x extent is checked too.
+    let defines = r#"<position name="o" x="20" y="30" z="40"/><position name="a" x="30" y="30" z="40"/>
+        <position name="b" x="30" y="40" z="40"/><position name="c" x="20" y="40" z="40"/>
+        <position name="apex" x="25" y="35" z="50"/><position name="d1" x="-10" y="0" z="0"/>
+        <position name="d2" x="-10" y="10" z="0"/><position name="d3" x="0" y="10" z="0"/>
+        <position name="e1" x="0" y="-10" z="0"/><position name="e2" x="5" y="-5" z="10"/>"#;
+    let pyramid = |name: &str, unit: &str| {
+        format!(
+            r#"<tessellated name="{name}">
+            <quadrangular vertex1="a" vertex2="d1" vertex3="d2" vertex4="d3" type="RELATIVE"{unit}/>
+            <triangular vertex1="o" vertex2="a" vertex3="apex"{unit}/>
+            <triangular vertex1="a" vertex2="b" vertex3="apex" type="ABSOLUTE"{unit}/>
+            <triangular vertex1="b" vertex2="c" vertex3="apex"{unit}/>
+            <triangular vertex1="c" vertex2="e1" vertex3="e2" type="RELATIVE"{unit}/></tessellated>"#
+        )
+    };
+    let solids = format!(
+        r#"{}{}<tet name="T" vertex1="o" vertex2="a" vertex3="c" vertex4="apex" lunit="cm"/>"#,
+        pyramid("P", ""),
+        pyramid("Pcm", r#" lunit="cm""#)
+    );
+    let xml = document(
+        defines,
+        &solids,
+        r#"<volume name="W"><materialref ref="M"/><solidref ref="P"/></volume>"#,
+    );
+    let expected = [
+        ("P", 1000.0 / 3.0, (20.0, 30.0)),
+        ("Pcm", 1e6 / 3.0, (200.0, 300.0)),
+        ("T", 1e6 / 6.0, (200.0, 300.0)),
+    ];
+    for xml in [xml.clone(), {
+        let state = load(&xml).await;
+        let saved = serialize_gdml(&state.read().await.loaded.as_ref().unwrap().document);
+        saved.unwrap()
+    }] {
+        let state = load(&xml).await;
+        let guard = state.read().await;
+        let loaded = guard.loaded.as_ref().unwrap();
+        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+        for (name, v, x) in expected {
+            let got = volume(&loaded.meshes[name]);
+            assert!((got / v - 1.0).abs() < 1e-5, "{name}: {got}, expected {v}");
+            assert_eq!(x_bounds(&loaded.meshes[name]), x, "{name}");
+        }
+    }
+}

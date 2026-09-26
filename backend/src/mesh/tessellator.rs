@@ -5,8 +5,9 @@ use std::f64::consts::PI;
 use super::csg;
 use super::primitives::{
     arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh,
-    generic_polycone_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh,
-    torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_trap_mesh, twisted_tubs_mesh, xtru_mesh,
+    face_normal, generic_polycone_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh,
+    sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_trap_mesh, twisted_tubs_mesh,
+    xtru_mesh,
 };
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
@@ -456,12 +457,17 @@ fn resolve_opt(engine: &EvalEngine, expr: &Option<String>) -> f64 {
     }
 }
 
+/// mm per unit of a declared `lunit`; an unknown one warns and counts as mm.
+fn lunit_factor(engine: &EvalEngine, lunit: &str) -> f64 {
+    units::length_factor(lunit).unwrap_or_else(|| {
+        engine.record_unit_warning(lunit, "length");
+        1.0
+    })
+}
+
 /// Geant4 applies lunit after evaluation, including expressions using quantities.
 fn resolve_with_lunit(engine: &EvalEngine, expr: &str, lunit: &str) -> f64 {
-    if units::length_factor(lunit).is_none() {
-        engine.record_unit_warning(lunit, "length");
-    }
-    units::length_to_mm(engine.resolve_value(expr), lunit)
+    engine.resolve_value(expr) * lunit_factor(engine, lunit)
 }
 
 fn resolve_opt_with_lunit(engine: &EvalEngine, expr: &Option<String>, lunit: &str) -> f64 {
@@ -774,101 +780,52 @@ fn tessellate_twisted_trd_solid(
     ))
 }
 
+/// Append a planar convex polygon as a flat-shaded triangle fan.
+fn push_polygon(mesh: &mut TriangleMesh, p: &[[f32; 3]]) {
+    let n = face_normal(p[0], p[1], p[2]);
+    let base = (mesh.positions.len() / 3) as u32;
+    for q in p {
+        mesh.positions.extend_from_slice(q);
+        mesh.normals.extend_from_slice(&n);
+    }
+    for i in 1..p.len() as u32 - 1 {
+        mesh.indices
+            .extend_from_slice(&[base, base + i, base + i + 1]);
+    }
+}
+
+/// Named positions scaled by a solid's or facet's own `lunit`: Geant4 reads
+/// them as `GetPosition(..) * lunit` (G4GDMLReadSolids.cc TriangularRead,
+/// QuadrangularRead, TetRead), even though the positions carry units too.
+fn scaled_positions(
+    engine: &EvalEngine,
+    names: &[&str],
+    lunit: Option<&str>,
+) -> Result<Vec<[f64; 3]>> {
+    let k = lunit_factor(engine, lunit.unwrap_or("mm"));
+    names
+        .iter()
+        .map(|n| Ok(engine.named_position(n)?.map(|c| c * k)))
+        .collect()
+}
+
 fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
-    let mut positions = Vec::new();
-    let mut normals = Vec::new();
-    let mut indices = Vec::new();
-
-    let lookup = |name: &str| engine.named_position(name);
-
+    let mut mesh = TriangleMesh::new();
     for facet in &s.facets {
-        match facet {
-            TessellatedFacet::Triangular {
-                vertex1,
-                vertex2,
-                vertex3,
-                ..
-            } => {
-                let v1 = lookup(vertex1)?;
-                let v2 = lookup(vertex2)?;
-                let v3 = lookup(vertex3)?;
-
-                // Compute face normal via cross product
-                let e1 = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
-                let e2 = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
-                let nx = e1[1] * e2[2] - e1[2] * e2[1];
-                let ny = e1[2] * e2[0] - e1[0] * e2[2];
-                let nz = e1[0] * e2[1] - e1[1] * e2[0];
-                let len = (nx * nx + ny * ny + nz * nz).sqrt();
-                let (nx, ny, nz) = if len > 1e-12 {
-                    (nx / len, ny / len, nz / len)
-                } else {
-                    (0.0, 0.0, 1.0)
-                };
-
-                let base = (positions.len() / 3) as u32;
-                for v in &[v1, v2, v3] {
-                    positions.push(v[0] as f32);
-                    positions.push(v[1] as f32);
-                    positions.push(v[2] as f32);
-                    normals.push(nx as f32);
-                    normals.push(ny as f32);
-                    normals.push(nz as f32);
-                }
-                indices.push(base);
-                indices.push(base + 1);
-                indices.push(base + 2);
-            }
-            TessellatedFacet::Quadrangular {
-                vertex1,
-                vertex2,
-                vertex3,
-                vertex4,
-                ..
-            } => {
-                let v1 = lookup(vertex1)?;
-                let v2 = lookup(vertex2)?;
-                let v3 = lookup(vertex3)?;
-                let v4 = lookup(vertex4)?;
-
-                // Compute face normal from first triangle
-                let e1 = [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]];
-                let e2 = [v3[0] - v1[0], v3[1] - v1[1], v3[2] - v1[2]];
-                let nx = e1[1] * e2[2] - e1[2] * e2[1];
-                let ny = e1[2] * e2[0] - e1[0] * e2[2];
-                let nz = e1[0] * e2[1] - e1[1] * e2[0];
-                let len = (nx * nx + ny * ny + nz * nz).sqrt();
-                let (nx, ny, nz) = if len > 1e-12 {
-                    (nx / len, ny / len, nz / len)
-                } else {
-                    (0.0, 0.0, 1.0)
-                };
-
-                let base = (positions.len() / 3) as u32;
-                for v in &[v1, v2, v3, v4] {
-                    positions.push(v[0] as f32);
-                    positions.push(v[1] as f32);
-                    positions.push(v[2] as f32);
-                    normals.push(nx as f32);
-                    normals.push(ny as f32);
-                    normals.push(nz as f32);
-                }
-                // Two triangles: (0,1,2) and (0,2,3)
-                indices.push(base);
-                indices.push(base + 1);
-                indices.push(base + 2);
-                indices.push(base);
-                indices.push(base + 2);
-                indices.push(base + 3);
+        let (_, names, r#type, lunit) = facet.parts();
+        let mut v = scaled_positions(engine, &names, lunit)?;
+        // RELATIVE: every vertex after the first is an offset from it
+        // (G4TriangularFacet / G4QuadrangularFacet).
+        if r#type == Some("RELATIVE") {
+            let v0 = v[0];
+            for p in &mut v[1..] {
+                *p = [p[0] + v0[0], p[1] + v0[1], p[2] + v0[2]];
             }
         }
+        let p: Vec<[f32; 3]> = v.iter().map(|q| q.map(|c| c as f32)).collect();
+        push_polygon(&mut mesh, &p);
     }
-
-    Ok(TriangleMesh {
-        positions,
-        normals,
-        indices,
-    })
+    Ok(mesh)
 }
 
 fn tessellate_polyhedra_solid(s: &PolyhedraSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
@@ -1029,82 +986,21 @@ fn tessellate_eltube_solid(
 }
 
 fn tessellate_tet_solid(s: &TetSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
-    let lookup = |name: &str| engine.named_position(name);
+    let names = [&s.vertex1, &s.vertex2, &s.vertex3, &s.vertex4].map(|n| n.as_str());
+    let v: Vec<[f32; 3]> = scaled_positions(engine, &names, s.lunit.as_deref())?
+        .iter()
+        .map(|q| q.map(|c| c as f32))
+        .collect();
+    let centroid = [0, 1, 2].map(|k| v.iter().map(|p| p[k]).sum::<f32>() / 4.0);
 
-    let v1 = lookup(&s.vertex1)?;
-    let v2 = lookup(&s.vertex2)?;
-    let v3 = lookup(&s.vertex3)?;
-    let v4 = lookup(&s.vertex4)?;
-
-    let mut positions = Vec::new();
-    let mut normals = Vec::new();
-    let mut indices = Vec::new();
-
-    // Helper to compute face normal and emit a triangle
-    let mut add_face = |a: [f64; 3], b: [f64; 3], c: [f64; 3]| {
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let nx = e1[1] * e2[2] - e1[2] * e2[1];
-        let ny = e1[2] * e2[0] - e1[0] * e2[2];
-        let nz = e1[0] * e2[1] - e1[1] * e2[0];
-        let len = (nx * nx + ny * ny + nz * nz).sqrt();
-        let (nx, ny, nz) = if len > 1e-12 {
-            (nx / len, ny / len, nz / len)
-        } else {
-            (0.0, 0.0, 1.0)
-        };
-
-        let base = (positions.len() / 3) as u32;
-        for v in &[a, b, c] {
-            positions.push(v[0] as f32);
-            positions.push(v[1] as f32);
-            positions.push(v[2] as f32);
-            normals.push(nx as f32);
-            normals.push(ny as f32);
-            normals.push(nz as f32);
-        }
-        indices.push(base);
-        indices.push(base + 1);
-        indices.push(base + 2);
-    };
-
-    // 4 faces of the tetrahedron with consistent outward winding
-    // Compute centroid to orient normals outward
-    let cx = (v1[0] + v2[0] + v3[0] + v4[0]) / 4.0;
-    let cy = (v1[1] + v2[1] + v3[1] + v4[1]) / 4.0;
-    let cz = (v1[2] + v2[2] + v3[2] + v4[2]) / 4.0;
-
-    let faces: [[usize; 3]; 4] = [[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]];
-    let verts = [v1, v2, v3, v4];
-
-    for face in &faces {
-        let a = verts[face[0]];
-        let b = verts[face[1]];
-        let c = verts[face[2]];
-
-        // Check if normal points away from centroid; if not, flip winding
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let nx = e1[1] * e2[2] - e1[2] * e2[1];
-        let ny = e1[2] * e2[0] - e1[0] * e2[2];
-        let nz = e1[0] * e2[1] - e1[1] * e2[0];
-
-        // Dot with vector from centroid to face
-        let to_face = [a[0] - cx, a[1] - cy, a[2] - cz];
-        let dot = nx * to_face[0] + ny * to_face[1] + nz * to_face[2];
-
-        if dot >= 0.0 {
-            add_face(a, b, c);
-        } else {
-            add_face(a, c, b);
-        }
+    // Each face wound so its normal points away from the centroid.
+    let mut mesh = TriangleMesh::new();
+    for [a, b, c] in [[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]].map(|f| f.map(|i| v[i])) {
+        let n = face_normal(a, b, c);
+        let out = (0..3).map(|k| n[k] * (a[k] - centroid[k])).sum::<f32>() >= 0.0;
+        push_polygon(&mut mesh, &if out { [a, b, c] } else { [a, c, b] });
     }
-
-    Ok(TriangleMesh {
-        positions,
-        normals,
-        indices,
-    })
+    Ok(mesh)
 }
 
 fn tessellate_polycone_solid(

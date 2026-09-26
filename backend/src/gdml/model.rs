@@ -603,6 +603,8 @@ pub enum TessellatedFacet {
         vertex2: String,
         vertex3: String,
         r#type: Option<String>,
+        #[serde(default)]
+        lunit: Option<String>,
     },
     Quadrangular {
         vertex1: String,
@@ -610,7 +612,42 @@ pub enum TessellatedFacet {
         vertex3: String,
         vertex4: String,
         r#type: Option<String>,
+        #[serde(default)]
+        lunit: Option<String>,
     },
+}
+
+impl TessellatedFacet {
+    /// Element name, vertex refs, `type` and `lunit` of either facet shape.
+    pub fn parts(&self) -> (&'static str, Vec<&str>, Option<&str>, Option<&str>) {
+        match self {
+            Self::Triangular {
+                vertex1,
+                vertex2,
+                vertex3,
+                r#type,
+                lunit,
+            } => (
+                "triangular",
+                vec![vertex1, vertex2, vertex3],
+                r#type.as_deref(),
+                lunit.as_deref(),
+            ),
+            Self::Quadrangular {
+                vertex1,
+                vertex2,
+                vertex3,
+                vertex4,
+                r#type,
+                lunit,
+            } => (
+                "quadrangular",
+                vec![vertex1, vertex2, vertex3, vertex4],
+                r#type.as_deref(),
+                lunit.as_deref(),
+            ),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -653,6 +690,8 @@ pub struct TetSolid {
     pub vertex2: String,
     pub vertex3: String,
     pub vertex4: String,
+    #[serde(default)]
+    pub lunit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
