@@ -1,3 +1,4 @@
+use super::emit_quad;
 use crate::mesh::types::TriangleMesh;
 
 /// Generate an arbitrary 8-vertex trapezoid (arb8/GenTrap) mesh.
@@ -21,20 +22,6 @@ pub fn tessellate_arb8(dz: f64, vertices: [[f64; 2]; 8]) -> TriangleMesh {
     let mut positions = Vec::with_capacity(24 * 3);
     let mut normals = Vec::with_capacity(24 * 3);
     let mut indices = Vec::with_capacity(12 * 3);
-
-    fn face_normal(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> [f32; 3] {
-        let u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let w = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let nx = u[1] * w[2] - u[2] * w[1];
-        let ny = u[2] * w[0] - u[0] * w[2];
-        let nz = u[0] * w[1] - u[1] * w[0];
-        let len = (nx * nx + ny * ny + nz * nz).sqrt();
-        if len > 1e-10 {
-            [nx / len, ny / len, nz / len]
-        } else {
-            [0.0, 0.0, 1.0]
-        }
-    }
 
     // Geant4's G4GenericTrap expects vertices in clockwise XY order (and
     // silently reorders counter-clockwise input). Detect the input orientation
@@ -64,15 +51,17 @@ pub fn tessellate_arb8(dz: f64, vertices: [[f64; 2]; 8]) -> TriangleMesh {
         }
     }
 
-    for (i, verts) in faces.iter().enumerate() {
-        let n = face_normal(verts[0], verts[1], verts[2]);
-        let base = (i * 4) as u32;
-        for vert in verts {
-            positions.extend_from_slice(vert);
-            normals.extend_from_slice(&n);
-        }
-        indices.extend_from_slice(&[base, base + 1, base + 2]);
-        indices.extend_from_slice(&[base, base + 2, base + 3]);
+    for f in &faces {
+        emit_quad(
+            &mut positions,
+            &mut normals,
+            &mut indices,
+            f[0],
+            f[1],
+            f[2],
+            f[3],
+            false,
+        );
     }
 
     TriangleMesh {
