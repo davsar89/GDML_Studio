@@ -4,8 +4,7 @@ use std::f64::consts::PI;
 /// Tessellate an ellipsoid (G4Ellipsoid) with optional z-cuts.
 ///
 /// - `ax`, `by`, `cz`: semi-axes along X, Y, Z
-/// - `zcut1`: lower z-cut plane (default -cz = no cut)
-/// - `zcut2`: upper z-cut plane (default +cz = no cut)
+/// - `zcut1`, `zcut2`: lower and upper z-cut planes, clamped into [-cz, cz]
 pub fn tessellate_ellipsoid(
     ax: f64,
     by: f64,

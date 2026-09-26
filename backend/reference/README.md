@@ -18,6 +18,7 @@ Taken from `source/` in the upstream tarball:
 | `G4Polyhedra.cc` | `geometry/solids/specific/src/` | apothem vs circumradius convention |
 | `G4TwistedTubs.cc` | `geometry/solids/specific/src/` | hyperboloidal surface, `zlen` parameterisation |
 | `G4ExtrudedSolid.cc` | `geometry/solids/specific/src/` | xtru triangulation |
+| `G4Ellipsoid.cc` | `geometry/solids/specific/src/` | z-cut defaults and clamping |
 | `G4PVReplica.cc` | `geometry/volumes/src/` | replica axis validation |
 | `G4ReplicaNavigation.cc` | `geometry/navigation/src/` | replica placement transforms |
 

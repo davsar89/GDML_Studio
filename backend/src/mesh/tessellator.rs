@@ -590,10 +590,12 @@ fn tessellate_sphere_solid(
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     let starttheta = resolve_opt_with_aunit(engine, &s.starttheta, aunit);
+    // The polar range stops at the -z pole (G4Sphere::CheckThetaAngles).
     let deltatheta = match &s.deltatheta {
         Some(expr) => resolve_with_aunit(engine, expr, aunit),
         None => PI,
-    };
+    }
+    .min(PI - starttheta);
     Ok(sphere_mesh::tessellate_sphere(
         rmin, rmax, startphi, deltaphi, starttheta, deltatheta, segments,
     ))
@@ -959,14 +961,15 @@ fn tessellate_ellipsoid_solid(
     let ax = resolve_with_lunit(engine, &s.ax, lunit);
     let by = resolve_with_lunit(engine, &s.by, lunit);
     let cz = resolve_with_lunit(engine, &s.cz, lunit);
-    // When zcut is absent (None), default to full extent (-cz / +cz)
-    let zcut1 = match &s.zcut1 {
-        Some(expr) => resolve_with_lunit(engine, expr, lunit),
-        None => -cz,
-    };
-    let zcut2 = match &s.zcut2 {
-        Some(expr) => resolve_with_lunit(engine, expr, lunit),
-        None => cz,
+    // A missing cut is 0 (G4GDMLReadSolids.cc:472-473), and two zero cuts
+    // mean uncut (G4Ellipsoid.cc:191); otherwise each cut is clamped into
+    // [-cz, cz] (l.207-208), which the mesher does.
+    let zcut1 = resolve_opt_with_lunit(engine, &s.zcut1, lunit);
+    let zcut2 = resolve_opt_with_lunit(engine, &s.zcut2, lunit);
+    let (zcut1, zcut2) = if zcut1 == 0.0 && zcut2 == 0.0 {
+        (-cz, cz)
+    } else {
+        (zcut1, zcut2)
     };
     Ok(ellipsoid_mesh::tessellate_ellipsoid(
         ax, by, cz, zcut1, zcut2, segments,

@@ -779,3 +779,58 @@ async fn xtru_with_duplicate_closing_and_collinear_vertices_is_closed() {
         assert!((volume(m) / 2000.0 - 1.0).abs() < 1e-3, "{}", volume(m));
     }
 }
+
+#[tokio::test]
+async fn ellipsoid_zcut_defaults_follow_geant4() {
+    // A missing cut is 0 (G4GDMLReadSolids.cc:472-473); 0 and 0 mean uncut
+    // (G4Ellipsoid.cc:191), otherwise each cut is clamped into [-cz, cz].
+    // V between cuts = pi a b [z - z^3 / (3 c^2)].
+    let slab = |lo: f64, hi: f64| {
+        let f = |z: f64| z - z.powi(3) / (3.0 * 400.0);
+        std::f64::consts::PI * 150.0 * (f(hi) - f(lo))
+    };
+    for (cuts, lo, hi) in [
+        ("", -20.0, 20.0),
+        (r#"zcut2="4""#, 0.0, 4.0),
+        (r#"zcut1="-5""#, -5.0, 0.0),
+        (r#"zcut1="-30" zcut2="30""#, -20.0, 20.0),
+    ] {
+        let e = solid_mesh(
+            &format!(r#"<ellipsoid name="E" ax="10" by="15" cz="20" {cuts}/>"#),
+            "E",
+        )
+        .await;
+        let (zlo, zhi) = bounds(&e, 2);
+        assert!(
+            (zlo - lo).abs() < 1e-4 && (zhi - hi).abs() < 1e-4,
+            "{cuts}: z {zlo}..{zhi}"
+        );
+        let v = volume(&e);
+        // 32 x 16 facets cut the uncut ellipsoid's volume by 1.6%.
+        assert!((v / slab(lo, hi) - 1.0).abs() < 0.02, "{cuts}: {v}");
+    }
+}
+
+#[tokio::test]
+async fn sphere_deltatheta_stops_at_the_pole() {
+    // G4Sphere::CheckThetaAngles: dTheta + sTheta >= pi gives pi - sTheta.
+    let ball = 4.0 / 3.0 * std::f64::consts::PI * 1000.0;
+    for (angles, fraction, zlo) in [
+        (r#"deltatheta="360""#, 1.0, -10.0),
+        (r#"starttheta="90" deltatheta="180""#, 0.5, -10.0),
+    ] {
+        let s = solid_mesh(
+            &format!(r#"<sphere name="S" rmax="10" {angles} aunit="deg"/>"#),
+            "S",
+        )
+        .await;
+        let (lo, hi) = bounds(&s, 2);
+        let zhi = if fraction < 1.0 { 0.0 } else { 10.0 };
+        assert!(
+            (lo - zlo).abs() < 1e-4 && (hi - zhi).abs() < 1e-4,
+            "{angles}: z {lo}..{hi}"
+        );
+        let v = volume(&s);
+        assert!((v / (fraction * ball) - 1.0).abs() < 0.02, "{angles}: {v}");
+    }
+}
