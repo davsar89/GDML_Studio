@@ -1,3 +1,4 @@
+use super::clean_polygon;
 use crate::mesh::types::TriangleMesh;
 
 /// Generate an extruded solid mesh from a 2D polygon profile and z-sections.
@@ -10,6 +11,7 @@ pub fn tessellate_xtru(
     let mut normals: Vec<f32> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
 
+    let vertices = &clean_polygon(vertices);
     let nv = vertices.len();
     let ns = sections.len();
     if nv < 3 || ns < 2 {

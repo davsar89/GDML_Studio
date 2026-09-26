@@ -1,3 +1,4 @@
+use super::clean_polygon;
 use super::xtru_mesh::{ear_clip_triangulate, polygon_signed_area};
 use crate::mesh::types::TriangleMesh;
 use std::f64::consts::PI;
@@ -50,29 +51,10 @@ pub fn tessellate_generic_polycone(
         None => segments.max(3),
     };
 
-    // Drop consecutive duplicates, including across the wrap, mirroring
-    // G4ReduciblePolygon::RemoveDuplicateVertices.
-    let mut pts: Vec<(f64, f64)> = Vec::with_capacity(rz.len());
-    for &(r, z) in rz {
-        if !r.is_finite() || !z.is_finite() {
-            continue;
-        }
-        if let Some(&(pr, pz)) = pts.last() {
-            if (r - pr).abs() < 1e-12 && (z - pz).abs() < 1e-12 {
-                continue;
-            }
-        }
-        pts.push((r.max(0.0), z));
-    }
-    while pts.len() >= 2 {
-        let (fr, fz) = pts[0];
-        let (lr, lz) = pts[pts.len() - 1];
-        if (fr - lr).abs() < 1e-12 && (fz - lz).abs() < 1e-12 {
-            pts.pop();
-        } else {
-            break;
-        }
-    }
+    // Radii below the axis are clamped onto it, then coincident and collinear
+    // points dropped, including across the wrap, as G4Polycone::Create does.
+    let clamped: Vec<(f64, f64)> = rz.iter().map(|&(r, z)| (r.max(0.0), z)).collect();
+    let mut pts = clean_polygon(&clamped);
     if pts.len() < 3 {
         return empty(positions, normals, indices);
     }

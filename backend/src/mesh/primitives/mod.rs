@@ -71,3 +71,35 @@ pub(super) fn emit_quad(
         indices.extend_from_slice(&[base, base + 2, base + 3]);
     }
 }
+
+/// Drop the coincident and collinear vertices of a closed polygon, across the
+/// wrap too, in one pass as G4GeomTools::RemoveRedundantVertices does for
+/// G4ExtrudedSolid (G4ExtrudedSolid.cc:119-135) and G4Polycone (l.202-203):
+/// a vertex goes when its triangle with the neighbours kept so far has an
+/// edge, or area / longest edge, within 2*kCarTolerance.
+/// Non-finite points are dropped; fewer than 3 survivors mean no polygon.
+pub(super) fn clean_polygon(pts: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    const TOL: f64 = 2e-9; // mm
+    let pts: Vec<_> = pts
+        .iter()
+        .copied()
+        .filter(|p| p.0.is_finite() && p.1.is_finite())
+        .collect();
+    let mut kept: Vec<(f64, f64)> = Vec::with_capacity(pts.len());
+    for (i, &cur) in pts.iter().enumerate() {
+        let prev = *kept.last().unwrap_or(&pts[pts.len() - 1]);
+        let next = pts.get(i + 1).or(kept.first()).copied().unwrap_or(cur);
+        let e1 = (prev.0 - cur.0, prev.1 - cur.1);
+        let e2 = (next.0 - cur.0, next.1 - cur.1);
+        let lengths = [e1, e2, (e2.0 - e1.0, e2.1 - e1.1)].map(|e| e.0.hypot(e.1));
+        let longest = lengths.iter().copied().fold(0.0, f64::max);
+        let area = 0.5 * (e1.0 * e2.1 - e1.1 * e2.0).abs();
+        if lengths.iter().all(|&l| l > TOL) && area / longest > TOL {
+            kept.push(cur);
+        }
+    }
+    if kept.len() < 3 {
+        kept.clear();
+    }
+    kept
+}

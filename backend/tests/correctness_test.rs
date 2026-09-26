@@ -750,3 +750,32 @@ async fn tessellated_relative_facets_and_lunit_follow_geant4() {
         }
     }
 }
+
+#[tokio::test]
+async fn xtru_with_duplicate_closing_and_collinear_vertices_is_closed() {
+    // G4ExtrudedSolid drops coincident and collinear vertices before building
+    // (G4ExtrudedSolid.cc:119-135, G4GeomTools::RemoveRedundantVertices), so
+    // this is the 10 x 10 square extruded over z = -10..10: 2000 mm3.
+    let vertices: String = [(0, 0), (5, 0), (10, 0), (10, 10), (10, 10), (0, 10), (0, 0)]
+        .iter()
+        .map(|(x, y)| format!(r#"<twoDimVertex x="{x}" y="{y}"/>"#))
+        .collect();
+    let x = solid_mesh(
+        &format!(
+            r#"<xtru name="X">{vertices}
+            <section zOrder="0" zPosition="-10" xOffset="0" yOffset="0" scalingFactor="1"/>
+            <section zOrder="1" zPosition="10" xOffset="0" yOffset="0" scalingFactor="1"/></xtru>"#
+        ),
+        "X",
+    )
+    .await;
+    // About a point off the solid too: an open or inverted cap cancels out
+    // about the origin when its plane passes through it.
+    let shifted = TriangleMesh {
+        positions: x.positions.iter().map(|c| c + 50.0).collect(),
+        ..x.clone()
+    };
+    for m in [&x, &shifted] {
+        assert!((volume(m) / 2000.0 - 1.0).abs() < 1e-3, "{}", volume(m));
+    }
+}
