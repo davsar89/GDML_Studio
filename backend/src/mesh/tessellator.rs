@@ -672,19 +672,19 @@ fn tessellate_twisted_tubs_solid(
         }
     };
 
-    // Two parameterisations, selected by `zlen` being non-zero. Note `zlen` is
-    // a HALF-length: the reader passes it to the constructor's `halfzlen`,
-    // which calls SetFields(.., -halfzlen, halfzlen), so the solid spans
-    // [-zlen, +zlen].
-    let zlen = resolve_opt_with_lunit(engine, &s.zlen, lunit);
-    let (rmin_mid, rmax_mid, z_neg, z_pos) = if zlen.abs() > 1e-12 {
+    // Two parameterisations, selected by `zlen` being non-zero. `zlen` is the
+    // FULL length: the reader halves it (`zlen *= 0.5 * lunit`,
+    // G4GDMLReadSolids.cc:3323) before passing it as `halfzlen`, so the solid
+    // spans [-zlen/2, +zlen/2].
+    let half = 0.5 * resolve_opt_with_lunit(engine, &s.zlen, lunit);
+    let (rmin_mid, rmax_mid, z_neg, z_pos) = if half.abs() > 1e-12 {
         // End-radius form. The constructor converts to waist radii via
         // sqrt(rEnd^2 - (rEnd*sin(twist/2))^2), i.e. rEnd*|cos(twist/2)|
         // (G4TwistedTubs.cc:118-127).
         let cos_half = (0.5 * twist_angle).cos().abs();
         let r_in_end = resolve_opt_with_lunit(engine, &s.endinnerrad, lunit);
         let r_out_end = resolve_opt_with_lunit(engine, &s.endouterrad, lunit);
-        (r_in_end * cos_half, r_out_end * cos_half, -zlen, zlen)
+        (r_in_end * cos_half, r_out_end * cos_half, -half, half)
     } else {
         // Mid-radius form: radii are already the waist values and the z bounds
         // are given outright, so they need not be symmetric about the origin.

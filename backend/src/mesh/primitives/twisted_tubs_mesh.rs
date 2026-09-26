@@ -56,10 +56,11 @@ pub fn tessellate_twisted_tubs(
     let tan_out = (rmax_mid * tan_half_twist).abs() / z_half;
     let r_in = |z: f64| (rmin_mid * rmin_mid + z * z * tan_in * tan_in).sqrt();
     let r_out = |z: f64| (rmax_mid * rmax_mid + z * z * tan_out * tan_out).sqrt();
-    // Azimuth of the twisted surface at height z. Note this is NOT linear in z;
-    // it is the arctangent law above, which still totals `twist_angle` across
-    // the full length.
-    let twist_at = |z: f64| (z * tan_half_twist).atan2(z_half);
+    // Azimuth of the sweep's first edge at height z. Note this is NOT linear in
+    // z; it is the arctangent law above, which still totals `twist_angle`
+    // across the full length. The sweep is centred on it, [-dphi/2, +dphi/2]
+    // (G4TwistTubsFlatSide: fAxisMin[1] = -0.5*DPhi, rotated by EndPhi).
+    let twist_at = |z: f64| (z * tan_half_twist).atan2(z_half) - 0.5 * deltaphi;
 
     let lateral = |positions: &mut Vec<f32>,
                    normals: &mut Vec<f32>,

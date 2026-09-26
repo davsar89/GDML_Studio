@@ -59,12 +59,16 @@ async fn load(xml: &str) -> SharedState {
     state
 }
 
-fn x_bounds(mesh: &TriangleMesh) -> (f64, f64) {
+fn bounds(mesh: &TriangleMesh, axis: usize) -> (f64, f64) {
     mesh.positions
         .chunks_exact(3)
         .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
-            (lo.min(p[0] as f64), hi.max(p[0] as f64))
+            (lo.min(p[axis] as f64), hi.max(p[axis] as f64))
         })
+}
+
+fn x_bounds(mesh: &TriangleMesh) -> (f64, f64) {
+    bounds(mesh, 0)
 }
 
 fn volume(mesh: &TriangleMesh) -> f64 {
@@ -608,4 +612,26 @@ async fn get_meshes_sends_only_placed_solids() {
     assert_eq!(keys, ["S", "U"]);
     // f32 written as f32, not widened through f64 to 6.170000076293945.
     assert!(body.contains("6.17") && !body.contains("6.1700000"));
+}
+
+#[tokio::test]
+async fn twistedtubs_zlen_is_the_full_length() {
+    // The reader halves zlen (G4GDMLReadSolids.cc:3323) and the phi sweep is
+    // centred, [-dphi/2, dphi/2] (G4TwistTubsFlatSide), so z spans +-zlen/2 and
+    // y is symmetric. Each z slice is an annular sector between hyperboloids
+    // r^2 = r_mid^2 (1 + (z tan(tw/2) / h)^2) with r_mid = r_end cos(tw/2), so
+    // V = dphi h (Ro^2 - Ri^2)_end (cos^2(tw/2) + sin^2(tw/2) / 3).
+    let t = solid_mesh(
+        r#"<twistedtubs name="T" twistedangle="30" endinnerrad="5" endouterrad="10"
+          zlen="10" phi="90" aunit="deg"/>"#,
+        "T",
+    )
+    .await;
+    let (lo, hi) = bounds(&t, 2);
+    assert!((lo + 5.0).abs() < 1e-4 && (hi - 5.0).abs() < 1e-4, "z {lo}..{hi}");
+    let (lo, hi) = bounds(&t, 1);
+    assert!((lo + hi).abs() < 1e-4 && hi > 7.0, "y {lo}..{hi}");
+    let (c, s) = (15f64.to_radians().cos(), 15f64.to_radians().sin());
+    let expected = std::f64::consts::FRAC_PI_2 * 5.0 * 75.0 * (c * c + s * s / 3.0);
+    assert!((volume(&t) / expected - 1.0).abs() < 0.01, "{}", volume(&t));
 }
