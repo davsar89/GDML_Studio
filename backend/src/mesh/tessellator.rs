@@ -266,7 +266,7 @@ fn tessellate_multiunion_solid(
             )?;
             let node_mesh =
                 apply_placement_transform(&node_mesh, &node.position, &node.rotation, engine)?;
-            result_mesh = csg::union(&result_mesh, &node_mesh);
+            result_mesh = csg::boolean(&result_mesh, &node_mesh, &BooleanOp::Union);
         }
 
         Ok(result_mesh)
@@ -378,14 +378,7 @@ fn tessellate_boolean_solid(
         let second_mesh =
             apply_placement_transform(&second_mesh, &bs.position, &bs.rotation, engine)?;
 
-        // Perform CSG operation
-        let result = match bs.operation {
-            BooleanOp::Subtraction => csg::subtract(&first_mesh, &second_mesh),
-            BooleanOp::Union => csg::union(&first_mesh, &second_mesh),
-            BooleanOp::Intersection => csg::intersect(&first_mesh, &second_mesh),
-        };
-
-        Ok(result)
+        Ok(csg::boolean(&first_mesh, &second_mesh, &bs.operation))
     })();
 
     resolving.remove(&bs.name);

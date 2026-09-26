@@ -1,5 +1,5 @@
 use axum::extract::{Query, State};
-use axum::response::Json;
+use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -10,7 +10,7 @@ use crate::eval::engine::EvalEngine;
 use crate::gdml::materials as nist;
 use crate::gdml::model::*;
 use crate::gdml::parser;
-use crate::mesh::tessellator;
+use crate::mesh::{tessellator, types::TriangleMesh};
 use crate::state::app_state::{LoadedDocument, SharedState};
 
 #[derive(Deserialize)]
@@ -650,7 +650,7 @@ pub async fn get_scene(State(state): State<SharedState>) -> Result<Json<Value>, 
     })))
 }
 
-pub async fn get_meshes(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
+pub async fn get_meshes(State(state): State<SharedState>) -> Result<Response, ApiError> {
     let state_r = state.read().await;
     let loaded = state_r
         .loaded
@@ -665,46 +665,32 @@ pub async fn get_meshes(State(state): State<SharedState>) -> Result<Json<Value>,
     let mut scene_warnings = Vec::new();
     let scene_graph = build_scene_graph(geometry, &doc.materials, engine, &mut scene_warnings);
 
-    // Serialise the mesh buffers by reference. Cloning them and then handing the
-    // result to `json!` cost three copies: the clone, a serde_json::Value tree
-    // (one 32-byte Value per number, with every f32 widened to f64 -- so
-    // 12.34f32 came out as 12.340000152587891), and finally the response bytes.
-    // Peak on the largest shipped sample was ~50 MB for 3.7 MB of vertex data.
+    // The client draws `meshes[node.solid_name]` only, so boolean operands and
+    // unplaced solids stay here. The buffers are serialised by reference straight
+    // into the response: a serde_json::Value tree cost one 32-byte Value per
+    // number and widened every f32 to f64 (12.34f32 came out as
+    // 12.340000152587891). Peak on the largest sample was ~50 MB for 3.7 MB of
+    // vertex data.
     #[derive(Serialize)]
-    struct MeshesResponse<'a, T> {
-        meshes: HashMap<&'a str, MeshRef<'a>>,
-        scene_graph: T,
+    struct MeshesResponse<'a> {
+        meshes: HashMap<&'a str, &'a TriangleMesh>,
+        scene_graph: SceneNode,
         warnings: Vec<String>,
     }
-    #[derive(Serialize)]
-    struct MeshRef<'a> {
-        positions: &'a [f32],
-        normals: &'a [f32],
-        indices: &'a [u32],
-    }
-
-    let meshes: HashMap<&str, MeshRef> = loaded
-        .meshes
+    let meshes = geometry
+        .structure
+        .volumes
         .iter()
-        .map(|(name, mesh)| {
-            (
-                name.as_str(),
-                MeshRef {
-                    positions: &mesh.positions,
-                    normals: &mesh.normals,
-                    indices: &mesh.indices,
-                },
-            )
-        })
+        .filter_map(|v| loaded.meshes.get_key_value(&v.solid_ref))
+        .map(|(name, mesh)| (name.as_str(), mesh))
         .collect();
 
-    let body = serde_json::to_value(MeshesResponse {
+    Ok(Json(MeshesResponse {
         meshes,
         scene_graph,
         warnings: scene_warnings,
     })
-    .map_err(|e| ApiError::internal(&format!("Failed to serialize meshes: {}", e)))?;
-    Ok(Json(body))
+    .into_response())
 }
 
 pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {

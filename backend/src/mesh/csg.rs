@@ -1,4 +1,5 @@
 use super::types::TriangleMesh;
+use crate::gdml::model::BooleanOp;
 use tracing::debug;
 
 /// Coplanarity tolerance as a fraction of the largest coordinate magnitude in
@@ -22,21 +23,6 @@ const EPSILON_SCALE: f64 = 1e-6;
 
 /// Floor for the scaled tolerance, for degenerate or zero-extent input.
 const MIN_EPSILON: f64 = 1e-9;
-
-/// Maximum BSP tree depth before a node stops subdividing and stores the
-/// remainder as leaf polygons.
-///
-/// `add_polygons` recurses once per split. With the splitter chosen by
-/// [`pick_splitter`] a closed mesh of N triangles gives a tree of depth around
-/// log2(N), so this bound is never reached in practice — it exists because
-/// exceeding it used to be fatal rather than merely inaccurate. Picking
-/// `polygons[0]` as the splitter (as this did previously) degenerates a convex
-/// mesh into a linked list of depth N/2, and a sphere-vs-box subtract then
-/// overflowed the 2 MiB tokio worker stack at `segments` as low as 104 —
-/// aborting the whole process, since a Rust stack overflow is not catchable.
-/// Beyond the cap the tree stops partitioning space, so results degrade in
-/// accuracy rather than crashing.
-const MAX_BSP_DEPTH: u32 = 192;
 
 /// How many candidate planes [`pick_splitter`] evaluates per node.
 const SPLITTER_CANDIDATES: usize = 8;
@@ -134,194 +120,130 @@ const FRONT: u8 = 1;
 const BACK: u8 = 2;
 const SPANNING: u8 = 3;
 
-struct BspNode {
-    plane: Option<Plane>,
-    front: Option<Box<BspNode>>,
-    back: Option<Box<BspNode>>,
-    polygons: Vec<CsgPolygon>,
+/// A BSP node. Its plane is fixed when the node is created.
+struct Node {
+    plane: Plane,
+    front: Option<usize>,
+    back: Option<usize>,
 }
 
-impl BspNode {
-    fn new() -> Self {
-        BspNode {
-            plane: None,
-            front: None,
-            back: None,
-            polygons: Vec::new(),
-        }
-    }
+/// BSP tree of one operand, kept as an arena and walked with explicit stacks.
+///
+/// A convex operand builds a chain one node per face (see [`pick_splitter`]):
+/// up to 960 deep for an orb at the default 32 segments, 16k at 128.
+/// Recursion, or the recursive `Drop` of boxed children, overflows a 2 MiB
+/// worker stack at that depth -- an uncatchable abort. The depth cap that used
+/// to prevent it left plane-less leaves that kept everything below them, so
+/// box & orb came out larger than the orb.
+///
+/// The tree holds planes only: it classifies space, and the polygons being
+/// clipped are passed in separately.
+///
+/// Ponytail: the chain makes a build O(N^2) and a clip O(N) per polygon for an
+/// N-face convex operand (N counted inside the overlap box). A box & orb takes
+/// 3 ms at 32 segments, 80 ms at 128 and 1.5 s at 256 (release). No face plane
+/// of a convex mesh splits the others, so a better splitter cannot help; the
+/// upgrade path is a robust mesh-boolean library.
+struct Bsp {
+    nodes: Vec<Node>,
+}
 
-    fn build(polygons: Vec<CsgPolygon>, eps: f64) -> Self {
-        let mut node = BspNode::new();
-        if polygons.is_empty() {
-            return node;
-        }
-        node.add_polygons(polygons, eps, 0);
-        node
-    }
-
-    fn add_polygons(&mut self, polygons: Vec<CsgPolygon>, eps: f64, depth: u32) {
-        if polygons.is_empty() {
-            return;
-        }
-
-        // Past the depth bound, keep the remainder as leaf polygons instead of
-        // partitioning further. They are still collected and clipped; the tree
-        // simply stops dividing space here.
-        if depth >= MAX_BSP_DEPTH {
-            debug!(
-                "CSG: BSP depth cap {} reached, storing {} polygons unsplit",
-                MAX_BSP_DEPTH,
-                polygons.len()
-            );
-            self.polygons.extend(polygons);
-            return;
-        }
-
-        if self.plane.is_none() {
-            self.plane = Some(pick_splitter(&polygons, eps));
-        }
-
-        let plane = self.plane.as_ref().unwrap();
-        let mut coplanar_front = Vec::new();
-        let mut coplanar_back = Vec::new();
-        let mut front_list = Vec::new();
-        let mut back_list = Vec::new();
-
-        for poly in polygons {
-            split_polygon(
+impl Bsp {
+    fn build(polygons: Vec<CsgPolygon>, eps: f64) -> Bsp {
+        let mut nodes: Vec<Node> = Vec::new();
+        // (polygons for a new node, (parent, is its front child))
+        let mut stack = vec![(polygons, None::<(usize, bool)>)];
+        while let Some((polygons, parent)) = stack.pop() {
+            if polygons.is_empty() {
+                continue;
+            }
+            let plane = pick_splitter(&polygons, eps);
+            let (mut on_front, mut on_back) = (Vec::new(), Vec::new());
+            let (mut front, mut back) = (Vec::new(), Vec::new());
+            for poly in polygons {
+                split_polygon(
+                    &plane,
+                    poly,
+                    eps,
+                    &mut on_front,
+                    &mut on_back,
+                    &mut front,
+                    &mut back,
+                );
+            }
+            // Polygons on the plane need nothing more: the node stands for them.
+            let id = nodes.len();
+            nodes.push(Node {
                 plane,
-                &poly,
-                eps,
-                &mut coplanar_front,
-                &mut coplanar_back,
-                &mut front_list,
-                &mut back_list,
-            );
-        }
-
-        self.polygons.extend(coplanar_front);
-        self.polygons.extend(coplanar_back);
-
-        if !front_list.is_empty() {
-            if self.front.is_none() {
-                self.front = Some(Box::new(BspNode::new()));
+                front: None,
+                back: None,
+            });
+            match parent {
+                Some((p, true)) => nodes[p].front = Some(id),
+                Some((p, false)) => nodes[p].back = Some(id),
+                None => {}
             }
-            self.front
-                .as_mut()
-                .unwrap()
-                .add_polygons(front_list, eps, depth + 1);
+            stack.push((front, Some((id, true))));
+            stack.push((back, Some((id, false))));
         }
-
-        if !back_list.is_empty() {
-            if self.back.is_none() {
-                self.back = Some(Box::new(BspNode::new()));
-            }
-            self.back
-                .as_mut()
-                .unwrap()
-                .add_polygons(back_list, eps, depth + 1);
-        }
+        Bsp { nodes }
     }
 
-    /// Collect every polygon in the tree.
-    ///
-    /// Iterative rather than recursive: this is called on trees built elsewhere
-    /// (including operands merged by `add_polygons`), so it should not depend on
-    /// the depth bound holding.
-    fn all_polygons(&self) -> Vec<CsgPolygon> {
-        let mut result = Vec::new();
-        let mut stack: Vec<&BspNode> = vec![self];
-        while let Some(node) = stack.pop() {
-            result.extend(node.polygons.iter().cloned());
-            if let Some(ref front) = node.front {
-                stack.push(front);
+    /// The parts of `polygons` outside this tree's solid. A polygon lying on
+    /// one of its faces counts as outside if it faces the same way.
+    fn clip(&self, polygons: Vec<CsgPolygon>, eps: f64) -> Vec<CsgPolygon> {
+        if self.nodes.is_empty() {
+            return polygons;
+        }
+        let mut kept = Vec::new();
+        let mut stack = vec![(0, polygons)];
+        while let Some((id, polygons)) = stack.pop() {
+            if polygons.is_empty() {
+                continue;
             }
-            if let Some(ref back) = node.back {
-                stack.push(back);
+            let node = &self.nodes[id];
+            let (mut on_front, mut on_back) = (Vec::new(), Vec::new());
+            let (mut front, mut back) = (Vec::new(), Vec::new());
+            for poly in polygons {
+                split_polygon(
+                    &node.plane,
+                    poly,
+                    eps,
+                    &mut on_front,
+                    &mut on_back,
+                    &mut front,
+                    &mut back,
+                );
+            }
+            front.append(&mut on_front);
+            back.append(&mut on_back);
+            match node.front {
+                Some(f) => stack.push((f, front)),
+                None => kept.append(&mut front),
+            }
+            // Behind a leaf is inside the solid: dropped.
+            if let Some(b) = node.back {
+                stack.push((b, back));
             }
         }
-        result
+        kept
     }
 
-    fn clip_polygons(&self, polygons: &[CsgPolygon], eps: f64) -> Vec<CsgPolygon> {
-        let plane = match &self.plane {
-            Some(p) => p,
-            None => return polygons.to_vec(),
-        };
-
-        let mut front_list = Vec::new();
-        let mut back_list = Vec::new();
-        let mut coplanar_front = Vec::new();
-        let mut coplanar_back = Vec::new();
-
-        for poly in polygons {
-            split_polygon(
-                plane,
-                poly,
-                eps,
-                &mut coplanar_front,
-                &mut coplanar_back,
-                &mut front_list,
-                &mut back_list,
-            );
-        }
-
-        // Coplanar polygons: front goes to front, back goes to back
-        front_list.extend(coplanar_front);
-        back_list.extend(coplanar_back);
-
-        front_list = if let Some(ref front) = self.front {
-            front.clip_polygons(&front_list, eps)
-        } else {
-            front_list
-        };
-
-        back_list = if let Some(ref back) = self.back {
-            back.clip_polygons(&back_list, eps)
-        } else {
-            Vec::new() // discard if no back node
-        };
-
-        front_list.extend(back_list);
-        front_list
-    }
-
-    fn clip_to(&mut self, other: &BspNode, eps: f64) {
-        self.polygons = other.clip_polygons(&self.polygons, eps);
-        if let Some(ref mut front) = self.front {
-            front.clip_to(other, eps);
-        }
-        if let Some(ref mut back) = self.back {
-            back.clip_to(other, eps);
-        }
-    }
-
+    /// Swap inside and outside.
     fn invert(&mut self) {
-        for poly in &mut self.polygons {
-            *poly = poly.flip();
+        for node in &mut self.nodes {
+            node.plane = node.plane.flip();
+            std::mem::swap(&mut node.front, &mut node.back);
         }
-        if let Some(ref p) = self.plane {
-            self.plane = Some(p.flip());
-        }
-        if let Some(ref mut front) = self.front {
-            front.invert();
-        }
-        if let Some(ref mut back) = self.back {
-            back.invert();
-        }
-        std::mem::swap(&mut self.front, &mut self.back);
     }
 }
 
 /// Choose a partitioning plane that keeps the tree shallow.
 ///
-/// Taking `polygons[0].plane` unconditionally is what made this structure
-/// dangerous: on a convex mesh every other polygon falls on one side of any face
-/// plane, so the tree degenerates into a linked list one node deep per polygon.
-/// Sampling a handful of candidates and scoring them for balance turns that into
-/// roughly log2(N) depth, which fixes both the stack overflow and the quadratic
-/// build time that came with it.
+/// Sampling a handful of candidates and scoring them for balance keeps a
+/// non-convex operand near log2(N) deep. It cannot help a convex one: every
+/// other face lies behind any face plane, all candidates score alike, and the
+/// tree is a chain one node per face -- which is why [`Bsp`] never recurses.
 ///
 /// Candidates are drawn by striding through the list rather than at random, so
 /// the result stays deterministic — CSG output must not vary between runs.
@@ -374,46 +296,44 @@ fn pick_splitter(polygons: &[CsgPolygon], eps: f64) -> Plane {
 
 fn split_polygon(
     plane: &Plane,
-    polygon: &CsgPolygon,
+    polygon: CsgPolygon,
     eps: f64,
     coplanar_front: &mut Vec<CsgPolygon>,
     coplanar_back: &mut Vec<CsgPolygon>,
     front: &mut Vec<CsgPolygon>,
     back: &mut Vec<CsgPolygon>,
 ) {
-    let mut polygon_type = 0u8;
-    let mut types = Vec::with_capacity(polygon.vertices.len());
-
-    for v in &polygon.vertices {
-        let t = dot(plane.normal, v.pos) - plane.w;
-        if !t.is_finite() {
-            return;
-        }
-        let typ = if t < -eps {
+    // Recomputed rather than stored: this runs O(N^2) times on a BSP chain,
+    // and an allocation per call dominated the build.
+    let dist = |v: &Vertex| dot(plane.normal, v.pos) - plane.w;
+    let side = |t: f64| {
+        if t < -eps {
             BACK
         } else if t > eps {
             FRONT
         } else {
             COPLANAR
-        };
-        polygon_type |= typ;
-        types.push((typ, t));
+        }
+    };
+    let mut polygon_type = 0u8;
+    for v in &polygon.vertices {
+        let t = dist(v);
+        if !t.is_finite() {
+            return;
+        }
+        polygon_type |= side(t);
     }
 
     match polygon_type {
         COPLANAR => {
             if dot(plane.normal, polygon.plane.normal) > 0.0 {
-                coplanar_front.push(polygon.clone());
+                coplanar_front.push(polygon);
             } else {
-                coplanar_back.push(polygon.clone());
+                coplanar_back.push(polygon);
             }
         }
-        FRONT => {
-            front.push(polygon.clone());
-        }
-        BACK => {
-            back.push(polygon.clone());
-        }
+        FRONT => front.push(polygon),
+        BACK => back.push(polygon),
         _ => {
             // SPANNING
             let mut f = Vec::new();
@@ -422,10 +342,9 @@ fn split_polygon(
 
             for i in 0..n {
                 let j = (i + 1) % n;
-                let (ti, _) = types[i];
-                let (tj, _) = types[j];
                 let vi = &polygon.vertices[i];
                 let vj = &polygon.vertices[j];
+                let (ti, tj) = (side(dist(vi)), side(dist(vj)));
 
                 if ti != BACK {
                     f.push(vi.clone());
@@ -601,85 +520,124 @@ fn epsilon_for(a: &TriangleMesh, b: &TriangleMesh) -> f64 {
     (mesh_extent(a).max(mesh_extent(b)) * EPSILON_SCALE).max(MIN_EPSILON)
 }
 
-pub fn subtract(a: &TriangleMesh, b: &TriangleMesh) -> TriangleMesh {
-    let polys_a = mesh_to_polygons(a);
-    let polys_b = mesh_to_polygons(b);
+/// Axis-aligned bounds of `polygons`; inverted (lo > hi) when there are none.
+fn bounds(polygons: &[CsgPolygon]) -> ([f64; 3], [f64; 3]) {
+    let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+    for v in polygons.iter().flat_map(|p| &p.vertices) {
+        for k in 0..3 {
+            lo[k] = lo[k].min(v.pos[k]);
+            hi[k] = hi[k].max(v.pos[k]);
+        }
+    }
+    (lo, hi)
+}
 
-    if polys_a.is_empty() || polys_b.is_empty() {
-        return a.clone();
+/// Split `polygons` by the faces of the box `lo..hi` into (inside or on the
+/// box, outside it).
+fn split_by_box(
+    polygons: Vec<CsgPolygon>,
+    lo: [f64; 3],
+    hi: [f64; 3],
+    eps: f64,
+) -> (Vec<CsgPolygon>, Vec<CsgPolygon>) {
+    let (mut inside, mut outside) = (polygons, Vec::new());
+    for k in 0..3 {
+        for (sign, w) in [(1.0, hi[k]), (-1.0, -lo[k])] {
+            let mut normal = [0.0; 3];
+            normal[k] = sign;
+            let plane = Plane { normal, w };
+            let (mut on_front, mut on_back, mut back) = (Vec::new(), Vec::new(), Vec::new());
+            for poly in inside {
+                split_polygon(
+                    &plane,
+                    poly,
+                    eps,
+                    &mut on_front,
+                    &mut on_back,
+                    &mut outside,
+                    &mut back,
+                );
+            }
+            back.append(&mut on_front);
+            back.append(&mut on_back);
+            inside = back;
+        }
+    }
+    (inside, outside)
+}
+
+fn flip_all(polygons: Vec<CsgPolygon>) -> Vec<CsgPolygon> {
+    polygons.iter().map(CsgPolygon::flip).collect()
+}
+
+/// `a op b` for closed, outward-wound meshes, by csg.js's BSP algorithm:
+/// a | b keeps a outside b and b outside a, a - b = ~(~a | b) and
+/// a & b = ~(~a | ~b).
+pub fn boolean(a: &TriangleMesh, b: &TriangleMesh, op: &BooleanOp) -> TriangleMesh {
+    let (pa, pb) = (mesh_to_polygons(a), mesh_to_polygons(b));
+    let eps = epsilon_for(a, b);
+    let ((a_lo, a_hi), (b_lo, b_hi)) = (bounds(&pa), bounds(&pb));
+    let lo: [f64; 3] = std::array::from_fn(|k| a_lo[k].max(b_lo[k]));
+    let hi: [f64; 3] = std::array::from_fn(|k| a_hi[k].min(b_hi[k]));
+    // Disjoint or empty operands: nothing to clip.
+    if (0..3).any(|k| lo[k] > hi[k] + eps) {
+        return match op {
+            BooleanOp::Subtraction => a.clone(),
+            BooleanOp::Union => polygons_to_mesh(&[pa, pb].concat()),
+            BooleanOp::Intersection => TriangleMesh::new(),
+        };
     }
 
-    let eps = epsilon_for(a, b);
-    let mut bsp_a = BspNode::build(polys_a, eps);
-    let mut bsp_b = BspNode::build(polys_b, eps);
+    // Only the parts of each operand inside the overlap box can meet the other
+    // solid; the rest is outside it and skips the trees. Clipping whole faces
+    // let every plane of b shred faces of a far from b, and chained booleans
+    // multiplied those slivers.
+    let (a_in, a_out) = split_by_box(pa, lo, hi, eps);
+    let (b_in, b_out) = split_by_box(pb, lo, hi, eps);
 
-    // A - B = ~(~A | B)
-    bsp_a.invert();
-    bsp_a.clip_to(&bsp_b, eps);
-    bsp_b.clip_to(&bsp_a, eps);
-    bsp_b.invert();
-    bsp_b.clip_to(&bsp_a, eps);
-    bsp_b.invert();
-
-    bsp_a.add_polygons(bsp_b.all_polygons(), eps, 0);
-    bsp_a.invert();
-
-    let result = bsp_a.all_polygons();
-    debug!(
-        "CSG subtract: eps={:.3e}, result has {} polygons",
-        eps,
-        result.len()
+    // Within the box, the part of a closed surface inside it classifies space
+    // as the whole surface does: every BSP cell there borders one of its faces.
+    // A surface that misses the box leaves one cell with no face to label it,
+    // so then the whole surface is used.
+    let tree = |inside: &[CsgPolygon], outside: &[CsgPolygon]| {
+        Bsp::build(
+            if inside.is_empty() { outside } else { inside }.to_vec(),
+            eps,
+        )
+    };
+    let (union, intersection) = (
+        matches!(op, BooleanOp::Union),
+        matches!(op, BooleanOp::Intersection),
     );
+    let mut tree_a = tree(&a_in, &a_out);
+    let mut tree_b = tree(&b_in, &b_out);
+    if !union {
+        tree_a.invert();
+    }
+    if intersection {
+        tree_b.invert();
+    }
 
+    let mut result = if union {
+        tree_b.clip(a_in, eps)
+    } else {
+        flip_all(tree_b.clip(flip_all(a_in), eps))
+    };
+    // The second pass drops faces of b lying on a face of a, which a keeps.
+    let b_kept = tree_a.clip(flip_all(tree_a.clip(b_in, eps)), eps);
+    if matches!(op, BooleanOp::Subtraction) {
+        result.extend(b_kept);
+    } else {
+        result.extend(flip_all(b_kept));
+    }
+    if !intersection {
+        result.extend(a_out);
+    }
+    if union {
+        result.extend(b_out);
+    }
+    debug!("CSG {:?}: eps={:.3e}, {} polygons", op, eps, result.len());
     polygons_to_mesh(&result)
-}
-
-pub fn union(a: &TriangleMesh, b: &TriangleMesh) -> TriangleMesh {
-    let polys_a = mesh_to_polygons(a);
-    let polys_b = mesh_to_polygons(b);
-
-    if polys_a.is_empty() {
-        return b.clone();
-    }
-    if polys_b.is_empty() {
-        return a.clone();
-    }
-
-    let eps = epsilon_for(a, b);
-    let mut bsp_a = BspNode::build(polys_a, eps);
-    let mut bsp_b = BspNode::build(polys_b, eps);
-
-    bsp_a.clip_to(&bsp_b, eps);
-    bsp_b.clip_to(&bsp_a, eps);
-    bsp_b.invert();
-    bsp_b.clip_to(&bsp_a, eps);
-    bsp_b.invert();
-    bsp_a.add_polygons(bsp_b.all_polygons(), eps, 0);
-
-    polygons_to_mesh(&bsp_a.all_polygons())
-}
-
-pub fn intersect(a: &TriangleMesh, b: &TriangleMesh) -> TriangleMesh {
-    let polys_a = mesh_to_polygons(a);
-    let polys_b = mesh_to_polygons(b);
-
-    if polys_a.is_empty() || polys_b.is_empty() {
-        return TriangleMesh::new();
-    }
-
-    let eps = epsilon_for(a, b);
-    let mut bsp_a = BspNode::build(polys_a, eps);
-    let mut bsp_b = BspNode::build(polys_b, eps);
-
-    bsp_a.invert();
-    bsp_b.clip_to(&bsp_a, eps);
-    bsp_b.invert();
-    bsp_a.clip_to(&bsp_b, eps);
-    bsp_b.clip_to(&bsp_a, eps);
-    bsp_a.add_polygons(bsp_b.all_polygons(), eps, 0);
-    bsp_a.invert();
-
-    polygons_to_mesh(&bsp_a.all_polygons())
 }
 
 /// Transform a mesh by applying a translation and rotation (Euler angles in radians, XYZ order).
@@ -839,8 +797,8 @@ mod tests {
         let a = box_mesh::tessellate_box(10.0, 10.0, 10.0);
         let b = box_mesh::tessellate_box(10.0, 10.0, 10.0);
 
-        let i = intersect(&a, &b);
-        let s = subtract(&a, &b);
+        let i = boolean(&a, &b, &BooleanOp::Intersection);
+        let s = boolean(&a, &b, &BooleanOp::Subtraction);
 
         assert!(mesh_is_finite(&i));
         assert!(mesh_is_finite(&s));
@@ -851,8 +809,8 @@ mod tests {
         let a = box_mesh::tessellate_box(10.0, 10.0, 10.0);
         let b = transform_mesh(&a, [10.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
 
-        let i = intersect(&a, &b);
-        let s = subtract(&a, &b);
+        let i = boolean(&a, &b, &BooleanOp::Intersection);
+        let s = boolean(&a, &b, &BooleanOp::Subtraction);
 
         assert!(mesh_is_finite(&i));
         assert!(mesh_is_finite(&s));
@@ -865,7 +823,12 @@ mod tests {
     fn subtract_half_overlap_has_correct_volume() {
         let a = box_mesh::tessellate_box(100.0, 100.0, 100.0);
         let b = transform_mesh(&a, [50.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
-        assert_volume(&subtract(&a, &b), 500_000.0, 0.01, "box - half-overlap box");
+        assert_volume(
+            &boolean(&a, &b, &BooleanOp::Subtraction),
+            500_000.0,
+            0.01,
+            "box - half-overlap box",
+        );
     }
 
     #[test]
@@ -873,7 +836,7 @@ mod tests {
         let a = box_mesh::tessellate_box(100.0, 100.0, 100.0);
         let b = transform_mesh(&a, [50.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
         assert_volume(
-            &intersect(&a, &b),
+            &boolean(&a, &b, &BooleanOp::Intersection),
             500_000.0,
             0.01,
             "box & half-overlap box",
@@ -886,7 +849,42 @@ mod tests {
         // crash test via sample_data/solids.gdml.
         let a = box_mesh::tessellate_box(10.0, 10.0, 10.0);
         let b = transform_mesh(&a, [40.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
-        assert_volume(&union(&a, &b), 2000.0, 0.01, "disjoint union");
+        assert_volume(
+            &boolean(&a, &b, &BooleanOp::Union),
+            2000.0,
+            0.01,
+            "disjoint union",
+        );
+    }
+
+    #[test]
+    fn booleans_satisfy_inclusion_exclusion() {
+        // |a| + |b| = |a | b| + |a & b| and |a| = |a - b| + |a & b| for any
+        // pair, so these pin all three ops on curved, rotated operands that
+        // have no closed-form overlap volume.
+        let pi = std::f64::consts::PI;
+        let a = sphere_mesh::tessellate_sphere(0.0, 40.0, 0.0, 2.0 * pi, 0.0, pi, 24);
+        let b = transform_mesh(
+            &box_mesh::tessellate_box(50.0, 60.0, 70.0),
+            [30.0, 10.0, -5.0],
+            [0.3, 0.4, 0.5],
+        );
+        let v = |op| signed_volume(&boolean(&a, &b, &op));
+        let (or, and, minus) = (
+            v(BooleanOp::Union),
+            v(BooleanOp::Intersection),
+            v(BooleanOp::Subtraction),
+        );
+        let (va, vb) = (signed_volume(&a), signed_volume(&b));
+        assert!(and > 0.1 * vb, "operands must overlap, got {and}");
+        assert!(
+            (or + and - va - vb).abs() < 1e-6 * (va + vb),
+            "{or} + {and}"
+        );
+        assert!(
+            (minus + and - va).abs() < 1e-6 * (va + vb),
+            "{minus} + {and}"
+        );
     }
 
     #[test]
@@ -895,7 +893,12 @@ mod tests {
         // subtract. An inverted cavity would read as 1000 + 125 instead.
         let outer = box_mesh::tessellate_box(10.0, 10.0, 10.0);
         let inner = box_mesh::tessellate_box(5.0, 5.0, 5.0);
-        assert_volume(&subtract(&outer, &inner), 875.0, 0.01, "hollow box");
+        assert_volume(
+            &boolean(&outer, &inner, &BooleanOp::Subtraction),
+            875.0,
+            0.01,
+            "hollow box",
+        );
     }
 
     #[test]
@@ -904,8 +907,13 @@ mod tests {
         let b = transform_mesh(&a, [50.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
         let c = transform_mesh(&a, [0.0, 50.0, 0.0], [0.0, 0.0, 0.0]);
         // (a - b) - c: keeps x in [-50,0] and y in [-50,0] => 50*50*100.
-        let step = subtract(&a, &b);
-        assert_volume(&subtract(&step, &c), 250_000.0, 0.02, "nested subtract");
+        let step = boolean(&a, &b, &BooleanOp::Subtraction);
+        assert_volume(
+            &boolean(&step, &c, &BooleanOp::Subtraction),
+            250_000.0,
+            0.02,
+            "nested subtract",
+        );
     }
 
     #[test]
@@ -922,7 +930,7 @@ mod tests {
             let shifted = transform_mesh(&unit, [50.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
             let b = transform_mesh(&shifted, [offset, offset, offset], rot);
 
-            let s = subtract(&a, &b);
+            let s = boolean(&a, &b, &BooleanOp::Subtraction);
             assert!(mesh_is_finite(&s), "offset {}: non-finite mesh", offset);
             assert_volume(
                 &s,
@@ -935,14 +943,12 @@ mod tests {
 
     #[test]
     fn deep_boolean_does_not_exhaust_the_stack() {
-        // `add_polygons` recurses once per split. Choosing polygons[0] as the
-        // splitter degenerated a convex mesh into a chain of depth N/2, and this
-        // exact call aborted the process on a 2 MiB stack at segments >= 104 --
-        // a stack overflow, not a catchable panic. Run it on a deliberately
-        // small stack so the invariant is pinned regardless of the harness
-        // default.
+        // The part of the sphere inside the cutter's box builds a BSP chain
+        // ~2.4k nodes deep. A recursive build aborted the process on a 2 MiB
+        // stack at segments >= 104 -- a stack overflow, not a catchable panic.
+        // 256 KiB leaves ~100 bytes per level, less than any recursive frame.
         let handle = std::thread::Builder::new()
-            .stack_size(1 << 20) // 1 MiB, half what a tokio worker gets
+            .stack_size(256 << 10)
             .spawn(|| {
                 let sphere = sphere_mesh::tessellate_sphere(
                     0.0,
@@ -954,12 +960,12 @@ mod tests {
                     128,
                 );
                 let cutter = box_mesh::tessellate_box(40.0, 40.0, 400.0);
-                let result = subtract(&sphere, &cutter);
+                let result = boolean(&sphere, &cutter, &BooleanOp::Subtraction);
                 assert!(mesh_is_finite(&result));
                 assert!(result.triangle_count() > 0);
             })
             .expect("spawn");
 
-        handle.join().expect("CSG overflowed a 1 MiB stack");
+        handle.join().expect("CSG overflowed a 256 KiB stack");
     }
 }

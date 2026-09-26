@@ -501,3 +501,111 @@ async fn material_and_nist_elements_commit_atomically() {
         "3.25"
     );
 }
+
+async fn solid_mesh(solids: &str, solid: &str) -> TriangleMesh {
+    let xml = document(
+        "",
+        solids,
+        &format!(r#"<volume name="W"><materialref ref="M"/><solidref ref="{solid}"/></volume>"#),
+    );
+    let state = load(&xml).await;
+    let guard = state.read().await;
+    let loaded = guard.loaded.as_ref().unwrap();
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    loaded.meshes[solid].clone()
+}
+
+#[tokio::test]
+async fn boolean_with_a_finely_meshed_orb_has_the_right_volume() {
+    // A 960-face orb made a BSP chain far past the old depth cap of 192, whose
+    // plane-less leaves kept everything below them. The box's face
+    // x = 0 is the orb's mirror plane, so exactly half its mesh must remain.
+    let orb = r#"<orb name="O" r="50"/><box name="B" x="200" y="200" z="200"/>"#;
+    let half = solid_mesh(
+        &format!(r#"{orb}<intersection name="H"><first ref="O"/><second ref="B"/><position x="100"/></intersection>"#),
+        "H",
+    )
+    .await;
+    let whole = volume(&solid_mesh(orb, "O").await);
+    assert!((volume(&half) / (0.5 * whole) - 1.0).abs() < 1e-3);
+    let (lo, hi) = x_bounds(&half);
+    assert!(lo.abs() < 1e-3 && (hi - 50.0).abs() < 1e-3, "{lo}..{hi}");
+}
+
+#[tokio::test]
+async fn box_and_offset_orb_intersection_is_bounded_by_both() {
+    // The browser baseline: this came out from x = -44.4 with volume 618,583,
+    // more than the half of the orb that fits in the box at all (452,389).
+    // Analytic: that half ball minus four half caps of height 10 beyond
+    // |y|, |z| = 50, i.e. 2/3 pi 60^3 - 2 pi 10^2 (180 - 10) / 3 = 416,784.
+    let bo = solid_mesh(
+        r#"<box name="B" x="100" y="100" z="100"/><orb name="O" r="60"/>
+        <intersection name="BO"><first ref="B"/><second ref="O"/><position x="50"/></intersection>"#,
+        "BO",
+    )
+    .await;
+    let (lo, hi) = x_bounds(&bo);
+    assert!(
+        (lo + 10.0).abs() < 1e-3 && (hi - 50.0).abs() < 1e-3,
+        "{lo}..{hi}"
+    );
+    let v = volume(&bo);
+    assert!(v < 452_389.0 && (v / 416_784.0 - 1.0).abs() < 0.02, "{v}");
+}
+
+#[tokio::test]
+async fn chained_subtractions_stay_linear() {
+    // Every plane of each hole used to split the whole plate, and each later
+    // hole split those slivers again: 10 holes gave 148x the triangles of one.
+    let plate = |n: usize| {
+        let mut solids = String::from(
+            r#"<box name="s0" x="200" y="80" z="10"/><tube name="T" rmax="10" z="20" deltaphi="360" aunit="deg"/>"#,
+        );
+        for i in 0..n {
+            let (x, y) = (-80 + 40 * (i % 5) as i32, if i < 5 { -20 } else { 20 });
+            solids += &format!(
+                r#"<subtraction name="s{}"><first ref="s{i}"/><second ref="T"/><position x="{x}" y="{y}"/></subtraction>"#,
+                i + 1
+            );
+        }
+        solids
+    };
+    let one = solid_mesh(&plate(1), "s1").await;
+    let ten = solid_mesh(&plate(10), "s10").await;
+    let expected = 10.0 * (200.0 * 80.0 - 10.0 * std::f64::consts::PI * 100.0);
+    assert!(
+        (volume(&ten) / expected - 1.0).abs() < 0.01,
+        "{}",
+        volume(&ten)
+    );
+    assert!(
+        ten.triangle_count() <= 12 * one.triangle_count(),
+        "{} vs {}",
+        ten.triangle_count(),
+        one.triangle_count()
+    );
+}
+
+#[tokio::test]
+async fn get_meshes_sends_only_placed_solids() {
+    let state = load(&document(
+        "",
+        r#"<box name="S" x="12.34" y="1" z="1"/><box name="A" x="1" y="1" z="1"/>
+        <union name="U"><first ref="A"/><second ref="A"/><position x="0.5"/></union>
+        <box name="unused" x="1" y="1" z="1"/>"#,
+        r#"<volume name="V"><materialref ref="M"/><solidref ref="U"/></volume>
+        <volume name="W"><materialref ref="M"/><solidref ref="S"/><physvol><volumeref ref="V"/></physvol></volume>"#,
+    ))
+    .await;
+    let response = get_meshes(State(state)).await.unwrap();
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body = std::str::from_utf8(&body).unwrap();
+    let json: serde_json::Value = serde_json::from_str(body).unwrap();
+    let mut keys: Vec<_> = json["meshes"].as_object().unwrap().keys().collect();
+    keys.sort();
+    assert_eq!(keys, ["S", "U"]);
+    // f32 written as f32, not widened through f64 to 6.170000076293945.
+    assert!(body.contains("6.17") && !body.contains("6.1700000"));
+}
