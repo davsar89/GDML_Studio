@@ -42,6 +42,8 @@ pub(super) fn face_normal(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> [f32; 3] {
 }
 
 /// Append quad p0-p1-p2-p3 as two flat-shaded triangles; `flip` reverses the winding.
+/// The normal is that of the diagonals, (p2 - p0) x (p3 - p1), so a quad with a
+/// collapsed edge (a triangle, like an arb8 wedge face) still gets its own.
 pub(super) fn emit_quad(
     positions: &mut Vec<f32>,
     normals: &mut Vec<f32>,
@@ -52,12 +54,9 @@ pub(super) fn emit_quad(
     p3: [f32; 3],
     flip: bool,
 ) {
-    let n = if flip {
-        let n = face_normal(p0, p1, p2);
-        [-n[0], -n[1], -n[2]]
-    } else {
-        face_normal(p0, p1, p2)
-    };
+    let d = |a: [f32; 3], b: [f32; 3]| [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let n = face_normal([0.0; 3], d(p0, p2), d(p1, p3));
+    let n = if flip { n.map(|c| -c) } else { n };
     let base = (positions.len() / 3) as u32;
     for p in &[p0, p1, p2, p3] {
         positions.extend_from_slice(p);

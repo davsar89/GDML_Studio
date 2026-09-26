@@ -1,3 +1,4 @@
+use super::emit_quad;
 use crate::mesh::types::TriangleMesh;
 use std::f64::consts::PI;
 
@@ -79,55 +80,9 @@ pub fn tessellate_polyhedra(
             let verts1 = polygon_verts(r1, z1);
 
             for i in 0..n as usize {
-                let base = (positions.len() / 3) as u32;
-
-                let v00 = verts0[i];
-                let v01 = verts0[i + 1];
-                let v10 = verts1[i];
-                let v11 = verts1[i + 1];
-
-                // Compute face normal
-                let u = [v01[0] - v00[0], v01[1] - v00[1], v01[2] - v00[2]];
-                let v = [v10[0] - v00[0], v10[1] - v00[1], v10[2] - v00[2]];
-                let mut nx = u[1] * v[2] - u[2] * v[1];
-                let mut ny = u[2] * v[0] - u[0] * v[2];
-                let mut nz = u[0] * v[1] - u[1] * v[0];
-                let len = (nx * nx + ny * ny + nz * nz).sqrt();
-                if len > 1e-12 {
-                    nx /= len;
-                    ny /= len;
-                    nz /= len;
-                }
-                if !is_outer {
-                    nx = -nx;
-                    ny = -ny;
-                    nz = -nz;
-                }
-
-                for vtx in &[v00, v01, v11, v10] {
-                    positions.push(vtx[0] as f32);
-                    positions.push(vtx[1] as f32);
-                    positions.push(vtx[2] as f32);
-                    normals.push(nx as f32);
-                    normals.push(ny as f32);
-                    normals.push(nz as f32);
-                }
-
-                if is_outer {
-                    indices.push(base);
-                    indices.push(base + 1);
-                    indices.push(base + 2);
-                    indices.push(base);
-                    indices.push(base + 2);
-                    indices.push(base + 3);
-                } else {
-                    indices.push(base);
-                    indices.push(base + 2);
-                    indices.push(base + 1);
-                    indices.push(base);
-                    indices.push(base + 3);
-                    indices.push(base + 2);
-                }
+                let [v00, v01, v10, v11] = [verts0[i], verts0[i + 1], verts1[i], verts1[i + 1]]
+                    .map(|v| v.map(|c| c as f32));
+                emit_quad(positions, normals, indices, v00, v01, v11, v10, !is_outer);
             }
         }
     };

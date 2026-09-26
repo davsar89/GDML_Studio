@@ -607,3 +607,133 @@ fn twisted_tubs_is_a_hyperboloid_not_a_cylinder() {
         "end radius {max_r:.4}, expected r_mid/cos(twist/2) = {want_end:.4}"
     );
 }
+
+#[test]
+fn all_primitive_normals_are_unit_length() {
+    // Every stored normal must be a unit vector within 60 deg of its facet's
+    // winding normal, also where a wall collapses: a polycone/polyhedra step
+    // at one z (a flat annulus), a polyhedra closing on the axis, an arb8
+    // wedge with coincident corners, an xtru with a repeated vertex.
+    let step = [
+        (-15.0, 0.0, 0.0),
+        (-10.0, 5.0, 10.0),
+        (0.0, 5.0, 10.0),
+        (0.0, 2.0, 20.0),
+        (10.0, 2.0, 20.0),
+        (15.0, 0.0, 0.0),
+    ];
+    let wedge = [
+        [-5.0, -5.0],
+        [-5.0, 5.0],
+        [5.0, 5.0],
+        [5.0, -5.0],
+        [-5.0, -5.0],
+        [-5.0, -5.0],
+        [5.0, -5.0],
+        [5.0, -5.0],
+    ];
+    let meshes = [
+        ("box", tessellate_box(10.0, 20.0, 30.0)),
+        ("tube", tessellate_tube(3.0, 6.0, 20.0, 0.3, 2.0, SEG)),
+        (
+            "cone",
+            tessellate_cone(2.0, 6.0, 0.0, 3.0, 20.0, 0.0, 2.0, SEG),
+        ),
+        (
+            "cut tube",
+            tessellate_cut_tube(
+                2.0,
+                6.0,
+                20.0,
+                0.0,
+                2.0,
+                [0.0, -0.5, -1.0],
+                [0.3, 0.0, 1.0],
+                SEG,
+            ),
+        ),
+        (
+            "sphere",
+            tessellate_sphere(3.0, 6.0, 0.0, 2.0, 0.3, 2.0, SEG),
+        ),
+        ("torus", tessellate_torus(1.0, 3.0, 10.0, 0.0, 2.0, SEG)),
+        ("polycone step", tessellate_polycone(&step, 0.0, 2.0, SEG)),
+        ("polyhedra step", tessellate_polyhedra(&step, 0.0, 2.0, 5)),
+        (
+            "generic polycone",
+            tessellate_generic_polycone(
+                &[(0.0, -5.0), (5.0, -5.0), (5.0, 0.0), (8.0, 0.0), (0.0, 5.0)],
+                0.0,
+                2.0,
+                SEG,
+                Some(5),
+            ),
+        ),
+        (
+            "ellipsoid",
+            tessellate_ellipsoid(4.0, 6.0, 8.0, -3.0, 5.0, SEG),
+        ),
+        ("eltube", tessellate_eltube(4.0, 6.0, 8.0, SEG)),
+        ("elcone", tessellate_elcone(0.5, 0.8, 10.0, 5.0, SEG)),
+        ("paraboloid", tessellate_paraboloid(2.0, 5.0, 10.0, SEG)),
+        ("hype", tessellate_hype(3.0, 6.0, 0.2, 0.3, 20.0, SEG)),
+        ("trd", tessellate_trd(10.0, 12.0, 6.0, 0.0, 20.0)),
+        (
+            "trap",
+            tessellate_trap(20.0, 0.1, 0.2, 12.0, 10.0, 8.0, 0.05, 10.0, 9.0, 7.0, 0.05),
+        ),
+        ("arb8 wedge", tessellate_arb8(10.0, wedge)),
+        (
+            "twisted trap",
+            tessellate_twisted_trap(
+                0.4, 20.0, 0.1, 0.2, 12.0, 10.0, 8.0, 10.0, 9.0, 7.0, 0.05, SEG,
+            ),
+        ),
+        (
+            "twisted tubs",
+            tessellate_twisted_tubs(3.0, 6.0, -10.0, 10.0, 2.0, 0.8, SEG),
+        ),
+        (
+            "xtru repeat",
+            tessellate_xtru(
+                &[
+                    (0.0, 0.0),
+                    (10.0, 0.0),
+                    (10.0, 0.0),
+                    (10.0, 10.0),
+                    (0.0, 10.0),
+                ],
+                &[(-5.0, 0.0, 0.0, 1.0), (5.0, 1.0, 0.0, 0.5)],
+            ),
+        ),
+    ];
+    // The first bad normal of each solid, so one run lists every offender.
+    let bad: Vec<String> = meshes
+        .iter()
+        .filter_map(|(name, m)| {
+            let p = |i: u32| [0, 1, 2].map(|k| m.positions[i as usize * 3 + k] as f64);
+            let n = |i: u32| [0, 1, 2].map(|k| m.normals[i as usize * 3 + k] as f64);
+            m.indices.chunks_exact(3).find_map(|tri| {
+                let (a, b, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
+                let (u, v) = (
+                    [0, 1, 2].map(|k| b[k] - a[k]),
+                    [0, 1, 2].map(|k| c[k] - a[k]),
+                );
+                let geo = [
+                    u[1] * v[2] - u[2] * v[1],
+                    u[2] * v[0] - u[0] * v[2],
+                    u[0] * v[1] - u[1] * v[0],
+                ];
+                let area2 = geo.iter().map(|g| g * g).sum::<f64>().sqrt();
+                tri.iter().map(|&i| n(i)).find_map(|ni| {
+                    let len = ni.iter().map(|c| c * c).sum::<f64>().sqrt();
+                    let cos = (0..3).map(|k| geo[k] * ni[k]).sum::<f64>() / area2;
+                    ((len - 1.0).abs() > 1e-3 || (area2 > 1e-6 && cos < 0.5))
+                        .then(|| format!("{name}: normal {ni:?} on facet {geo:?}"))
+                })
+            })
+        })
+        .collect();
+    assert!(meshes.iter().all(|(_, m)| m.triangle_count() > 0));
+    assert!(bad.is_empty(), "{bad:#?}");
+}

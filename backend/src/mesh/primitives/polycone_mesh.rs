@@ -58,17 +58,7 @@ pub fn tessellate_polycone(
 
         // Outer surface
         let outer_base = positions.len() as u32 / 3;
-        let dr_outer = rmax2 - rmax1;
-        let slope_outer = if dz.abs() > 1e-10 {
-            (dr_outer / dz) as f32
-        } else {
-            0.0
-        };
-        let nz_o = -slope_outer;
-        let nr_o = 1.0_f32;
-        let len_o = (nz_o * nz_o + nr_o * nr_o).sqrt();
-        let nz_o = nz_o / len_o;
-        let nr_o = nr_o / len_o;
+        let (nr_o, nz_o) = rz_normal(rmax2 - rmax1, dz);
 
         for i in 0..=seg {
             let phi = startphi + phi_step * i as f64;
@@ -90,17 +80,7 @@ pub fn tessellate_polycone(
         // Inner surface
         if has_hole {
             let inner_base = positions.len() as u32 / 3;
-            let dr_inner = rmin2 - rmin1;
-            let slope_inner = if dz.abs() > 1e-10 {
-                (dr_inner / dz) as f32
-            } else {
-                0.0
-            };
-            let nz_i = slope_inner;
-            let nr_i = 1.0_f32;
-            let len_i = (nz_i * nz_i + nr_i * nr_i).sqrt();
-            let nz_i = nz_i / len_i;
-            let nr_i = nr_i / len_i;
+            let (nr_i, nz_i) = rz_normal(rmin2 - rmin1, dz);
 
             for i in 0..=seg {
                 let phi = startphi + phi_step * i as f64;
@@ -109,9 +89,9 @@ pub fn tessellate_polycone(
                 let r2 = rmin2 as f32;
 
                 positions.extend_from_slice(&[r1 * cp, r1 * sp, z1f]);
-                normals.extend_from_slice(&[-nr_i * cp, -nr_i * sp, nz_i]);
+                normals.extend_from_slice(&[-nr_i * cp, -nr_i * sp, -nz_i]);
                 positions.extend_from_slice(&[r2 * cp, r2 * sp, z2f]);
-                normals.extend_from_slice(&[-nr_i * cp, -nr_i * sp, nz_i]);
+                normals.extend_from_slice(&[-nr_i * cp, -nr_i * sp, -nz_i]);
             }
             for i in 0..seg {
                 let b = inner_base + i * 2;
@@ -251,5 +231,17 @@ pub fn tessellate_polycone(
         positions,
         normals,
         indices,
+    }
+}
+
+/// Unit (r, z) normal of a wall running (dr, dz) up the outline, facing away
+/// from the material on its inner side: (dz, -dr) / |.|. The inner wall's is
+/// its negation. A dz = 0 step is a flat annulus facing -+z, not radial.
+fn rz_normal(dr: f64, dz: f64) -> (f32, f32) {
+    let len = dr.hypot(dz);
+    if len > 1e-12 {
+        ((dz / len) as f32, (-dr / len) as f32)
+    } else {
+        (1.0, 0.0)
     }
 }
