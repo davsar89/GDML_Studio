@@ -870,23 +870,26 @@ fn build_scene_graph(
     let mut visited = HashSet::new();
     let mut budget = SceneBudget::default();
 
-    let root = if let Some(world_vol) = vol_map.get(world_ref.as_str()) {
-        build_volume_node(
-            world_vol,
-            &vol_map,
-            &density_map,
-            engine,
-            [0.0; 3],
-            [0.0; 3],
-            true,
-            &mut visited,
-            format!("/{}", world_vol.name),
-            warnings,
-            0,
-            &mut budget,
-        )
-    } else {
-        SceneNode {
+    let root = vol_map
+        .get(world_ref.as_str())
+        .and_then(|world_vol| {
+            build_volume_node(
+                world_vol,
+                &vol_map,
+                &density_map,
+                engine,
+                [0.0; 3],
+                [0.0; 3],
+                true,
+                &mut visited,
+                "",
+                format!("/{}", world_vol.name),
+                warnings,
+                0,
+                &mut budget,
+            )
+        })
+        .unwrap_or_else(|| SceneNode {
             name: "World".to_string(),
             instance_id: "/World".to_string(),
             volume_name: world_ref.clone(),
@@ -898,15 +901,16 @@ fn build_scene_graph(
             rotation: [0.0; 3],
             is_world: true,
             children: Vec::new(),
-        }
-    };
+        });
 
     if budget.truncated {
         warnings.push(format!(
-            "Scene graph truncated at {} nodes / depth {}. This geometry expands \
-             multiplicatively (a volume placed in several mothers is re-expanded \
-             under each), so parts of the tree are not shown.",
-            MAX_SCENE_NODES, MAX_SCENE_DEPTH
+            "Scene graph truncated at {} nodes / depth {} / {} MiB of names. This \
+             geometry expands multiplicatively (a volume placed in several mothers \
+             is re-expanded under each), so parts of the tree are not shown.",
+            MAX_SCENE_NODES,
+            MAX_SCENE_DEPTH,
+            MAX_SCENE_BYTES >> 20
         ));
     }
 
@@ -966,16 +970,22 @@ fn dedupe_warnings(warnings: &mut Vec<String>) {
 /// stay small: the largest shipped sample produces about 4,400 nodes. But it is
 /// multiplicative and was unbounded, so 25 volumes each containing two physvols
 /// pointing at the next produce 2^25 nodes, each holding several strings, on
-/// every request. Hostile input rather than a real-file problem, but the replica
-/// count was already capped for exactly this reason and this was not.
-const MAX_SCENE_NODES: usize = 500_000;
+/// every request. Hostile input rather than a real-file problem. 100k nodes is
+/// ~21 MB of JSON, already more meshes than the viewer can draw interactively;
+/// 500k was 105 MB and took 1.1 s to serialise.
+const MAX_SCENE_NODES: usize = 100_000;
 
 /// Maximum nesting depth, bounding recursion independently of the node count.
 const MAX_SCENE_DEPTH: u32 = 256;
 
+/// Bytes of instance id and names all nodes may hold. An id repeats its whole
+/// path, so deep trees of long names outgrow memory well before the node cap.
+const MAX_SCENE_BYTES: usize = 64 << 20;
+
 #[derive(Default)]
 struct SceneBudget {
     nodes: usize,
+    bytes: usize,
     truncated: bool,
 }
 
@@ -992,28 +1002,35 @@ fn build_volume_node(
     rotation: [f64; 3],
     is_world: bool,
     visited: &mut HashSet<String>,
-    instance_id: String,
+    parent_id: &str,
+    id_suffix: String,
     warnings: &mut Vec<String>,
     depth: u32,
     budget: &mut SceneBudget,
-) -> SceneNode {
-    budget.nodes += 1;
-    if budget.nodes > MAX_SCENE_NODES || depth > MAX_SCENE_DEPTH {
-        budget.truncated = true;
-        return SceneNode {
-            name: vol.name.clone(),
-            volume_name: vol.name.clone(),
-            solid_name: vol.solid_ref.clone(),
-            material_name: vol.material_ref.clone(),
-            instance_id,
-            color: None,
-            position,
-            rotation,
-            is_world,
-            density: None,
-            children: Vec::new(),
-        };
+) -> Option<SceneNode> {
+    // Every child kind comes through here, so these checks run once for
+    // physvols and replicas alike. `None` means nothing was added; a replica
+    // loop stops at the first one, since its copies would all fail alike.
+    if visited.contains(&vol.name) {
+        // G4PVPlacement refuses "a volume inside itself", and GDML's
+        // define-before-use makes longer cycles unloadable too.
+        warnings.push(format!(
+            "volume '{}' is placed inside itself; Geant4 cannot load this, and \
+             the placement is skipped.",
+            vol.name
+        ));
+        return None;
     }
+    if depth > MAX_SCENE_DEPTH || budget.nodes >= MAX_SCENE_NODES || budget.bytes >= MAX_SCENE_BYTES
+    {
+        budget.truncated = true;
+        return None;
+    }
+    // Built only once admitted: a refused sibling would copy the whole path.
+    let instance_id = format!("{parent_id}{id_suffix}");
+    budget.nodes += 1;
+    budget.bytes +=
+        instance_id.len() + 2 * vol.name.len() + vol.solid_ref.len() + vol.material_ref.len();
 
     visited.insert(vol.name.clone());
 
@@ -1030,15 +1047,6 @@ fn build_volume_node(
         .iter()
         .enumerate()
         .filter_map(|(idx, pv)| {
-            if visited.contains(&pv.volume_ref) {
-                tracing::warn!(
-                    "Cycle detected in scene graph: volume '{}' references already-visited '{}'",
-                    vol.name,
-                    pv.volume_ref
-                );
-                return None;
-            }
-
             let child_vol = match vol_map.get(pv.volume_ref.as_str()) {
                 Some(v) => v,
                 None => {
@@ -1064,17 +1072,14 @@ fn build_volume_node(
                     return None;
                 }
             };
-            let child_instance_id = match pv.name.as_deref() {
+            let id_suffix = match pv.name.as_deref() {
                 Some(name) if !name.is_empty() => {
-                    format!(
-                        "{}/physvol[{}]({}):{}",
-                        instance_id, idx, name, pv.volume_ref
-                    )
+                    format!("/physvol[{}]({}):{}", idx, name, pv.volume_ref)
                 }
-                _ => format!("{}/physvol[{}]:{}", instance_id, idx, pv.volume_ref),
+                _ => format!("/physvol[{}]:{}", idx, pv.volume_ref),
             };
 
-            Some(build_volume_node(
+            build_volume_node(
                 child_vol,
                 vol_map,
                 density_map,
@@ -1083,29 +1088,21 @@ fn build_volume_node(
                 rot,
                 false,
                 visited,
-                child_instance_id,
+                &instance_id,
+                id_suffix,
                 warnings,
                 depth + 1,
                 budget,
-            ))
+            )
         })
         .collect();
 
     // Expand replicavol into child nodes
     if let Some(ref replica) = vol.replica {
         if let Some(child_vol) = vol_map.get(replica.volume_ref.as_str()) {
-            // Cap the replica count: it is attacker-controllable via the GDML and
-            // each replica allocates a SceneNode, so an absurd value would exhaust memory.
-            let resolved = engine.resolve_value(&replica.number);
-            let number = (resolved as usize).min(100_000);
-            if (resolved as usize) > number {
-                let msg = format!(
-                    "replicavol '{}': number {} exceeds the safety cap; clamped to {}.",
-                    replica.volume_ref, resolved, number
-                );
-                tracing::warn!("{}", msg);
-                warnings.push(msg);
-            }
+            // No cap of its own: the scene budget ends the loops below, and the
+            // copies drawn keep the positions of the full count.
+            let number = engine.resolve_value(&replica.number) as usize;
             // kPhi replicates in ANGLE, the Cartesian axes in LENGTH, so the
             // width/offset units cannot be converted until the axis is known.
             let is_phi = replica.curvilinear_axis.as_deref() == Some("phi");
@@ -1134,7 +1131,7 @@ fn build_volume_node(
                     "replicavol '{}': radial (kRho) replication subdivides the solid                      itself, which is not modelled; one un-subdivided copy is drawn                      in place of the {} slices.",
                     replica.volume_ref, number
                 ));
-                let child_node = build_volume_node(
+                children.extend(build_volume_node(
                     child_vol,
                     vol_map,
                     density_map,
@@ -1143,12 +1140,12 @@ fn build_volume_node(
                     [0.0; 3],
                     false,
                     visited,
-                    format!("{}/replica[rho]:{}", instance_id, replica.volume_ref),
+                    &instance_id,
+                    format!("/replica[rho]:{}", replica.volume_ref),
                     warnings,
                     depth + 1,
                     budget,
-                );
-                children.push(child_node);
+                ));
             } else if is_phi {
                 for n in 0..number {
                     // G4ReplicaNavigation.cc:682 sets
@@ -1159,7 +1156,7 @@ fn build_volume_node(
                     // same convention SceneNode::rotation uses (the viewer
                     // negates it) -- so `val` goes in directly.
                     let val = -(offset + width * (n as f64 + 0.5));
-                    let child_node = build_volume_node(
+                    let Some(child_node) = build_volume_node(
                         child_vol,
                         vol_map,
                         density_map,
@@ -1168,11 +1165,14 @@ fn build_volume_node(
                         [0.0, 0.0, val],
                         false,
                         visited,
-                        format!("{}/replica[{}]:{}", instance_id, n, replica.volume_ref),
+                        &instance_id,
+                        format!("/replica[{}]:{}", n, replica.volume_ref),
                         warnings,
                         depth + 1,
                         budget,
-                    );
+                    ) else {
+                        break;
+                    };
                     children.push(child_node);
                 }
             } else {
@@ -1215,9 +1215,7 @@ fn build_volume_node(
                     //   val = -width*0.5*(nReplicas-1) + width*replicaNo
                     pos[axis] =
                         -width * 0.5 * (number.saturating_sub(1) as f64) + (n as f64) * width;
-                    let replica_instance_id =
-                        format!("{}/replica[{}]:{}", instance_id, n, replica.volume_ref);
-                    let child_node = build_volume_node(
+                    let Some(child_node) = build_volume_node(
                         child_vol,
                         vol_map,
                         density_map,
@@ -1226,11 +1224,14 @@ fn build_volume_node(
                         [0.0; 3],
                         false,
                         visited,
-                        replica_instance_id,
+                        &instance_id,
+                        format!("/replica[{}]:{}", n, replica.volume_ref),
                         warnings,
                         depth + 1,
                         budget,
-                    );
+                    ) else {
+                        break;
+                    };
                     children.push(child_node);
                 }
             }
@@ -1239,7 +1240,7 @@ fn build_volume_node(
 
     visited.remove(&vol.name);
 
-    SceneNode {
+    Some(SceneNode {
         name: vol.name.clone(),
         instance_id,
         volume_name: vol.name.clone(),
@@ -1251,7 +1252,7 @@ fn build_volume_node(
         rotation,
         is_world,
         children,
-    }
+    })
 }
 
 // ─── NIST Materials ─────────────────────────────────────────────────────────

@@ -1414,3 +1414,69 @@ async fn truncated_file_is_a_parse_error() {
         assert_eq!(refused.err().map(|e| e.status.as_u16()), Some(400), "{cut}");
     }
 }
+
+fn node_count(node: &serde_json::Value) -> usize {
+    1 + node["children"]
+        .as_array()
+        .map_or(0, |c| c.iter().map(node_count).sum())
+}
+
+fn replica_of(volume: &str, number: &str) -> String {
+    format!(
+        r#"<replicavol number="{number}"><volumeref ref="{volume}"/><replicate_along_axis>
+        <direction x="1"/><width value="1" unit="mm"/><offset value="0" unit="mm"/>
+        </replicate_along_axis></replicavol>"#
+    )
+}
+
+#[tokio::test]
+async fn self_referencing_replica_is_cut_with_a_warning() {
+    // Only physvols were checked against the path, so a replicavol naming
+    // its own volume recursed to depth 256, three copies per level, until the
+    // node budget ran out. G4PVReplica refuses a volume inside itself.
+    let state = load(&document(
+        "",
+        r#"<box name="B" x="10" y="10" z="10"/>"#,
+        &format!(
+            r#"<volume name="A"><materialref ref="M"/><solidref ref="B"/>{}</volume>
+            <volume name="W"><materialref ref="M"/><solidref ref="B"/>
+            <physvol><volumeref ref="A"/></physvol></volume>"#,
+            replica_of("A", "3")
+        ),
+    ))
+    .await;
+    let scene = get_scene(State(state)).await.unwrap().0;
+    assert_eq!(node_count(&scene["scene_graph"]), 2, "W and one A");
+    assert!(
+        scene["warnings"]
+            .to_string()
+            .contains("'A' is placed inside itself"),
+        "{}",
+        scene["warnings"]
+    );
+}
+
+#[tokio::test]
+async fn huge_replica_count_stops_at_the_node_budget() {
+    // The budget was checked on entry only, so once spent every remaining
+    // copy still pushed a stub node; replicas are now cut where it runs out.
+    let state = load(&document(
+        "",
+        r#"<box name="B" x="10" y="10" z="10"/>"#,
+        &format!(
+            r#"<volume name="A"><materialref ref="M"/><solidref ref="B"/></volume>
+            <volume name="W"><materialref ref="M"/><solidref ref="B"/>{}</volume>"#,
+            replica_of("A", "100000000")
+        ),
+    ))
+    .await;
+    let scene = get_scene(State(state)).await.unwrap().0;
+    assert!(node_count(&scene["scene_graph"]) <= 100_000);
+    assert!(
+        scene["warnings"]
+            .to_string()
+            .contains("Scene graph truncated"),
+        "{}",
+        scene["warnings"]
+    );
+}
