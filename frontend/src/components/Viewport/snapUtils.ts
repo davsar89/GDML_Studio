@@ -288,9 +288,11 @@ export function findBestSnap(
 ): SnapResult | null {
   if (hits.length === 0) return null;
 
-  // Gather raw candidates from up to maxFaces hit faces
+  // Gather raw candidates from up to maxFaces hit faces. Faces behind the first
+  // opaque one are hidden; only see-through meshes expose the faces behind them.
   const allRaw: SnapCandidate[] = [];
-  const faceCount = Math.min(hits.length, maxFaces);
+  const opaque = hits.findIndex((h) => !((h.object as THREE.Mesh).material as THREE.Material).transparent);
+  const faceCount = Math.min(opaque < 0 ? hits.length : opaque + 1, maxFaces);
   for (let i = 0; i < faceCount; i++) {
     allRaw.push(...faceCandidates(hits[i]));
   }

@@ -23,8 +23,8 @@ export default defineConfig({
     // keeps type-checking the tests along with the rest of src.
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
-    // Nothing under Viewport/: three.js needs a WebGL context jsdom does not
-    // provide. Tests cover the store, the utils and the panels.
+    // Viewport components need a WebGL context jsdom does not provide, so
+    // only their pure three.js math (snapUtils) is tested here.
     include: ['src/**/*.test.{ts,tsx}'],
   },
 })
