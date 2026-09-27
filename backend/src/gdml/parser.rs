@@ -1177,10 +1177,8 @@ fn read_xtru_body(reader: &mut Reader<&[u8]>, e: &BytesStart, open: bool) -> Res
         }
         Ok(())
     })?;
-
-    // Sort sections by zOrder for correct ordering
-    sections.sort_by_key(|s| s.z_order.parse::<i64>().unwrap_or(0));
-
+    // Sections stay in document order: G4GDMLReadSolids::XtruRead ignores
+    // zOrder (G4GDMLReadSolids.cc 684-690).
     Ok(XtruSolid {
         name: get_attr(e, "name").unwrap_or_default(),
         lunit: get_attr(e, "lunit"),

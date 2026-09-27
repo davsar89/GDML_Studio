@@ -957,3 +957,19 @@ async fn material_component_cycle_is_rejected() {
     );
     assert_eq!(material_names(&export(&state).await), ["N", "M"]);
 }
+
+#[tokio::test]
+async fn xtru_sections_follow_document_order_not_zorder() {
+    // XtruRead pushes the sections in document order and SectionRead never
+    // reads zOrder (G4GDMLReadSolids.cc 684-690, 1904-1954). Sorting on zOrder
+    // put z = +10 first here and turned the 10 x 10 x 20 prism inside out.
+    let x = solid_mesh(
+        r#"<xtru name="X"><twoDimVertex x="0" y="0"/><twoDimVertex x="10" y="0"/>
+        <twoDimVertex x="10" y="10"/><twoDimVertex x="0" y="10"/>
+        <section zOrder="1" zPosition="-10" xOffset="0" yOffset="0" scalingFactor="1"/>
+        <section zOrder="0" zPosition="10" xOffset="0" yOffset="0" scalingFactor="1"/></xtru>"#,
+        "X",
+    )
+    .await;
+    assert!((volume(&x) / 2000.0 - 1.0).abs() < 1e-3, "{}", volume(&x));
+}
