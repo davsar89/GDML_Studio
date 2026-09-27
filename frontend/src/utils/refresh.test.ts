@@ -8,12 +8,14 @@ vi.mock('../api/client', () => ({
   getScene: vi.fn(),
   getStructure: vi.fn(),
   getMeshes: vi.fn(),
+  getDefines: vi.fn(),
+  getSummary: vi.fn(),
 }));
 
 import * as api from '../api/client';
 import { useAppStore } from '../store';
-import { refreshMaterialsAndScene } from './refresh';
-import type { ElementInfo, SceneNode, VolumeInfo } from '../store/types';
+import { refreshMaterialsAndScene, restoreOpenDocument } from './refresh';
+import type { DocumentSummary, ElementInfo, SceneNode, VolumeInfo } from '../store/types';
 
 const mocked = vi.mocked(api);
 const elements: ElementInfo[] = [{ name: 'H', formula: 'H', z: '1', atom_value: '1', atom_unit: null, atom_type: null, fractions: [] }];
@@ -49,5 +51,29 @@ describe('refreshMaterialsAndScene', () => {
     // Logging this to the console would leave the materials list updated while
     // the 3D view still showed pre-edit colours, with no sign anything failed.
     expect(useAppStore.getState().error).toContain('backend exploded');
+  });
+});
+
+describe('restoreOpenDocument', () => {
+  it('restores the backend document on startup', async () => {
+    const summary = { filename: 'kept.gdml', warnings: ['from load'] } as DocumentSummary;
+    mocked.getSummary.mockResolvedValue(summary);
+    mocked.getMeshes.mockResolvedValue({ meshes: {}, scene_graph: scene, warnings: ['from scene'] });
+    mocked.getDefines.mockResolvedValue({ defines: [] });
+    await restoreOpenDocument();
+    const state = useAppStore.getState();
+    expect(state.summary).toBe(summary);
+    expect(state.sceneGraph).toEqual(scene);
+    expect(state.volumes).toEqual(volumes);
+    expect(state.warnings).toEqual(['from load', 'from scene']);
+    expect(state.error).toBeNull();
+  });
+
+  it('stays empty when nothing is loaded', async () => {
+    mocked.getSummary.mockRejectedValue(new Error('No document loaded'));
+    await restoreOpenDocument();
+    expect(useAppStore.getState().summary).toBeNull();
+    expect(useAppStore.getState().error).toBeNull();
+    expect(mocked.getMeshes).not.toHaveBeenCalled();
   });
 });

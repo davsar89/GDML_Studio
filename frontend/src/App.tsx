@@ -1,4 +1,7 @@
+import { useEffect } from 'react';
 import { useAppStore } from './store';
+import { runDocumentAction } from './utils/documentActions';
+import { restoreOpenDocument } from './utils/refresh';
 import Toolbar from './components/Toolbar';
 import Layout from './components/Layout';
 import ContextMenu from './components/ContextMenu';
@@ -8,6 +11,9 @@ export default function App() {
   const error = useAppStore((s) => s.error);
   const warnings = useAppStore((s) => s.warnings);
   const clearWarnings = useAppStore((s) => s.clearWarnings);
+
+  // The backend outlives a page reload; runDocumentAction ignores StrictMode's second call.
+  useEffect(() => { void runDocumentAction(restoreOpenDocument); }, []);
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, sans-serif', color: '#e0e0e0', background: '#1a1a2e' }}>

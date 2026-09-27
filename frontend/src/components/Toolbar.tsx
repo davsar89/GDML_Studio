@@ -1,47 +1,8 @@
 import { useEffect } from 'react';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
-import { clearAllGeometries } from './Viewport/geometryCache';
+import { loadDocument } from '../utils/refresh';
 import { runDocumentAction, resolveMaterialDraft, resolveDocumentReplacement, exportCurrentDocument } from '../utils/documentActions';
-
-/** Scan GDML text for <file name="..."> references and return the referenced filenames. */
-function findFileRefs(content: string): string[] {
-  const refs: string[] = [];
-  const re = /<file\s[^>]*name\s*=\s*"([^"]+)"/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) {
-    refs.push(m[1]);
-  }
-  return refs;
-}
-
-/**
- * Given a map of filename→content, determine the "main" file.
- * The main file is the one that references other files via <file> but is not
- * itself referenced by any other file.  Falls back to the first file.
- */
-function detectMainFile(files: Record<string, string>): string {
-  const names = Object.keys(files);
-  if (names.length === 1) return names[0];
-
-  const referencedNames = new Set<string>();
-  const refCountMap: Record<string, number> = {};
-
-  for (const [name, content] of Object.entries(files)) {
-    const refs = findFileRefs(content);
-    refCountMap[name] = refs.length;
-    for (const r of refs) referencedNames.add(r);
-  }
-
-  // Main = references others but is not referenced itself
-  for (const name of names) {
-    if (refCountMap[name] > 0 && !referencedNames.has(name)) {
-      return name;
-    }
-  }
-  // Fallback: the one with the most references
-  return names.sort((a, b) => (refCountMap[b] || 0) - (refCountMap[a] || 0))[0];
-}
 
 export default function Toolbar() {
   const loading = useAppStore((s) => s.loading);
@@ -70,44 +31,13 @@ export default function Toolbar() {
     input.accept = '.gdml';
     input.multiple = true;
     input.onchange = async () => {
-      const fileList = input.files;
-      if (!fileList || fileList.length === 0) return;
-
+      const files = Array.from(input.files ?? []);
+      if (files.length === 0) return;
       await runDocumentAction(async () => {
         if (!await resolveDocumentReplacement()) return;
-        const store = useAppStore.getState();
-        store.setLoading(true);
-        let uploaded = false;
-        try {
-          const fileMap: Record<string, string> = {};
-          for (const file of Array.from(fileList)) fileMap[file.name] = await file.text();
-          const result = fileList.length === 1
-            ? await api.uploadFile(fileList[0].name, fileMap[fileList[0].name])
-            : await api.uploadFiles(fileMap, detectMainFile(fileMap));
-          uploaded = true;
-          const [meshData, defData, structData, matData] = await Promise.all([
-            api.getMeshes(), api.getDefines(), api.getStructure(), api.getMaterials(),
-          ]);
-          clearAllGeometries();
-          useAppStore.setState({
-            summary: result, warnings: [...(result.warnings ?? []), ...(meshData.warnings ?? [])],
-            meshes: meshData.meshes, sceneGraph: meshData.scene_graph,
-            defines: defData.defines, volumes: structData.volumes,
-            materials: matData.materials, elements: matData.elements,
-            selectedVolume: null, selectedMaterial: null, hiddenInstances: new Set(),
-            materialDraft: null, draftError: null, dirty: false, editRevision: 0,
-            measureMode: false, measurements: [], pendingPoint: null,
-            hoverSnap: null, hoverCandidates: [], surfaceCandidates: [], contextMenu: null,
-          });
-        } catch (e: unknown) {
-          // A rejected upload leaves the previous backend document intact.
-          // If fetching its replacement failed, discard the mismatched preview.
-          if (uploaded) store.reset();
-          const message = e instanceof Error ? e.message : String(e);
-          store.setError(`Failed to load ${Array.from(fileList).map((f) => f.name).join(', ')}: ${message}`);
-        } finally {
-          store.setLoading(false);
-        }
+        await loadDocument(async () => api.uploadFiles(Object.fromEntries(
+          await Promise.all(files.map(async (file) => [file.name, await file.text()])),
+        )), files.map((file) => file.name).join(', '));
       });
     };
     input.click();

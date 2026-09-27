@@ -76,3 +76,12 @@ describe('unsaved-changes tracking', () => {
   });
 
 });
+
+describe('uploadFiles', () => {
+  it('detectMainFile handles single-quoted refs', async () => {
+    const fetchMock = mockFetch(true, {});
+    vi.stubGlobal('fetch', fetchMock);
+    await api.uploadFiles({ 'child.gdml': '<gdml/>', 'mother.gdml': "<gdml><file name='child.gdml'/></gdml>" });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).main_file).toBe('mother.gdml');
+  });
+});

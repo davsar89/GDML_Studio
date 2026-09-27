@@ -83,37 +83,22 @@ interface AppState {
 
   reset: () => void;
 }
-export const useAppStore = create<AppState>((set, get) => ({
-  loading: false,
-  error: null,
-  warnings: [],
-  dirty: false,
-  editRevision: 0,
-  documentBusy: false,
-  decision: null,
-  materialDraft: null,
-  draftError: null,
-  summary: null,
-  meshes: {},
-  sceneGraph: null,
-  defines: [],
-  volumes: [],
-  materials: [],
-  elements: [],
-  selectedVolume: null,
-  selectedMaterial: null,
-  activeTreeTab: 'structure',
-  meshOpacity: 1.0,
-  hiddenInstances: new Set<string>(),
-  contextMenu: null,
 
-  // Measurement defaults
-  measureMode: false,
-  measurements: [],
-  pendingPoint: null,
-  hoverSnap: null,
-  hoverCandidates: [],
-  surfaceCandidates: [],
+/** Everything that belongs to the open document; loading or resetting replaces all of it. */
+export const emptyDocument = () => ({
+  summary: null, warnings: [], meshes: {}, sceneGraph: null, defines: [], volumes: [], materials: [], elements: [],
+  dirty: false, editRevision: 0, materialDraft: null, draftError: null,
+  selectedVolume: null, selectedMaterial: null, hiddenInstances: new Set<string>(), contextMenu: null,
+  measureMode: false, measurements: [], pendingPoint: null, hoverSnap: null, hoverCandidates: [], surfaceCandidates: [],
+}) satisfies Partial<AppState>;
+
+const initialState = () => ({
+  ...emptyDocument(),
+  loading: false, error: null, documentBusy: false, decision: null, activeTreeTab: 'structure', meshOpacity: 1.0,
+}) satisfies Partial<AppState>;
+
+export const useAppStore = create<AppState>((set, get) => ({
+  ...initialState(),
 
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
@@ -212,35 +197,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   reset: () => {
     get().decision?.resolve('cancel');
     clearAllGeometries();
-    set({
-      loading: false,
-      error: null,
-      warnings: [],
-      dirty: false,
-      editRevision: 0,
-      documentBusy: false,
-      decision: null,
-      materialDraft: null,
-      draftError: null,
-      summary: null,
-      meshes: {},
-      sceneGraph: null,
-      defines: [],
-      volumes: [],
-      materials: [],
-      elements: [],
-      selectedVolume: null,
-      selectedMaterial: null,
-      activeTreeTab: 'structure',
-      meshOpacity: 1.0,
-      hiddenInstances: new Set<string>(),
-      contextMenu: null,
-      measureMode: false,
-      measurements: [],
-      pendingPoint: null,
-      hoverSnap: null,
-      hoverCandidates: [],
-      surfaceCandidates: [],
-    });
+    set(initialState());
   },
 }));

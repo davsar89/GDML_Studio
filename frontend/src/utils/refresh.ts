@@ -1,5 +1,46 @@
 import * as api from '../api/client';
-import { useAppStore } from '../store';
+import { useAppStore, emptyDocument } from '../store';
+import type { DocumentSummary } from '../store/types';
+import { clearAllGeometries } from '../components/Viewport/geometryCache';
+
+/**
+ * Show the document `upload` makes current in the backend, replacing the
+ * client's copy wholesale. `what` names it in the error message.
+ */
+export async function loadDocument(upload: () => Promise<DocumentSummary>, what: string): Promise<void> {
+  const store = useAppStore.getState();
+  store.setLoading(true);
+  let uploaded = false;
+  try {
+    const summary = await upload();
+    uploaded = true;
+    const [meshData, defData, structData, matData] = await Promise.all([
+      api.getMeshes(), api.getDefines(), api.getStructure(), api.getMaterials(),
+    ]);
+    clearAllGeometries();
+    useAppStore.setState({
+      ...emptyDocument(),
+      summary, warnings: [...(summary.warnings ?? []), ...(meshData.warnings ?? [])],
+      meshes: meshData.meshes, sceneGraph: meshData.scene_graph,
+      defines: defData.defines, volumes: structData.volumes,
+      materials: matData.materials, elements: matData.elements,
+    });
+  } catch (e: unknown) {
+    // A rejected upload leaves the previous backend document intact.
+    // If fetching its replacement failed, discard the mismatched preview.
+    if (uploaded) store.reset();
+    store.setError(`Failed to load ${what}: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    store.setLoading(false);
+  }
+}
+
+/** After a page reload, show the document the backend still holds. */
+export async function restoreOpenDocument(): Promise<void> {
+  // Nothing loaded (404) or no backend: start empty, as before any Open.
+  const summary = await api.getSummary().catch(() => null);
+  if (summary) await loadDocument(async () => summary, summary.filename);
+}
 
 /** Refresh just the materials + elements lists from the backend. */
 export function refreshMaterials(): Promise<void> {

@@ -23,23 +23,32 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function uploadFile(filename: string, content: string) {
-  return fetchJson<DocumentSummary>('/api/files/upload', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename, content }),
-  });
+/**
+ * The main file references others via <file name=".."> but is not itself
+ * referenced. Falls back to the file with the most references.
+ */
+function detectMainFile(files: Record<string, string>): string {
+  const refs: Record<string, string[]> = {};
+  for (const [name, content] of Object.entries(files)) {
+    refs[name] = Array.from(content.matchAll(/<file\s[^>]*name\s*=\s*(["'])(.*?)\1/g), (m) => m[2]);
+  }
+  const referenced = new Set(Object.values(refs).flat());
+  const names = Object.keys(files);
+  return names.find((name) => refs[name].length > 0 && !referenced.has(name))
+    ?? names.sort((a, b) => refs[b].length - refs[a].length)[0];
 }
 
-export async function uploadFiles(
-  files: Record<string, string>,
-  mainFile: string,
-) {
+/** Upload one file or a modular set; the backend keeps the result as the open document. */
+export async function uploadFiles(files: Record<string, string>) {
   return fetchJson<DocumentSummary>('/api/files/upload-multi', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ files, main_file: mainFile }),
+    body: JSON.stringify({ files, main_file: detectMainFile(files) }),
   });
+}
+
+export async function getSummary() {
+  return fetchJson<DocumentSummary>('/api/document/summary');
 }
 
 export async function getMeshes() {

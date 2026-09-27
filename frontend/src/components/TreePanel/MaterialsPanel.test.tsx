@@ -37,7 +37,7 @@ beforeEach(() => {
   useAppStore.setState({ summary, materials: serverMaterials, selectedMaterial: 'M' });
   // Keep the real client: serialization, HTTP errors and dirty tracking must
   // execute in production code, not be reproduced by an API mock.
-  for (const name of ['updateMaterial', 'addElement', 'exportGdml', 'uploadFile'] as const) vi.spyOn(api, name);
+  for (const name of ['updateMaterial', 'addElement', 'exportGdml', 'uploadFiles'] as const) vi.spyOn(api, name);
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const path = url.split('?')[0];
     let body: unknown;
@@ -59,7 +59,7 @@ beforeEach(() => {
       case '/api/document/export':
         exportedDensity = serverMaterials[0].density?.value;
         body = { gdml: `<gdml density="${exportedDensity}"/>`, filename: summary.filename }; break;
-      case '/api/files/upload': body = { ...summary, filename: JSON.parse(String(init?.body)).filename }; break;
+      case '/api/files/upload-multi': body = { ...summary, filename: JSON.parse(String(init?.body)).main_file }; break;
       case '/api/nist/materials': body = { materials: [nist] }; break;
       case '/api/nist/material': body = { material: { ...nist, name: 'NewElement', z: 1, atom_value: 1, components: [] } }; break;
       default: throw new Error(`Unexpected request: ${path}`);
@@ -211,11 +211,11 @@ describe('material drafts and document actions', () => {
   it.each(['Save', 'Discard', 'Cancel'])('protects applied unsaved changes on file replacement: %s', async (choice) => {
     const user = mount(); act(() => useAppStore.getState().markDirty());
     await chooseFile(user);
-    expect(mocked.uploadFile).not.toHaveBeenCalled();
+    expect(mocked.uploadFiles).not.toHaveBeenCalled();
     await choose(user, choice);
     await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
     expect(mocked.exportGdml).toHaveBeenCalledTimes(choice === 'Save' ? 1 : 0);
-    expect(mocked.uploadFile).toHaveBeenCalledTimes(choice === 'Cancel' ? 0 : 1);
+    expect(mocked.uploadFiles).toHaveBeenCalledTimes(choice === 'Cancel' ? 0 : 1);
     expect(useAppStore.getState().summary?.filename).toBe(choice === 'Cancel' ? 'original.gdml' : 'next.gdml');
   });
 
@@ -248,7 +248,7 @@ describe('material drafts and document actions', () => {
     vi.mocked(fetch).mockRejectedValueOnce(new Error('Export failed'));
     await chooseFile(user); await choose(user, 'Save');
     await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
-    expect(mocked.uploadFile).not.toHaveBeenCalled();
+    expect(mocked.uploadFiles).not.toHaveBeenCalled();
     expect(useAppStore.getState().dirty).toBe(true);
   });
 
