@@ -163,15 +163,14 @@ fn corners(rz: &[(f64, f64)]) -> impl Iterator<Item = (f64, f64, bool)> + '_ {
 }
 
 /// Solid `S` declared by `xml`, through the real path: parser, evaluator and
-/// tessellator.
-fn solid(xml: &str) -> TriangleMesh {
+/// tessellator; and the warnings.
+fn solid(xml: &str) -> (Option<TriangleMesh>, Vec<String>) {
     let gdml = format!("<gdml><solids>{xml}</solids></gdml>");
     let doc = parse_gdml_from_bytes(gdml.as_bytes(), "t.gdml".into()).unwrap();
     let mut engine = EvalEngine::new();
     engine.evaluate_all(&doc.defines).unwrap();
     let (mut meshes, warnings) = tessellate_all_solids(&doc.solids, &engine, SEG).unwrap();
-    assert!(warnings.is_empty(), "{xml}: {warnings:?}");
-    meshes.remove("S").unwrap()
+    (meshes.remove("S"), warnings)
 }
 
 /// Once vertices within 1e-4 mm are welded, every edge bounds exactly two
@@ -297,6 +296,14 @@ fn revolved_and_elliptical_solids_match_geant4() {
             45.0 * d * (frustum(20.0, 10.0, 5.0) - frustum(20.0, 2.0, 2.0)),
         ),
         (
+            // G4Cons::Inside keeps rmin(z) <= r <= rmax(z): of walls that
+            // cross, only the part where rmin < rmax is solid. Was -7%, with
+            // the rest inside out.
+            "cone, crossing walls, quarter",
+            r#"<cone name="S" rmin1="8" rmax1="6" rmin2="2" rmax2="10" z="20" deltaphi="90" aunit="deg"/>"#,
+            45.0 * d * (frustum(16.0, 6.8, 10.0) - frustum(16.0, 6.8, 2.0)),
+        ),
+        (
             "cone, apex",
             r#"<cone name="S" rmax1="10" rmax2="0" z="20"/>"#,
             PI * frustum(20.0, 10.0, 0.0),
@@ -404,10 +411,25 @@ fn revolved_and_elliptical_solids_match_geant4() {
         ),
     ];
     for (name, xml, volume) in cases {
-        let m = solid(xml);
+        let (m, warnings) = solid(xml);
+        assert!(warnings.is_empty(), "{name}: {warnings:?}");
+        let m = m.unwrap();
         assert_volume(&m, volume, 0.01, name);
         assert_closed(&m, name);
         assert_unit_normals(&m, name);
+    }
+}
+
+#[test]
+fn parameters_geant4_rejects_are_reported() {
+    for xml in [
+        // G4Tubs: rmin >= rmax.
+        r#"<tube name="S" rmin="10" rmax="5" z="20"/>"#,
+        // G4Polycone.cc:80: rInner > rOuter at a plane.
+        r#"<polycone name="S"><zplane z="-5" rmin="12" rmax="10"/><zplane z="5" rmax="10"/></polycone>"#,
+    ] {
+        let (m, warnings) = solid(xml);
+        assert!(m.is_none() && warnings.len() == 1, "{xml}: {warnings:?}");
     }
 }
 

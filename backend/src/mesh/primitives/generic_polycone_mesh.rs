@@ -143,7 +143,17 @@ pub fn tessellate_generic_polycone(
 
     // ─── Flat faces closing a partial sweep ──────────────────────────────────
     if !full_circle {
-        let tris = ear_clip_triangulate(&xy_of(&pts), true);
+        // An outline that touches the axis mid-way (a polycone pinched to a
+        // point) leaves a zero-area ear along the axis: drop it.
+        let xy = xy_of(&pts);
+        let mut tris = ear_clip_triangulate(&xy, true);
+        tris.retain(|&[a, b, c]| {
+            let (u, v) = (
+                (xy[b].0 - xy[a].0, xy[b].1 - xy[a].1),
+                (xy[c].0 - xy[a].0, xy[c].1 - xy[a].1),
+            );
+            (u.0 * v.1 - u.1 * v.0).abs() > 1e-12
+        });
         for (is_start, k) in [(true, 0), (false, steps as usize)] {
             let (s, c) = sc[k];
             // -phi_hat on the start face, +phi_hat on the end face.

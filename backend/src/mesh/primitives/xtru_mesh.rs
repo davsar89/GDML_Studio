@@ -186,9 +186,12 @@ pub(crate) fn ear_clip_triangulate(vertices: &[(f64, f64)], ccw: bool) -> Vec<[u
             let b = vertices[remaining[i]];
             let c = vertices[remaining[next]];
 
-            // Check if this vertex is convex (cross product > 0 for CCW)
+            // Check if this vertex is convex (cross product > 0 for CCW). A
+            // vertex collinear within rounding is not: clipping it would leave
+            // a zero-area ear whose neighbours meet it in a T-junction.
             let cross = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
-            if cross <= 0.0 {
+            let scale = (b.0 - a.0).hypot(b.1 - a.1) * (c.0 - a.0).hypot(c.1 - a.1);
+            if cross <= 1e-12 * scale {
                 safety -= 1;
                 continue;
             }

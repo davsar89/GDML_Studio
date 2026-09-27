@@ -4,14 +4,15 @@ use std::f64::consts::PI;
 
 use super::csg;
 use super::primitives::{
-    arb8_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, face_normal,
-    generic_polycone_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh,
-    torus_mesh, tube_mesh, twisted_trap_mesh, twisted_tubs_mesh, xtru_mesh,
+    arb8_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, face_normal,
+    generic_polycone_mesh, hype_mesh, paraboloid_mesh, sphere_mesh, torus_mesh, twisted_trap_mesh,
+    twisted_tubs_mesh, xtru_mesh,
 };
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
 use crate::gdml::units;
+use generic_polycone_mesh::tessellate_generic_polycone as revolve;
 
 pub fn tessellate_all_solids(
     solids: &SolidSection,
@@ -399,12 +400,20 @@ fn tessellate_tube_solid(
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
-    let z = resolve_with_lunit(engine, &s.z, lunit);
+    let h = resolve_with_lunit(engine, &s.z, lunit) / 2.0;
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
-    Ok(tube_mesh::tessellate_tube(
-        rmin, rmax, z, startphi, deltaphi, segments,
-    ))
+    // G4Tubs refuses rmin >= rmax and a length that is not positive.
+    if rmin >= rmax || h <= 0.0 {
+        return Ok(TriangleMesh::default());
+    }
+    let outline = [(rmin, -h), (rmax, -h), (rmax, h), (rmin, h)].map(corner);
+    Ok(revolve(outline, startphi, deltaphi, segments, None))
+}
+
+/// An outline point where the surface creases.
+fn corner((r, z): (f64, f64)) -> (f64, f64, bool) {
+    (r, z, false)
 }
 
 fn tessellate_cone_solid(
@@ -418,11 +427,29 @@ fn tessellate_cone_solid(
     let rmax1 = resolve_with_lunit(engine, &s.rmax1, lunit);
     let rmin2 = resolve_opt_with_lunit(engine, &s.rmin2, lunit);
     let rmax2 = resolve_with_lunit(engine, &s.rmax2, lunit);
-    let z = resolve_with_lunit(engine, &s.z, lunit);
+    let h = resolve_with_lunit(engine, &s.z, lunit) / 2.0;
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
-    Ok(cone_mesh::tessellate_cone(
-        rmin1, rmax1, rmin2, rmax2, z, startphi, deltaphi, segments,
+    // G4Cons::Inside keeps rmin(z) <= r <= rmax(z). G4Cons accepts walls that
+    // cross (rmin > rmax at one end); only the part where rmin < rmax is
+    // solid, so the outline starts at the crossing.
+    let (w1, w2) = (rmax1 - rmin1, rmax2 - rmin2);
+    if h <= 0.0 || (w1 <= 0.0 && w2 <= 0.0) {
+        return Ok(TriangleMesh::default());
+    }
+    let t = w1 / (w1 - w2);
+    let cross = (rmin1 + t * (rmin2 - rmin1), h * (2.0 * t - 1.0));
+    let outline = match (w1 > 0.0, w2 > 0.0) {
+        (false, _) => vec![cross, (rmax2, h), (rmin2, h)],
+        (_, false) => vec![(rmin1, -h), (rmax1, -h), cross],
+        _ => vec![(rmin1, -h), (rmax1, -h), (rmax2, h), (rmin2, h)],
+    };
+    Ok(revolve(
+        outline.into_iter().map(corner),
+        startphi,
+        deltaphi,
+        segments,
+        None,
     ))
 }
 
@@ -684,9 +711,22 @@ fn tessellate_polyhedra_solid(s: &PolyhedraSolid, engine: &EvalEngine) -> Result
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     let numsides = polyhedra_sides(engine, &s.numsides)?;
+    // `<polyhedra>` radii are apothems: G4Polyhedra.cc:96 turns them into
+    // corner radii, dividing by cos(dphi / 2n).
+    let planes = zplanes(engine, &s.zplanes, lunit);
+    let corner_radius = 1.0 / (deltaphi / (2.0 * numsides as f64)).cos();
+    Ok(revolve(
+        pcon_outline(&planes, corner_radius),
+        startphi,
+        deltaphi,
+        numsides,
+        Some(numsides),
+    ))
+}
 
-    let planes: Vec<(f64, f64, f64)> = s
-        .zplanes
+/// A polycone's or polyhedra's z-planes as (z, rmin, rmax).
+fn zplanes(engine: &EvalEngine, planes: &[ZPlane], lunit: &str) -> Vec<(f64, f64, f64)> {
+    planes
         .iter()
         .map(|zp| {
             let z = resolve_with_lunit(engine, &zp.z, lunit);
@@ -694,11 +734,20 @@ fn tessellate_polyhedra_solid(s: &PolyhedraSolid, engine: &EvalEngine) -> Result
             let rmax = resolve_with_lunit(engine, &zp.rmax, lunit);
             (z, rmin, rmax)
         })
-        .collect();
+        .collect()
+}
 
-    Ok(polyhedra_mesh::tessellate_polyhedra(
-        &planes, startphi, deltaphi, numsides,
-    ))
+/// Geant4's outline of z-planes, from G4ReduciblePolygon's PCON/PGON
+/// constructor: the inner radii from the last plane back to the first, then
+/// the outer radii, all scaled by `scale`. Decreasing z winds it clockwise,
+/// which G4Polycone::Create reverses.
+fn pcon_outline(planes: &[(f64, f64, f64)], scale: f64) -> Vec<(f64, f64, bool)> {
+    let inner = planes.iter().rev().map(|p| (p.1, p.0));
+    let outer = planes.iter().map(|p| (p.2, p.0));
+    inner
+        .chain(outer)
+        .map(|(r, z)| corner((r * scale, z)))
+        .collect()
 }
 
 fn tessellate_cut_tube_solid(
@@ -862,20 +911,17 @@ fn tessellate_polycone_solid(
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
-
-    let planes: Vec<(f64, f64, f64)> = s
-        .zplanes
-        .iter()
-        .map(|zp| {
-            let z = resolve_with_lunit(engine, &zp.z, lunit);
-            let rmin = resolve_opt_with_lunit(engine, &zp.rmin, lunit);
-            let rmax = resolve_with_lunit(engine, &zp.rmax, lunit);
-            (z, rmin, rmax)
-        })
-        .collect();
-
-    Ok(polycone_mesh::tessellate_polycone(
-        &planes, startphi, deltaphi, segments,
+    let planes = zplanes(engine, &s.zplanes, lunit);
+    // G4Polycone refuses rInner > rOuter at any plane (G4Polycone.cc:80).
+    if planes.iter().any(|p| p.1 > p.2) {
+        return Ok(TriangleMesh::default());
+    }
+    Ok(revolve(
+        pcon_outline(&planes, 1.0),
+        startphi,
+        deltaphi,
+        segments,
+        None,
     ))
 }
 
@@ -891,7 +937,7 @@ fn tessellate_generic_polycone_solid(
 
     // The rzpoints are a closed contour in the (r,z) half-plane, revolved about
     // z -- not a list of z-planes.
-    Ok(generic_polycone_mesh::tessellate_generic_polycone(
+    Ok(revolve(
         rz_points(engine, &s.rzpoints, lunit),
         startphi,
         deltaphi,
@@ -973,7 +1019,7 @@ fn tessellate_generic_polyhedra_solid(
 
     // As with genericPolycone, the rzpoints are a closed contour, not z-planes,
     // and their radii are corner radii, used as given (no apothem conversion).
-    Ok(generic_polycone_mesh::tessellate_generic_polycone(
+    Ok(revolve(
         rz_points(engine, &s.rzpoints, lunit),
         startphi,
         deltaphi,
