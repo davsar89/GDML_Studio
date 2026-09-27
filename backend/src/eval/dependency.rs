@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone)]
 pub struct DefineEntry {
@@ -7,7 +7,9 @@ pub struct DefineEntry {
     pub expression: String,
 }
 
-pub fn topological_sort(entries: &[DefineEntry], known: &HashSet<String>) -> Result<Vec<usize>> {
+/// A reference to another define is a dependency even when the name is also a
+/// builtin unit or constant: the user's definition is the one that is used.
+pub fn topological_sort(entries: &[DefineEntry]) -> Result<Vec<usize>> {
     let name_to_idx: HashMap<&str, usize> = entries
         .iter()
         .enumerate()
@@ -21,9 +23,6 @@ pub fn topological_sort(entries: &[DefineEntry], known: &HashSet<String>) -> Res
     for (i, entry) in entries.iter().enumerate() {
         let refs = extract_identifiers(&entry.expression);
         for ref_name in &refs {
-            if known.contains(ref_name.as_str()) {
-                continue; // built-in, no dependency
-            }
             if let Some(&j) = name_to_idx.get(ref_name.as_str()) {
                 if j != i {
                     adj[j].push(i);
@@ -90,6 +89,11 @@ pub fn extract_identifiers(expr: &str) -> Vec<String> {
                 ids.push(current.clone());
             }
             current.clear();
+        } else if c.is_ascii_digit() || c == '.' {
+            // A whole number literal: the exponent in `1e-3` does not name `e`.
+            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '.') {
+                i += 1;
+            }
         } else {
             i += 1;
         }

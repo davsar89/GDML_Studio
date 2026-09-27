@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use evalexpr::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use super::context::EvalContext;
 use super::dependency::{topological_sort, DefineEntry};
@@ -74,12 +74,7 @@ impl EvalEngine {
             });
         }
 
-        // Build known set (builtins)
-        let known: HashSet<String> = self.context.values.keys().cloned().collect();
-
-        // Topological sort
-        let order =
-            topological_sort(&entries, &known).context("Failed to resolve define dependencies")?;
+        let order = topological_sort(&entries).context("Failed to resolve define dependencies")?;
 
         // Build unit map for quantities
         let quantity_units: HashMap<String, String> = defines

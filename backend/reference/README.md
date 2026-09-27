@@ -21,6 +21,11 @@ Taken from `source/` in the upstream tarball:
 | `G4Ellipsoid.cc` | `geometry/solids/specific/src/` | z-cut defaults and clamping |
 | `G4PVReplica.cc` | `geometry/volumes/src/` | replica axis validation |
 | `G4ReplicaNavigation.cc` | `geometry/navigation/src/` | replica placement transforms |
+| `G4GDMLEvaluator.cc` | `persistency/gdml/src/` | the evaluator loads CLHEP math and units; redefining one is fatal |
+| `setStdMath.cc` | `externals/clhep/src/` | `pi`, `e`, `gamma` inside expressions |
+| `setSystemOfUnits.cc` | `externals/clhep/src/` | unit symbols usable inside expressions |
+| `SystemOfUnits.h` | `externals/clhep/include/CLHEP/Units/` | internal unit values (mm, ns, MeV = 1) |
+| `G4UnitsTable.cc` | `global/management/src/` | symbols legal in `lunit`/`aunit`/`unit` attributes |
 
 ## Why the version matters
 

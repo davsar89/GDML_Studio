@@ -1074,3 +1074,30 @@ async fn bad_position_define_warns_instead_of_rejecting() {
     let scene = get_scene(State(state)).await.unwrap().0;
     assert_eq!(scene["scene_graph"]["children"][0]["position"][0], 5.0);
 }
+
+#[tokio::test]
+async fn clhep_units_evaluate_like_geant4() {
+    // G4GDMLEvaluator loads every CLHEP unit in internal units, where mm, ns
+    // and MeV are 1 (setSystemOfUnits.cc, SystemOfUnits.h), so g/cm3 is
+    // 6.2415e18. kg, g, s, ns, perCent and milliradian were undefined here and
+    // evaluated to 0. A define named like a builtin (`e`) is the one used, so
+    // `w` must wait for it; the exponent in `30e-1` does not name it.
+    let xml = document(
+        r#"<constant name="w" value="2*e"/><constant name="e" value="k"/><constant name="k" value="30e-1"/>"#,
+        r#"<box name="U" x="kg/g*milliradian" y="50*perCent*(s/ns)*1e-9*cm" z="1e-18*g/cm3"/>
+        <box name="E" x="w" y="1" z="1"/>"#,
+        r#"<volume name="W"><materialref ref="M"/><solidref ref="U"/></volume>"#,
+    );
+    let state = load(&xml).await;
+    let guard = state.read().await;
+    let loaded = guard.loaded.as_ref().unwrap();
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    for (axis, half) in [(0, 0.5), (1, 2.5), (2, 0.5 * 6.241509074)] {
+        let (lo, hi) = bounds(&loaded.meshes["U"], axis);
+        assert!(
+            (hi / half - 1.0).abs() < 1e-6 && (lo / half + 1.0).abs() < 1e-6,
+            "axis {axis}: {lo}..{hi}"
+        );
+    }
+    assert_eq!(x_bounds(&loaded.meshes["E"]), (-3.0, 3.0));
+}
