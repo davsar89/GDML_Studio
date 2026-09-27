@@ -72,10 +72,6 @@ pub fn search_nist_materials(query: &str, category: Option<&str>) -> Vec<&'stati
         .collect()
 }
 
-// NIST_MATERIALS data is loaded from ../../data/nist_materials.json via LazyLock above.
-// The old static array has been replaced. Marker for next section:
-// G4_H (see nist_materials.json)
-
 // ─── GDML Serializer ────────────────────────────────────────────────────────
 
 /// Which section a raw element should be written into.
@@ -129,7 +125,7 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
 
     // <gdml> root. Reproduce the source's own attributes when we captured them;
     // fall back to the standard schema pair for documents built programmatically
-    // (add_material and the handler tests) which have no source to copy.
+    // (the handler tests) which have no source to copy.
     let mut gdml = BytesStart::new("gdml");
     if doc.root_attributes.is_empty() {
         gdml.push_attribute(("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"));
@@ -144,8 +140,8 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     }
     writer.write_event(Event::Start(gdml))?;
 
-    // Preserved-verbatim elements are re-emitted into the section the schema
-    // requires (e.g. <opticalsurface> in <solids>, <skinsurface> in <structure>).
+    // Preserved-verbatim elements are re-emitted into the section they came
+    // from (e.g. <opticalsurface> in <solids>, <skinsurface> in <structure>).
     let raw_in = |section: &str| -> Vec<&RawElement> {
         doc.raw_unknown
             .iter()
@@ -264,12 +260,8 @@ fn write_materials_define(
 /// cannot drift apart in which attributes they emit.
 ///
 /// Replays `order.define_slots` -- the order the source declared these in --
-/// whenever it lines up with the collections. Emitting one typed collection at
-/// a time instead can move a define ahead of one it references, and
-/// `G4GDMLReadDefine::DefineRead` reads the children in a single forward pass,
-/// evaluating each `value` inline as it goes, so such a file is fatal to load
-/// in Geant4 -- even though this project's own evaluator sorts topologically
-/// and never notices.
+/// whenever it lines up with the collections (why: see
+/// `DocumentOrder::define_slots`).
 ///
 /// A document built programmatically carries no manifest; those fall back to
 /// the grouped order, which is what the rest of the suite expects, and leave
@@ -511,9 +503,7 @@ fn write_materials(
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("materials")))?;
 
-    // GDML allows a <define> nested here; both large samples use one for
-    // universe_mean_density. Defines are global wherever they sit, so the
-    // parser puts them all in one list -- this replays where they came from.
+    // The nested <define>: see `GdmlDocument::materials_define`.
     if let Some(names) = nested {
         write_materials_define(writer, defines, order, names)?;
     }

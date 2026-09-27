@@ -66,7 +66,7 @@ export interface Fraction {
   ref_name: string;
 }
 
-// These interfaces are POSTed back to the backend, which replaces the stored
+// These interfaces are sent back to the backend, which replaces the stored
 // item wholesale. Every field the backend models must appear here, and edit
 // paths must spread the original object rather than rebuild it field by field —
 // anything missing is silently dropped from the user's GDML on export.

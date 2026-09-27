@@ -21,7 +21,7 @@ Reference: `backend/reference/geant4/G4GDMLReadSolids.cc`
 6. [x] **Polyhedra** - Polygonal solid (startphi, deltaphi, numsides + zplanes)
 
 ## Tier 2 - Common
-7. [x] **Ellipsoid** - Ellipsoid with z-cuts (ax, ay, az, zcut1, zcut2)
+7. [x] **Ellipsoid** - Ellipsoid with z-cuts (ax, by, cz, zcut1, zcut2)
 8. [x] **Eltube** - Elliptical tube (dx, dy, dz)
 9. [x] **Tet** - Tetrahedron (4 vertex positions)
 10. [x] **GenericPolycone** - Polycone from (r,z) pairs

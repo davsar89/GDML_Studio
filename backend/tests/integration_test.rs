@@ -91,7 +91,7 @@ fn test_pod_asm_pipeline() {
 
     let result = run_pipeline(&path);
 
-    // 9 solids: box, 5 tubes, polycone, xtru, 2 tube sectors (RACK + WEDGE)
+    // 9 solids: box, 4 tubes, polycone, 3 xtru
     assert_eq!(result.num_solids, 9, "Expected 9 solids");
     assert_eq!(result.num_volumes, 9, "Expected 9 volumes");
     assert_eq!(
@@ -174,8 +174,9 @@ fn test_solids_gdml_pipeline() {
 
     let result = run_pipeline(&path);
 
-    // This file has many solid types; some are not yet supported.
-    // Just verify that supported solids produce meshes and no panics.
+    // This file has many solid types; two (multiunion1, reflectedsphere1)
+    // reference an undefined `s100` and get no mesh. Just verify that meshes
+    // come out and nothing panics.
     assert!(result.num_solids > 0, "Expected at least one solid");
     assert!(result.num_meshes > 0, "Expected at least one mesh");
     assert!(result.total_triangles > 0, "Expected at least one triangle");
@@ -610,12 +611,8 @@ fn mesh_from_solids(solids: &str, name: &str) -> gdml_studio_backend::mesh::type
 fn explicit_zero_deltaphi_sweeps_a_full_circle() {
     // G4Polycone.cc:232 reads a non-positive or >= 2*pi opening angle as
     // "nonsense value as representing no phi opening" -- a complete revolution.
-    // The 2*pi default was only applied when the attribute was ABSENT, so an
-    // explicit deltaphi="0" reached the meshers as a zero-width sweep.
-    //
-    // polycone/polyhedra already normalised this inside their own meshers; the
-    // solids below did not, and each one tessellated to an empty or degenerate
-    // mesh. Normalising in the tessellator now covers all of them uniformly.
+    // The preview applies that rule to these four too, although G4Tubs, G4Cons,
+    // G4Sphere and G4Torus refuse deltaphi <= 0 (see `resolve_delta_phi`).
     let pi = std::f64::consts::PI;
     let cases: Vec<(&str, String, f64)> = vec![
         (
@@ -665,7 +662,8 @@ fn explicit_zero_deltaphi_sweeps_a_full_circle() {
 
 #[test]
 fn negative_and_oversized_deltaphi_also_sweep_a_full_circle() {
-    // The same G4 branch covers phiTotal < 0 and phiTotal >= 2*pi.
+    // The same G4Polycone branch covers phiTotal < 0 and phiTotal >= 2*pi;
+    // G4Tubs agrees on the second only.
     let expected = std::f64::consts::PI * 100.0 * 20.0;
     for delta in ["-1.5", "7.0", "6.283185307179586"] {
         let xml = format!(

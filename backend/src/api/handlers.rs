@@ -374,7 +374,7 @@ fn ensure_material_order(materials: &MaterialSection) -> Result<(), ApiError> {
 }
 
 /// Warn about elements that are preserved verbatim on save but not interpreted
-/// or rendered (e.g. optical surfaces, `<userinfo>`, `<loop>`).
+/// or rendered (e.g. optical surfaces, `<userinfo>`).
 fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
     let mut tags: Vec<&str> = doc.raw_unknown.iter().map(|r| r.tag.as_str()).collect();
     tags.sort_unstable();
@@ -383,11 +383,9 @@ fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
         .into_iter()
         .map(|t| match t {
             // <loop> is a special case: unlike the other preserved tags it is
-            // partly rendered, because its body is read as if the loop wrapper
-            // were not there. The generic wording was wrong in both directions.
-            // Expansion feeds a separate render document, so the solid and
-            // volume COUNTS in the summary still come from the source and
-            // report the loop as written rather than as drawn.
+            // expanded and drawn. Expansion feeds a separate render document,
+            // so the solid and volume COUNTS in the summary still come from
+            // the source and report the loop as written rather than as drawn.
             "loop" => "<loop> is expanded for the 3D view and preserved exactly as written \
                        on save. The summary counts the loop once, not once per iteration."
                 .to_string(),
@@ -2040,9 +2038,6 @@ mod tests {
 
     #[test]
     fn scene_warnings_are_deduped_with_counts() {
-        // Warnings are raised per placement, so a replicavol nested inside a
-        // 16x16 replica reported the same line 256 times. pinhole_lab.gdml
-        // produced 277 warnings of which 4 were distinct.
         let mut w = vec![
             "alpha".to_string(),
             "beta".to_string(),
@@ -2086,7 +2081,8 @@ mod tests {
         assert_eq!(xs, vec![-15.0, -5.0, 5.0, 15.0]);
         assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
     }
-    /// Build a scene whose world replicates "Slice" along `axis`.
+    /// Build a scene whose world replicates "Slice" along `curvilinear`, or
+    /// `direction` when that is `None`.
     fn replica_scene(
         curvilinear: Option<&str>,
         direction: [Option<String>; 3],

@@ -49,8 +49,6 @@ describe('refreshMaterialsAndScene', () => {
 
     await refreshMaterialsAndScene();
 
-    // Logging this to the console would leave the materials list updated while
-    // the 3D view still showed pre-edit colours, with no sign anything failed.
     expect(useAppStore.getState().error).toContain('backend exploded');
   });
 });

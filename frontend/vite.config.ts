@@ -24,7 +24,7 @@ export default defineConfig({
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
     // Viewport components need a WebGL context jsdom does not provide, so
-    // only their pure three.js math (snapUtils) is tested here.
+    // only their pure three.js code (snapUtils, geometryCache) is tested here.
     include: ['src/**/*.test.{ts,tsx}'],
   },
 })

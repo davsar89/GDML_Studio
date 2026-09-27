@@ -12,7 +12,8 @@
 ```typescript
 import { create } from 'zustand'
 
-// v5 TypeScript: must use curried form create<T>()()
+// TypeScript: curried create<T>()() is required with middleware;
+// without it create<T>(...) also works (as in src/store/index.ts)
 interface AppState {
   count: number
   loading: boolean
@@ -309,7 +310,7 @@ devtools(persist(subscribeWithSelector(immer((set) => ({ ... })))))
 
 ## 5. TypeScript
 
-### Curried Create (Required in v5)
+### Curried Create (required with middleware)
 
 ```typescript
 // v5: create<Type>()((set) => ...)  — note the double ()()

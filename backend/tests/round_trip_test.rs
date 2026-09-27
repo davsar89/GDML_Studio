@@ -1,8 +1,8 @@
 //! Round-trip fidelity harness.
 //!
 //! GDML Studio can export the document it loaded, so anything the parser drops
-//! is deleted from the user's file. `parser.rs` is the largest file in the
-//! backend and had no unit tests, so this exists to make changes to it safe.
+//! is deleted from the user's file. `parser.rs` had no unit tests, so this
+//! exists to make changes to it safe.
 //!
 //! Three levels, cheapest first:
 //!
@@ -134,8 +134,7 @@ fn token_counts(xml: &str) -> HashMap<String, usize> {
 /// Assert every token in `src` survives into `out`.
 ///
 /// A subset check rather than equality, because the writer legitimately adds the
-/// `<gdml>` schema attributes (it hardcodes them, which is itself a known gap —
-/// see the corpus test's exemption list).
+/// `<gdml>` schema attributes to a root that had none.
 fn assert_tokens_preserved(src: &str, out: &str) {
     let before = token_counts(src);
     let after = token_counts(out);
@@ -310,9 +309,9 @@ fn non_self_closed_leaf_children_are_read() {
     // Seven body readers matched Event::Empty only, so `<zplane ...></zplane>`
     // — legal XML that a DOM serialiser will happily emit — was silently
     // skipped, leaving e.g. a polycone with zero z-planes and no warning.
-    // These children are schema leaves, so the merged Empty|Start arm is safe:
-    // the reader's End arm is name-guarded on the parent, so the child's own
-    // closing tag is ignored.
+    // These children are schema leaves, so `for_each_child` hands Start and
+    // Empty to the reader alike: its End arm is name-guarded on the parent, so
+    // the child's own closing tag is ignored.
     let cases: &[(&str, &str, usize)] = &[
         (
             "polycone",
@@ -768,12 +767,7 @@ fn nested_materials_define_stays_in_materials() {
         "top-level define emitted twice:\n{xml}"
     );
 
-    // And it survives a second trip. Compared as a set: the writer emits each
-    // typed collection in turn (all constants, then all quantities, ...), so a
-    // block mixing kinds comes back permuted. That reordering is pre-existing
-    // and applies to the top-level <define> just the same — `evaluate_all`
-    // topologically sorts, so it is harmless here, and it is not something this
-    // change introduced.
+    // And it survives a second trip (compared as a set).
     let doc2 = parse_gdml_from_bytes(xml.as_bytes(), "t2.gdml".to_string()).unwrap();
     let mut a = doc.materials_define.clone().unwrap();
     let mut b = doc2.materials_define.clone().unwrap();
@@ -804,7 +798,7 @@ fn a_document_without_a_nested_define_does_not_grow_one() {
 fn defines_are_emitted_in_source_order() {
     // G4GDMLReadDefine::DefineRead walks the <define> children once, in document
     // order, and evaluates each `value` inline as it reads it
-    // (G4GDMLReadDefine.cc:601 and :203). Emitting the collections one type at a
+    // (G4GDMLReadDefine.cc:602 and :204). Emitting the collections one type at a
     // time -- every constant, then every quantity, ... -- can therefore put a
     // define ahead of one it references and produce a file Geant4 refuses to
     // load, which this project's own evaluator never notices because

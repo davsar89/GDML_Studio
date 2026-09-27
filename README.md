@@ -69,7 +69,7 @@ Vite will print a local URL (typically `http://localhost:5173`).
 
 ### 4. Use the application
 
-Open the Vite URL in your browser, click **Open File**, and select a `.gdml` file (e.g. one of the sample files below).
+Open the Vite URL in your browser, click **Open File(s)**, and select a `.gdml` file (e.g. one from [`sample_data/`](sample_data/README.md)). A geometry split across files with `<file>` needs all of its files selected together.
 
 ### Material Editor
 
@@ -78,7 +78,7 @@ The **Materials** tab in the left panel lists all materials and elements defined
 - **Density** — edit the numeric value and choose a unit (g/cm3, kg/m3, mg/cm3)
 - **Formula** — set or clear the chemical formula
 - **Z** — set or clear the atomic number (for simple materials)
-- **Components** — add or remove element references with fraction or composite weights
+- **Components** — add or remove element or material references with fraction or composite weights
 - **Name** — rename the material and update its references
 
 Use **NIST Material Lookup** to prepare a material from the built-in database of 309 Geant4 predefined materials. Fields, composition, renaming, and any missing NIST elements stay in a draft until **Apply** commits them together. **Cancel** restores the last applied material. Invalid edits remain in the editor for correction.
@@ -93,7 +93,7 @@ The toolbar provides two export options. Both **download** a GDML file through
 the browser — neither writes to the file you opened, and the backend never
 touches your filesystem. Your original file on disk is left untouched.
 
-- **Save** — downloads the current state (materials, elements, volumes) using the original filename
+- **Save** — downloads the current document under its filename (the opened file's, or the last Save As name)
 - **Save As** — same, but prompts for the filename first
 
 Save and material selection resolve pending drafts with **Apply / Discard / Cancel**.
@@ -116,21 +116,8 @@ volumes before their parents.
 
 ## Sample Files
 
-GDML files are included in `sample_data/` for quick testing:
-
-| File | Size | Description |
-|------|------|-------------|
-| `sample_data/BgoDetModel_v2_00.gdml` | 160 KB | BGO detector model |
-| `sample_data/NaiDetModelWithMLI_v2_00.gdml` | 169 KB | NaI detector model with MLI |
-| `sample_data/solids.gdml` | 15 KB | Widest solid-type coverage |
-| `sample_data/pinhole_lab.gdml` | 13 KB | Boolean/CSG-heavy geometry with nested replicas |
-| `sample_data/pod_asm.gdml` | 12 KB | POD assembly |
-| `sample_data/fermi_simple_elements_satellite.gdml` | 7.6 KB | Fermi satellite simple geometry |
-| `sample_data/test_all_features.gdml` | 6.5 KB | Test file exercising all solid types |
-| `sample_data/test_modular_mother.gdml` | 1.4 KB | Multi-file `<file>`-inclusion demo (with `test_modular_child.gdml`) |
-| `sample_data/pod_asm_tessellated.gdml` | **6.7 MB** | Tessellated POD assembly, 44,408 facets — slow to load |
-
-See [`sample_data/README.md`](sample_data/README.md) for the full list and file provenance.
+GDML files for quick testing are in `sample_data/`; see
+[`sample_data/README.md`](sample_data/README.md) for the list and file provenance.
 
 ## Running Tests
 
@@ -140,20 +127,18 @@ cd backend
 cargo test
 
 # Frontend type check, lint and tests
-cd frontend
+cd ../frontend
 npx tsc -b
 npm run lint
 npm test
 ```
 
-> `tsc -b` (build mode) is required, not `tsc --noEmit`. `tsconfig.json` is a
-> solution-style config (`"files": []` plus project references), so a non-build
-> invocation resolves zero input files, checks nothing, and exits 0 regardless of
-> how many type errors exist.
+Use `tsc -b`, not `tsc --noEmit` — see [`frontend/README.md`](frontend/README.md#checks).
 
-Frontend tests run under Vitest in jsdom. They deliberately cover no `Viewport/`
-code — three.js needs a WebGL context jsdom does not provide — so the 3D
-rendering path is still only verified by loading a file in the browser.
+Frontend tests run under Vitest in jsdom. In `Viewport/` they cover only the
+WebGL-free helpers (`snapUtils`, `geometryCache`) — three.js rendering needs a
+WebGL context jsdom does not provide — so the 3D rendering path is still only
+verified by loading a file in the browser.
 
 ## License
 

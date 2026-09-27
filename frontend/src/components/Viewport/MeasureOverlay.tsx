@@ -54,7 +54,7 @@ function SnapCandidates() {
 
   useFrame(() => {
     if (!groupRef.current) return;
-    // Scale all candidate dots based on camera distance to group center
+    // Scale each candidate dot by its own distance from the camera
     groupRef.current.children.forEach((child) => {
       const dist = camera.position.distanceTo(child.position);
       const isActive = child.userData.isActiveSnap;
@@ -97,11 +97,8 @@ function SnapCandidates() {
 
 /** Dashed line using native THREE.Line + LineDashedMaterial */
 function DashedLine({ start, end }: { start: [number, number, number]; end: [number, number, number] }) {
-  // Destructure before the memo so the closure reads six scalars rather than the
-  // two tuples. Callers pass fresh arrays each render, so depending on the tuples
-  // would rebuild the geometry every frame; depending on `start[0]`-style member
-  // expressions instead makes React Compiler infer `start`/`end` and bail out of
-  // optimizing this component entirely.
+  // Destructure so the memo depends on six scalars, not on the tuples' identity
+  // (`start[0]`-style dependencies would trip react-hooks/exhaustive-deps).
   const [sx, sy, sz] = start;
   const [ex, ey, ez] = end;
 

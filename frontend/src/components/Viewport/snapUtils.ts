@@ -61,12 +61,12 @@ function faceCandidates(intersection: THREE.Intersection): SnapCandidate[] {
   ];
 }
 
+const TYPE_PRIORITY: Record<string, number> = { vertex: 0, edge: 1, face: 2 };
+
 /**
  * Deduplicate candidates that are within `eps` world-space distance of each other.
  * Prefers vertex > edge > face when merging.
  */
-const TYPE_PRIORITY: Record<string, number> = { vertex: 0, edge: 1, face: 2 };
-
 function dedup(candidates: SnapCandidate[], eps = 0.01): SnapCandidate[] {
   const out: SnapCandidate[] = [];
   for (const c of candidates) {
@@ -135,8 +135,8 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
   // --- Weld vertices by position ---
   //
   // Edges must be keyed by location, not by vertex index. Tessellated solids
-  // arrive fully unwelded — the backend emits three fresh vertices per facet, so
-  // every triangle has its own copies of its corners — and an index-keyed edge
+  // arrive fully unwelded — the backend emits fresh vertices for every facet, so
+  // no two facets share a corner index — and an index-keyed edge
   // map therefore never pairs the two faces that share a geometric edge. Every
   // edge then looked like a boundary edge, so *every* edge and vertex became a
   // "feature": 71,328 candidates for the largest solid in
@@ -216,7 +216,7 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
     candidates.push({ position: mid, type: 'edge' });
   }
 
-  // --- Deduplicate coincident positions (UV seams, shared vertices) ---
+  // --- Deduplicate near-coincident candidates the weld did not merge ---
   let unique = dedup(candidates);
 
   // --- Spatial thinning if still too many points ---

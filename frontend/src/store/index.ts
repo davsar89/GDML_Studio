@@ -12,7 +12,7 @@ interface AppState {
   /**
    * The in-memory document has edits that are not in any file on disk.
    *
-   * Set by every mutating API call (see `markDirty` in `api/client.ts`) and
+   * Set by every mutating API call (see `mutate` in `api/client.ts`) and
    * cleared on load and on a successful export. Note "Save" downloads a copy
    * rather than overwriting the file that was opened, so clearing here means
    * "the user has been given a file matching this state", not "the original

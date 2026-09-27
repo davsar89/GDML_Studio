@@ -53,9 +53,6 @@ describe('ErrorBoundary', () => {
 
     await user.click(screen.getByRole('button', { name: 'Try again' }));
 
-    // Clearing `error` alone would re-render the same children against the same
-    // store state that threw, and the boundary would catch again immediately.
-    // Retry has to drop the document first for this to be reachable at all.
     expect(screen.getByText('recovered')).toBeInTheDocument();
     expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument();
     expect(useAppStore.getState().materials).toEqual([]);

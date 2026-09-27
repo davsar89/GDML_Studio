@@ -536,7 +536,7 @@ mod tests {
     fn integer_result_expressions_evaluate() {
         let e = EvalEngine::new();
         assert_eq!(e.eval_expr("2*3").unwrap(), 6.0);
-        assert_eq!(e.eval_expr("360/8").unwrap(), 45.0); // integer division
+        assert_eq!(e.eval_expr("360/8").unwrap(), 45.0); // integer operands
         assert_eq!(e.eval_expr("10-1").unwrap(), 9.0);
     }
 

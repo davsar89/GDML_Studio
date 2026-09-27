@@ -54,7 +54,7 @@ export async function runDocumentAction(action: () => Promise<void>): Promise<vo
     if (useAppStore.getState().draftError !== message) useAppStore.getState().setError(message);
   } finally {
     useAppStore.setState({ documentBusy: false });
-    // The lock disabled the control that started the action and its dialogs took focus.
+    // The lock may have disabled the control that started the action, and its dialogs took focus.
     // Return focus once React has re-enabled that control, unless the user moved it elsewhere.
     requestAnimationFrame(() => {
       if (initiator instanceof HTMLElement && document.activeElement === document.body) initiator.focus();

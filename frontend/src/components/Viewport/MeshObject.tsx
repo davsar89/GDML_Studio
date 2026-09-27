@@ -19,9 +19,6 @@ interface Props {
 export default function MeshObject({ meshData, color, selected, name, instanceId, solidName, depth, maxDepth }: Props) {
   const meshOpacity = useAppStore((s) => s.meshOpacity);
 
-  // Acquire the shared geometry exactly once per (solidName, meshData) lifetime
-  // and release it once on unmount/change. Acquiring in an effect (not the render
-  // body) keeps the cache's reference count accurate so geometries get disposed.
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | undefined>(() =>
     peekGeometry(solidName),
   );

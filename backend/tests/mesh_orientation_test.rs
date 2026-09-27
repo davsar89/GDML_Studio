@@ -251,7 +251,7 @@ fn revolved_and_elliptical_solids_match_geant4() {
     let frustum = |h: f64, r1: f64, r2: f64| h * (r1 * r1 + r1 * r2 + r2 * r2) / 3.0;
     let sector = |r: f64, t0: f64, t1: f64| r.powi(3) / 3.0 * (t0.cos() - t1.cos());
     let d = PI / 180.0;
-    // Inner radii from the top down, then outer radii back up.
+    // Inner radii from the bottom up, then outer radii back down.
     let steps = [
         (0.0, -15.0),
         (5.0, -10.0),
@@ -275,7 +275,8 @@ fn revolved_and_elliptical_solids_match_geant4() {
             135.0 * d * 75.0 * 20.0,
         ),
         (
-            // G4Polycone.cc:232: a zero opening angle is a full turn.
+            // G4Polycone.cc:232's rule, a zero opening angle is a full turn;
+            // G4Tubs itself refuses it (see `resolve_delta_phi`).
             "tube, deltaphi 0",
             r#"<tube name="S" rmax="10" z="20" deltaphi="0"/>"#,
             PI * 100.0 * 20.0,
@@ -488,7 +489,7 @@ fn parameters_geant4_rejects_are_reported() {
         // G4Hype: rmin >= rmax. G4Paraboloid: rhi <= rlo.
         r#"<hype name="S" rmin="6" rmax="3" z="20"/>"#,
         r#"<paraboloid name="S" rlo="5" rhi="2" dz="10"/>"#,
-        // G4Polycone.cc:80: rInner > rOuter at a plane.
+        // G4Polycone.cc:81: rInner > rOuter at a plane.
         r#"<polycone name="S"><zplane z="-5" rmin="12" rmax="10"/><zplane z="5" rmax="10"/></polycone>"#,
     ] {
         let (m, warnings) = solid(xml);
@@ -524,8 +525,8 @@ fn generic_polycone_revolves_the_closing_edge() {
 
 #[test]
 fn generic_polycone_bicone_still_correct() {
-    // The shape both shipped samples use: a bicone whose closing edge lies on
-    // the z axis. This was already right under the old z-plane mapping, so it
+    // The shape both generic solids in solids.gdml use: a bicone whose
+    // closing edge lies on the z axis. This was already right under the old z-plane mapping, so it
     // guards against the fix regressing the common case.
     let bicone = [(0.0, 10.0), (5.0, 20.0), (0.0, 30.0)];
     // Two cones joined base to base, each h=10, r=5.
@@ -634,7 +635,7 @@ fn remaining_primitives_closed_and_outward() {
         [5.0, -5.0],
     ];
     assert_closed_outward(&tessellate_arb8(10.0, sq_cw), "arb8 box cw");
-    // ...and counter-clockwise, which Geant4 silently accepts by reordering.
+    // ...and counter-clockwise, which Geant4 reorders with a warning.
     let sq_ccw = [
         [-5.0, -5.0],
         [5.0, -5.0],
@@ -698,9 +699,7 @@ fn generic_polyhedra_radii_are_corner_radii_not_apothems() {
 
 #[test]
 fn twisted_tubs_is_a_hyperboloid_not_a_cylinder() {
-    // G4TwistedTubs::SetFields (inline in G4TwistedTubs.hh):
-    //   tanStereo    = |r_mid * tan(twist/2)| / zHalfLength
-    //   endRadius[i] = sqrt(r_mid^2 + endZ[i]^2 * tanStereo^2)
+    // The G4TwistedTubs::SetFields hyperboloid (see `twisted_tubs_mesh`),
     // which closes to r_end = r_mid / cos(twist/2).
     //
     // Meshing at constant radius made the twist geometrically INVISIBLE for a

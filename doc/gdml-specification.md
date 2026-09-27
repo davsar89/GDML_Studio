@@ -98,9 +98,9 @@ Same structure as position. Default unit is `"rad"`.
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | xs:ID | — | Unique identifier |
-| `x` | Expression | "0.0" | X scale factor |
-| `y` | Expression | "0.0" | Y scale factor |
-| `z` | Expression | "0.0" | Z scale factor |
+| `x` | Expression | "1.0" | X scale factor |
+| `y` | Expression | "1.0" | Y scale factor |
+| `z` | Expression | "1.0" | Z scale factor |
 
 ### matrix
 
@@ -495,7 +495,7 @@ Vertices reference positions. `type`: `ABSOLUTE` (default) or `RELATIVE`. Vertic
 
 **twistedbox**: `PhiTwist`, `x`, `y`, `z`
 **twistedtrd**: `PhiTwist`, `x1`, `x2`, `y1`, `y2`, `z`
-**twistedtrap**: `PhiTwist` + all trap parameters
+**twistedtrap**: `PhiTwist`, `z`, `Theta`, `Phi`, `y1`, `x1`, `x2`, `y2`, `x3`, `x4`, `Alph`
 **twistedtubs**: `twistedangle`, `endinnerrad`, `endouterrad`, `zlen`, `phi`
 
 ### 4.25 Boolean Solids
@@ -572,7 +572,7 @@ Position/rotation define the placement of the second solid in the first solid's 
 
 **Type values:** `dielectric_metal`, `dielectric_dielectric`, `dielectric_LUT`, `dielectric_LUTDAVIS`, `dielectric_dichroic`, `firsov`, `x_ray`
 
-**Finish values (30):**
+**Finish values (the 30 non-LUT ones; Geant4 10.7 also accepts the DAVIS `*_LUT` finishes):**
 
 | Finish | Description |
 |--------|-------------|

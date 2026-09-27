@@ -74,10 +74,10 @@ All units derive from CLHEP `SystemOfUnits.h`. Internal base units: mm, ns, MeV,
 | `fermi` | fm | 1e-12 |
 | `angstrom` | Ang | 1e-7 |
 | `nm` | nm | 1e-6 |
-| `um` / `micron` | um | 1e-3 |
+| `um` / `micrometer` | um | 1e-3 (`micron` only inside expressions) |
 | `mm` | mm | 1.0 |
 | `cm` | cm | 10.0 |
-| `dm` | dm | 100.0 |
+| `decimeter` | — | 100.0 (only inside expressions; there is no `dm`) |
 | `m` | m | 1000.0 |
 | `km` | km | 1e6 |
 | `parsec` | pc | ~3.0857e19 |
@@ -89,7 +89,7 @@ All units derive from CLHEP `SystemOfUnits.h`. Internal base units: mm, ns, MeV,
 | `rad` | rad | 1.0 |
 | `mrad` | mrad | 0.001 |
 | `deg` | deg | pi/180 |
-| `sr` | sr | 1.0 (steradian) |
+| `sr` | sr | 1.0 (steradian; a solid angle, not a valid `aunit`) |
 
 ### Energy Units
 
@@ -102,7 +102,7 @@ All units derive from CLHEP `SystemOfUnits.h`. Internal base units: mm, ns, MeV,
 | `GeV` | 1e3 |
 | `TeV` | 1e6 |
 | `PeV` | 1e9 |
-| `J` | ~6.2415e6 |
+| `J` | ~6.2415e12 |
 
 ### Time Units
 
@@ -116,7 +116,7 @@ All units derive from CLHEP `SystemOfUnits.h`. Internal base units: mm, ns, MeV,
 | `minute` | 6e10 |
 | `hour` | 3.6e12 |
 | `day` | 8.64e13 |
-| `year` | ~3.1557e16 |
+| `year` | ~3.1536e16 (365 days) |
 
 ### Mass Units
 
@@ -134,17 +134,8 @@ All units derive from CLHEP `SystemOfUnits.h`. Internal base units: mm, ns, MeV,
 | `bar` | 1e5 Pa |
 | `atm` / `atmosphere` | ~1.01325e5 Pa |
 
-### Temperature
-
-Default: `K` (Kelvin)
-
-### Density
-
-Default: `g/cm3`
-
-### Atomic Mass
-
-Default: `g/mole`
+Default units of material properties (`<D>`, `<atom>`, `<T>`, `<P>`, `<MEE>`): see
+[gdml-specification.md §3](gdml-specification.md#3-materials-section).
 
 ### Magnetic Field
 
@@ -182,7 +173,7 @@ Default: `g/mole`
 |------|-------------|
 | `Bq`, `kBq`, `MBq`, `GBq` | Radioactivity (Becquerel) |
 | `Ci`, `mCi`, `uCi` | Curie |
-| `Gy`, `kGy`, `mGy`, `uGy` | Absorbed dose (Gray) |
+| `Gy`, `kilogray`, `milligray`, `microgray` | Absorbed dose (Gray) |
 | `Sv` | Dose equivalent (Sievert) |
 | `Hz`, `kHz`, `MHz` | Frequency |
 | `W`, `kW`, `MW`, `GW` | Power |
@@ -212,15 +203,7 @@ Textual substitution. Constants/variables from the parent file are accessible.
 
 ### Method 2: `<file>` Element in `<physvol>` (separate scope)
 
-```xml
-<physvol>
-  <file name="subdetector.gdml" volname="SpecificVolume"/>
-  <positionref ref="subdet_pos"/>
-  <rotationref ref="subdet_rot"/>
-</physvol>
-```
-
-Each included file has its own evaluation scope. Parent constants/variables are NOT available.
+Syntax: see [`<physvol>`](gdml-specification.md#physvol-physical-volume-placement). Each included file has its own evaluation scope. Parent constants/variables are NOT available.
 
 ---
 
@@ -275,8 +258,6 @@ Each included file has its own evaluation scope. Parent constants/variables are 
 | `<divisionvol>` | `G4PVDivision` |
 | `<paramvol>` | `G4PVParameterised` |
 
-**Note:** GDML `<box>` takes **full dimensions** while `G4Box` takes half-lengths. The GDML reader divides by 2 automatically.
-
 ---
 
 ## 5. Common Patterns and Pitfalls
@@ -286,7 +267,7 @@ Each included file has its own evaluation scope. Parent constants/variables are 
 1. **Overlapping/protruding daughter volumes** — daughters must fit within mother
 2. **Unit mismatches** — forgetting to set `lunit`/`aunit` (defaults: mm, rad)
 3. **Half-length confusion** — GDML uses full lengths, but some docs reference Geant4 half-lengths
-4. **Incomplete deltaphi** — tubes/cones default to full 2*pi only if deltaphi is omitted; explicit 0 creates nothing
+4. **Omitted deltaphi** — the Geant4 reader defaults `deltaphi` to 0, not 2*pi; always set it
 5. **Name collisions** — XML IDs must be unique across the entire document
 6. **Entity vs file scope** — DOCTYPE entities share parent scope; `<file>` elements don't
 7. **Floating-point at boundaries** — daughter surfaces should not coincide with mother surfaces (use small gap)

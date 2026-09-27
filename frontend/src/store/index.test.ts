@@ -32,7 +32,7 @@ describe('store.reset', () => {
     vi.clearAllMocks();
   });
 
-  it('returns every slice to its empty state and disposes geometries', () => {
+  it('empties the document and disposes geometries', () => {
     useAppStore.setState({ materials: [material('G4_AIR')], warnings: ['something'] });
     const store = useAppStore.getState();
     store.setSelectedMaterial('G4_AIR');

@@ -16,7 +16,7 @@ if (!('ResizeObserver' in globalThis)) {
   } as unknown as typeof ResizeObserver;
 }
 
-// The store is a module-level singleton shared across every test in a file.
+// With `globals: false` Testing Library finds no global afterEach to register its own cleanup.
 afterEach(() => {
   cleanup();
 });

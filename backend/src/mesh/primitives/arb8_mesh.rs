@@ -81,7 +81,7 @@ pub fn tessellate_arb8(dz: f64, vertices: [[f64; 2]; 8]) -> TriangleMesh {
     let mut indices = Vec::with_capacity(12 * 3);
 
     // Geant4's G4GenericTrap expects vertices in clockwise XY order (and
-    // silently reorders counter-clockwise input). Detect the input orientation
+    // reorders counter-clockwise input with a warning). Detect the orientation
     // via the shoelace area of bottom+top quads so both conventions produce an
     // outward-wound mesh.
     let shoelace = |o: usize| -> f64 {

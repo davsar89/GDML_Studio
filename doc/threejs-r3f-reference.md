@@ -132,7 +132,7 @@ object.rotation.order = 'ZYX';
 const quat = new THREE.Quaternion().setFromEuler(euler);
 ```
 
-**GDML note:** GDML rotations with Euler order `'XYZ'` in Three.js correspond to the matrix `Rz * Ry * Rx` (extrinsic), which matches GDML's convention.
+**GDML note:** Three.js `'XYZ'` composes `Rx * Ry * Rz`. Geant4 builds `Rz * Ry * Rx` from a GDML rotation and places a physvol with its inverse, so GDML Studio uses `new THREE.Euler(-x, -y, -z, 'XYZ')` (`Viewport/Scene.tsx`).
 
 ---
 
@@ -296,7 +296,7 @@ const camera = useThree((s) => s.camera);
   gl={{ antialias: true }}
   dpr={[1, 2]}
   shadows
-  frameloop="always"  // 'always' | 'demand' | 'never'
+  frameloop="demand"  // 'always' | 'demand' | 'never'; GDML Studio uses 'demand'
 />
 ```
 

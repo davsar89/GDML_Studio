@@ -11,9 +11,9 @@ contain `<define>`, `<materials>`, `<solids>` and `<structure>` sections.
 | `pinhole_lab.gdml` | 13 KB | Boolean/CSG-heavy geometry with nested replicas |
 | `pod_asm.gdml` | 12 KB | POD assembly; includes materials with `state="gas"` |
 | `fermi_simple_elements_satellite.gdml` | 7.6 KB | Fermi satellite simple geometry |
-| `test_all_features.gdml` | 6.5 KB | Test file exercising all solid types |
+| `test_all_features.gdml` | 6.5 KB | Defines, material forms and auxiliaries; solids limited to box, tube, cone, sphere |
 | `test_modular_child.gdml` | 1.6 KB | Child module for the `<file>`-inclusion demo |
-| `test_modular_mother.gdml` | 1.4 KB | Parent module — open this one to test multi-file loading |
+| `test_modular_mother.gdml` | 1.4 KB | Parent module — open it together with `test_modular_child.gdml` to test multi-file loading |
 | `pod_asm_tessellated.gdml` | **6.7 MB** | Fully tessellated POD assembly (44,408 facets) |
 
 > `pod_asm_tessellated.gdml` is by far the largest file here — larger than

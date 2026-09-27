@@ -27,7 +27,7 @@ pub struct GdmlDocument {
     pub order: DocumentOrder,
     /// Attributes on the `<gdml>` root, captured verbatim. The writer used to
     /// hardcode two xsi attributes, so anything else — most commonly
-    /// `xmlns:gdml`, present in 5 of the 10 shipped samples — was dropped.
+    /// `xmlns:gdml`, present in 4 of the 10 shipped samples — was dropped.
     #[serde(default)]
     pub root_attributes: Vec<(String, String)>,
     /// Names of the defines that appeared inside `<materials><define>` rather
@@ -91,7 +91,7 @@ pub struct DocumentOrder {
     /// constant, then every quantity, and so on — which can move a define ahead
     /// of one it references. `G4GDMLReadDefine::DefineRead` is a single forward
     /// pass over the children and evaluates each `value` inline as it reads it
-    /// (`G4GDMLReadDefine.cc:601` and `:203`), so a forward reference is fatal
+    /// (`G4GDMLReadDefine.cc:602` and `:204`), so a forward reference is fatal
     /// there even though this project's own evaluator sorts topologically and
     /// never notices.
     ///
@@ -132,7 +132,7 @@ pub struct RawElement {
     /// removes the whole class of bug.
     #[serde(default)]
     pub section: String,
-    /// The define, solid or volume this element followed in its section
+    /// The define, material, solid or volume this element followed in its section
     /// (`None`: it opened the section), so the writer can put it back there.
     /// Geant4 reads each section in one pass, so a `<loop>` or `<assembly>`
     /// moved to the end of `<structure>` lands after the volume that places
@@ -659,8 +659,8 @@ impl TessellatedFacet {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TessellatedSolid {
     pub name: String,
-    /// `lunit`/`aunit` are inert for tessellated solids — vertices are resolved
-    /// through named `<position>` defines, which already carry their own units —
+    /// `lunit`/`aunit` are inert for tessellated solids — `TessellatedRead`
+    /// reads only `name`, and each facet's own `lunit` scales its vertices —
     /// but they are written in real files and were dropped on export.
     #[serde(default)]
     pub lunit: Option<String>,
@@ -785,10 +785,10 @@ pub struct Arb8Solid {
 /// `<twistedtubs>`.
 ///
 /// Two mutually exclusive parameterisations, selected by `zlen`
-/// (`G4GDMLReadSolids.cc:3330`): non-zero picks the end-radius form, zero picks
-/// the mid-radius form with explicit z bounds. Note `zlen` is a HALF-length --
-/// it is passed to the constructor's `halfzlen` parameter, which then calls
-/// `SetFields(..., -halfzlen, halfzlen)`.
+/// (`G4GDMLReadSolids.cc:3331`): non-zero picks the end-radius form, zero picks
+/// the mid-radius form with explicit z bounds. `zlen` is the FULL length: the
+/// reader halves it (`G4GDMLReadSolids.cc:3323`) into the constructor's
+/// `halfzlen`.
 ///
 /// The sweep is `totphi / nseg` when `nseg` is given, else `phi`.
 #[derive(Default)]
@@ -797,7 +797,7 @@ pub struct TwistedTubsSolid {
     pub twistedangle: String,
     pub endinnerrad: Option<String>,
     pub endouterrad: Option<String>,
-    /// Half-length, not full length. Absent or zero selects the mid-radius form.
+    /// Full length (the reader halves it). Absent or zero selects the mid-radius form.
     pub zlen: Option<String>,
     pub phi: Option<String>,
     #[serde(default)]
@@ -954,9 +954,9 @@ pub struct ReplicaVol {
     pub direction: [Option<String>; 3],
     /// `"rho"` or `"phi"` when the source replicated along a curvilinear axis.
     ///
-    /// Geant4's `AxisRead` accepts these alongside x/y/z, but only Cartesian
-    /// replication is implemented here — and the axis selector falls through to
-    /// z, so such a replica used to render as a z-stack with nothing said.
+    /// Geant4's `AxisRead` accepts these alongside x/y/z. The scene draws a
+    /// phi replica as rotated copies, and a rho replica as one un-subdivided
+    /// copy with a warning.
     #[serde(default)]
     pub curvilinear_axis: Option<String>,
     pub width: String,

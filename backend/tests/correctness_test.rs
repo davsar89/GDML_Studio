@@ -1118,7 +1118,7 @@ async fn clhep_units_evaluate_like_geant4() {
 #[tokio::test]
 async fn scene_density_uses_the_evaluator() {
     // DRead evaluates `value` as an expression and multiplies by `unit`
-    // (G4GDMLReadMaterials.cc:147-187). The scene parsed the value as a bare
+    // (G4GDMLReadMaterials.cc:147-191). The scene parsed the value as a bare
     // number, so a density given through a define had none.
     let xml = document(
         r#"<constant name="rho" value="2700"/>"#,

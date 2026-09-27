@@ -23,6 +23,7 @@ must be running for anything to load.
 ```bash
 npm run lint
 npx tsc -b
+npm test
 npm run build
 ```
 
@@ -38,12 +39,13 @@ input files, checks nothing, and exits 0 no matter how many type errors exist.
 | `src/store/` | Zustand store and the TypeScript mirrors of the backend's JSON shapes |
 | `src/components/Viewport/` | R3F canvas, scene graph, geometry cache, measurement tools |
 | `src/components/TreePanel/` | Volume tree, volume detail, material and element editors |
-| `src/utils/` | NIST material import, post-edit refresh helpers |
+| `src/utils/` | NIST material import and search, open/save/apply flows, post-edit refresh helpers |
 
 ### A note on `src/store/types.ts`
 
-`MaterialInfo` and `ElementInfo` are POSTed back to the backend, which replaces
-the stored item **wholesale**. Every field the backend models must appear in
+`MaterialInfo` and `ElementInfo` are sent back to the backend whole: a material
+update replaces the stored material **wholesale**, and an added element is
+stored as sent. Every field the backend models must appear in
 these interfaces, and edit paths must spread the original object rather than
 rebuild it field by field — any field omitted from the payload is silently
 dropped from the document and from the exported GDML.

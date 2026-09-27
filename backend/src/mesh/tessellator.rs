@@ -351,22 +351,16 @@ fn resolve_opt_with_aunit(engine: &EvalEngine, expr: &Option<String>, aunit: &st
 /// { phiIsOpen = false; startPhi = 0.; endPhi = twopi; }
 /// ```
 ///
-/// The 2*pi default used to be applied only when the attribute was absent, so
-/// an explicit `deltaphi="0"` -- legal GDML, and a solid object in Geant4 --
-/// reached the meshers as a zero-width sweep. `generic_polycone_mesh`
-/// normalises it itself; torus, cuttube and twistedtubs did not, and
-/// tessellated to nothing.
-/// Doing it here covers every phi-swept solid from one place.
+/// `G4Polyhedra.cc:248` has the same test. Applied here to every solid with a
+/// `deltaphi`, it agrees with Geant4 at or above a full turn only: G4Tubs,
+/// G4Cons, G4Sphere, G4Torus and G4CutTubs (not vendored) reject
+/// `deltaphi <= 0` with a FatalException ("Invalid dphi"), so the preview
+/// draws a full turn where Geant4 refuses the solid.
 ///
-/// Geant4 also forces `startPhi` to 0 inside that branch. That is deliberately
-/// not reproduced: for the revolved solids it is geometrically inert (a full
-/// turn sweeps the same surface wherever it starts), and for the faceted ones
-/// -- polyhedra, genericPolyhedra -- it would rotate the facets to a different
-/// orientation, which `G4Polyhedra.cc` is not vendored to confirm.
-///
-/// The rule is quoted from the one vendored source that states it. Geant4 puts
-/// the other solids through an equivalent phi check, so applying it beyond
-/// polycone is consistent but inferred rather than proven.
+/// G4Polycone also forces `startPhi` to 0 inside that branch; G4Polyhedra
+/// keeps it (`endPhi = startPhi + twopi`). Not reproducing the reset is right
+/// for the faceted solids and inert for the revolved ones, since a full turn
+/// sweeps the same surface wherever it starts.
 fn resolve_delta_phi(engine: &EvalEngine, expr: &Option<String>, aunit: &str) -> f64 {
     const TWO_PI: f64 = 2.0 * PI;
     let raw = match expr {
@@ -562,7 +556,7 @@ fn tessellate_twisted_tubs_solid(
     let twist_angle = resolve_with_aunit(engine, &s.twistedangle, aunit);
 
     // `fDPhi = totphi / nseg` when segmented, else the plain `phi`
-    // (G4TwistedTubs.cc:129, G4GDMLReadSolids.cc:3330).
+    // (G4TwistedTubs.cc:129, G4GDMLReadSolids.cc:3333).
     let nseg = s
         .nseg
         .as_ref()
@@ -957,7 +951,7 @@ fn tessellate_polycone_solid(
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     let planes = zplanes(engine, &s.zplanes, lunit);
-    // G4Polycone refuses rInner > rOuter at any plane (G4Polycone.cc:80).
+    // G4Polycone refuses rInner > rOuter at any plane (G4Polycone.cc:81).
     if planes.iter().any(|p| p.1 > p.2) {
         return Ok(TriangleMesh::default());
     }

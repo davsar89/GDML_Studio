@@ -291,7 +291,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                 }
             }
             // Comments are content: the user wrote them, and export used to
-            // delete every one (155 across 7 of the 10 shipped samples).
+            // delete every one (155 across 6 of the 10 shipped samples).
             // `from_utf8_lossy` without unescaping, deliberately — comment bodies
             // are not XML-escaped, so unescaping would corrupt a literal `&amp;`.
             Ok(Event::Comment(ref e)) => {
@@ -469,9 +469,7 @@ enum Section {
 /// Record a `<define>` child: its position among its siblings, and whether it
 /// came from the nested `<materials><define>` rather than the top-level block.
 ///
-/// Order matters because `G4GDMLReadDefine::DefineRead` reads the children in
-/// one forward pass and evaluates each `value` as it goes, so emitting them
-/// regrouped by type can put a define ahead of one it references.
+/// Order matters: see `DocumentOrder::define_slots`.
 ///
 /// Called for every element at the top-level dispatch point; anything that is
 /// not a define item inside a define block is ignored.
@@ -524,8 +522,8 @@ fn section_key(section: Section) -> String {
 /// Attach any comments seen since the last element to the element now starting.
 ///
 /// Called from the single top-level dispatch point, which every named
-/// define/material/solid/volume and every raw element passes through, so one
-/// hook covers them all.
+/// define/material/solid/volume passes through, so one hook covers them all.
+/// A preserved raw element skips it and carries its comments in its own XML.
 fn anchor_pending_comments(
     pending: &mut Vec<String>,
     order: &mut DocumentOrder,

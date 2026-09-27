@@ -60,9 +60,10 @@ pub(super) fn emit_quad(
 
 /// Drop the coincident and collinear vertices of a closed polygon, across the
 /// wrap too, in one pass as G4GeomTools::RemoveRedundantVertices does for
-/// G4ExtrudedSolid (G4ExtrudedSolid.cc:119-135) and G4Polycone (l.202-203):
-/// a vertex goes when its triangle with the neighbours kept so far has an
-/// edge, or area / longest edge, within 2*kCarTolerance.
+/// G4ExtrudedSolid (G4ExtrudedSolid.cc:119-135): a vertex goes when its
+/// triangle with the neighbours kept so far has an edge, or area / longest
+/// edge, within 2*kCarTolerance. G4Polycone does the same with
+/// G4ReduciblePolygon at kCarTolerance (G4Polycone.cc:202-203).
 /// Non-finite points are dropped; fewer than 3 survivors mean no polygon.
 /// `xy` reads a point's coordinates, so points can carry data along.
 pub(super) fn clean_polygon<T: Copy>(pts: &[T], xy: impl Fn(T) -> (f64, f64)) -> Vec<T> {

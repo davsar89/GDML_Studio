@@ -50,7 +50,7 @@ const materials = new Map<string, THREE.MeshStandardMaterial>();
 /**
  * One material per look, shared by every mesh with that look. A deeper volume is offset
  * further toward the camera, so a daughter wins the faces it shares with its mother.
- * Ceiling: one entry per opacity step used, freed only on load; key on a quantised opacity if that grows.
+ * Ceiling: one entry per opacity step used, freed only on load or reset; key on a quantised opacity if that grows.
  */
 export function sharedMaterial(color: string, selected: boolean, opacity: number, depth: number): THREE.MeshStandardMaterial {
   const key = `${color}|${selected}|${opacity}|${depth}`;

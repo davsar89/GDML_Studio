@@ -13,8 +13,8 @@ pub struct LoadedDocument {
     /// The same document with every `<loop>` expanded, when it had any.
     ///
     /// Geometry is built from this so the preview shows all N placements; the
-    /// source above is untouched. Only `structure` and `solids` are read from
-    /// it. Material reference edits must update both structures through
+    /// source above is untouched. Its materials are never read. Material
+    /// reference edits must update both structures through
     /// `change_material_refs`; density edits use the source material table.
     pub render: Option<GdmlDocument>,
     pub engine: EvalEngine,

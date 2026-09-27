@@ -11,8 +11,8 @@ export default function Toolbar() {
   const hasDraft = useAppStore((s) => s.materialDraft !== null);
   const documentBusy = useAppStore((s) => s.documentBusy);
 
-  // Edits live only in the backend's in-memory document; closing the tab
-  // discards them, and nothing else warns about that.
+  // A draft lives only in this tab and applied edits only in the backend's memory;
+  // a reload restores the applied ones, without the unsaved flag. Nothing else warns about that.
   useEffect(() => {
     if (!dirty && !hasDraft) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();

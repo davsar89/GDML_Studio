@@ -81,7 +81,7 @@ export default function MeasureInteraction() {
   useEffect(() => {
     const canvas = gl.domElement;
     const applyCursor = (measureMode: boolean) => {
-      // React Compiler treats values returned from hooks as immutable, and the
+      // react-hooks/immutability treats values returned from hooks as immutable, and the
       // canvas reaches us via useThree(). Styling it imperatively is the only
       // way to drive the cursor on an R3F canvas, so the rule is opted out of
       // here rather than worked around.
