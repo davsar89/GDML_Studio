@@ -1,6 +1,6 @@
 import { useEffect, useRef, useMemo } from 'react';
 import * as THREE from 'three';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, addEffect } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
 import Scene from './Scene';
 import MeasureInteraction from './MeasureInteraction';
@@ -80,6 +80,17 @@ function AutoFitCamera() {
   return <OrbitControls makeDefault ref={controlsRef as never} mouseButtons={mouseButtons} />;
 }
 
+/** The frames frameloop="demand" needs that R3F does not request itself. */
+function DemandFrames() {
+  const clock = useThree((s) => s.clock);
+  const invalidate = useThree((s) => s.invalidate);
+  // R3F requests a frame when it adds or updates an object but not when it removes one (hide, clear).
+  useEffect(() => useAppStore.subscribe(() => invalidate()), [invalidate]);
+  // A frame after a pause gets the whole pause as its delta, and GizmoHelper's tween would jump.
+  useEffect(() => addEffect(() => { clock.oldTime = Math.max(clock.oldTime, performance.now() - 50); }), [clock]);
+  return null;
+}
+
 /** Dynamically sized grid + axes based on loaded meshes. */
 function DynamicGrid() {
   const meshes = useAppStore((s) => s.meshes);
@@ -131,8 +142,10 @@ export default function Viewport() {
           Loading...
         </div>
       )}
+      {/* Renders only on change: R3F commits, store changes, OrbitControls/Gizmo moves, AutoFit. */}
       <Canvas
         flat
+        frameloop="demand"
         camera={{ position: [500, 500, 500], fov: 50, near: 0.1, far: 100000 }}
         gl={{ antialias: true }}
       >
@@ -148,6 +161,7 @@ export default function Viewport() {
         {sceneGraph && <Scene node={sceneGraph} />}
         <DynamicGrid />
         <AutoFitCamera />
+        <DemandFrames />
         <MeasureInteraction />
         <MeasureOverlay />
         <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
