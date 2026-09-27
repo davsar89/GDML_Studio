@@ -1,12 +1,10 @@
 import type { DocumentSummary, MeshData, SceneNode, DefineValue, VolumeInfo, MaterialInfo, ElementInfo, NistMaterial } from '../store/types';
 import { useAppStore } from '../store';
 
-const BASE = '';
-
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${BASE}${url}`, init);
+    res = await fetch(url, init);
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
     throw new Error(`Could not reach the backend (${detail}). Is it running?`);
@@ -100,11 +98,7 @@ export async function getNistMaterials(search?: string, category?: string) {
 }
 
 export async function getNistMaterial(name: string) {
-  const params = new URLSearchParams();
-  params.set('name', name);
-  return fetchJson<{ material: NistMaterial }>(
-    `/api/nist/material?${params.toString()}`,
-  );
+  return fetchJson<{ material: NistMaterial }>(`/api/nist/material?${new URLSearchParams({ name })}`);
 }
 
 /**

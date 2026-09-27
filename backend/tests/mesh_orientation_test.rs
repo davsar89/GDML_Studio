@@ -19,8 +19,6 @@
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
-use gdml_studio_backend::eval::engine::EvalEngine;
-use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
 use gdml_studio_backend::mesh::primitives::{
     arb8_mesh::{tessellate_arb8, tessellate_box, tessellate_trap, tessellate_trd},
     cut_tube_mesh::tessellate_cut_tube,
@@ -30,30 +28,10 @@ use gdml_studio_backend::mesh::primitives::{
     twisted_tubs_mesh::tessellate_twisted_tubs,
     xtru_mesh::tessellate_xtru,
 };
-use gdml_studio_backend::mesh::tessellator::tessellate_all_solids;
 use gdml_studio_backend::mesh::types::TriangleMesh;
 
-/// Signed volume of the mesh about reference point `o` (tetrahedron sum).
-fn signed_volume_about(mesh: &TriangleMesh, o: [f64; 3]) -> f64 {
-    let v = |i: usize| -> [f64; 3] {
-        [
-            mesh.positions[i * 3] as f64 - o[0],
-            mesh.positions[i * 3 + 1] as f64 - o[1],
-            mesh.positions[i * 3 + 2] as f64 - o[2],
-        ]
-    };
-    let mut vol = 0.0;
-    for t in 0..mesh.triangle_count() {
-        let a = v(mesh.indices[t * 3] as usize);
-        let b = v(mesh.indices[t * 3 + 1] as usize);
-        let c = v(mesh.indices[t * 3 + 2] as usize);
-        // (a x b) . c / 6
-        vol += (a[1] * b[2] - a[2] * b[1]) * c[0]
-            + (a[2] * b[0] - a[0] * b[2]) * c[1]
-            + (a[0] * b[1] - a[1] * b[0]) * c[2];
-    }
-    vol / 6.0
-}
+mod common;
+use common::signed_volume_about;
 
 /// Assert the mesh volume matches `expected` (relative tolerance) about both
 /// the origin and a far-away reference point. The second check is what
@@ -152,14 +130,9 @@ fn corners(rz: &[(f64, f64)]) -> impl Iterator<Item = (f64, f64, bool)> + '_ {
     rz.iter().map(|&(r, z)| (r, z, false))
 }
 
-/// Solid `S` declared by `xml`, through the real path: parser, evaluator and
-/// tessellator; and the warnings.
+/// Solid `S` declared by `xml`, and the warnings.
 fn solid(xml: &str) -> (Option<TriangleMesh>, Vec<String>) {
-    let gdml = format!("<gdml><solids>{xml}</solids></gdml>");
-    let doc = parse_gdml_from_bytes(gdml.as_bytes(), "t.gdml".into()).unwrap();
-    let mut engine = EvalEngine::new();
-    engine.evaluate_all(&doc.defines).unwrap();
-    let (mut meshes, warnings) = tessellate_all_solids(&doc.solids, &engine, SEG).unwrap();
+    let (mut meshes, warnings) = common::tessellate(xml, SEG);
     (meshes.remove("S"), warnings)
 }
 

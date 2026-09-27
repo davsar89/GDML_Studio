@@ -261,7 +261,7 @@ fn write_materials_define(
 ///
 /// Replays `order.define_slots` -- the order the source declared these in --
 /// whenever it lines up with the collections (why: see
-/// `DocumentOrder::define_slots`).
+/// `DocumentOrder::define_slots`), each preserved element after its define.
 ///
 /// A document built programmatically carries no manifest; those fall back to
 /// the grouped order, which is what the rest of the suite expects, and leave
@@ -273,224 +273,122 @@ fn write_define_items(
     include: &dyn Fn(&str) -> bool,
     raws: &mut Vec<&RawElement>,
 ) -> Result<()> {
-    if write_defines_in_source_order(writer, defines, order, include, raws)? {
-        return Ok(());
-    }
-    for c in &defines.constants {
-        write_constant(writer, order, include, c)?;
-    }
-    for q in &defines.quantities {
-        write_quantity(writer, order, include, q)?;
-    }
-    for v in &defines.variables {
-        write_variable(writer, order, include, v)?;
-    }
-    for e in &defines.expressions {
-        write_expression(writer, order, include, e)?;
-    }
-    for p in &defines.positions {
-        write_position(writer, order, include, p)?;
-    }
-    for r in &defines.rotations {
-        write_rotation(writer, order, include, r)?;
-    }
-    for s in &defines.scales {
-        write_scale(writer, order, include, s)?;
-    }
-    Ok(())
-}
-
-/// Per-kind cursor slot. An exhaustive match rather than `kind as usize`, so
-/// adding a variant is a compile error here instead of an out-of-bounds panic.
-fn cursor_index(kind: DefineKind) -> usize {
-    match kind {
-        DefineKind::Constant => 0,
-        DefineKind::Quantity => 1,
-        DefineKind::Variable => 2,
-        DefineKind::Expression => 3,
-        DefineKind::Position => 4,
-        DefineKind::Rotation => 5,
-        DefineKind::Scale => 6,
-    }
-}
-
-/// Emit the defines in the manifest order. Returns false, having written
-/// nothing, when the manifest does not correspond to the collections.
-fn write_defines_in_source_order(
-    writer: &mut Writer<Cursor<Vec<u8>>>,
-    defines: &DefineSection,
-    order: &DocumentOrder,
-    include: &dyn Fn(&str) -> bool,
-    raws: &mut Vec<&RawElement>,
-) -> Result<bool> {
-    let total = defines.constants.len()
-        + defines.quantities.len()
-        + defines.variables.len()
-        + defines.expressions.len()
-        + defines.positions.len()
-        + defines.rotations.len()
-        + defines.scales.len();
-    if order.define_slots.len() != total {
-        return Ok(false);
-    }
-
+    let grouped = [
+        (DefineKind::Constant, defines.constants.len()),
+        (DefineKind::Quantity, defines.quantities.len()),
+        (DefineKind::Variable, defines.variables.len()),
+        (DefineKind::Expression, defines.expressions.len()),
+        (DefineKind::Position, defines.positions.len()),
+        (DefineKind::Rotation, defines.rotations.len()),
+        (DefineKind::Scale, defines.scales.len()),
+    ];
     // The manifest is appended alongside the collections, one entry per item in
     // the same relative order, so a per-kind cursor walks the two in step.
     // Check that fully before writing anything: a mismatch means the document
     // was assembled some other way, and a half-written block would be worse
     // than the grouped fallback.
-    let mut cursor = [0usize; 7];
-    for slot in &order.define_slots {
-        let i = cursor_index(slot.kind);
-        let n = cursor[i];
-        cursor[i] += 1;
-        let found = match slot.kind {
-            DefineKind::Constant => defines.constants.get(n).map(|x| &x.name),
-            DefineKind::Quantity => defines.quantities.get(n).map(|x| &x.name),
-            DefineKind::Variable => defines.variables.get(n).map(|x| &x.name),
-            DefineKind::Expression => defines.expressions.get(n).map(|x| &x.name),
-            DefineKind::Position => defines.positions.get(n).map(|x| &x.name),
-            DefineKind::Rotation => defines.rotations.get(n).map(|x| &x.name),
-            DefineKind::Scale => defines.scales.get(n).map(|x| &x.name),
-        };
-        if found != Some(&slot.name) {
-            return Ok(false);
+    let mut cursor: HashMap<DefineKind, usize> = HashMap::new();
+    let slots: Vec<(DefineKind, usize)> = order
+        .define_slots
+        .iter()
+        .map(|slot| {
+            let n = cursor.entry(slot.kind).or_default();
+            *n += 1;
+            (slot.kind, *n - 1)
+        })
+        .collect();
+    let replay = slots.len() == grouped.iter().map(|(_, len)| len).sum::<usize>()
+        && slots
+            .iter()
+            .zip(&order.define_slots)
+            .all(|(&(kind, n), slot)| define_name(defines, kind, n) == Some(&slot.name));
+    let items: Vec<(DefineKind, usize)> = if replay {
+        slots
+    } else {
+        grouped
+            .into_iter()
+            .flat_map(|(kind, len)| (0..len).map(move |n| (kind, n)))
+            .collect()
+    };
+    for (kind, n) in items {
+        let name = define_name(defines, kind, n).map_or("", String::as_str);
+        if include(name) {
+            write_comments(writer, order, "define", Some(name))?;
+            write_define(writer, defines, kind, n)?;
+        }
+        if replay {
+            write_raws(writer, raws, |after| after == Some(name))?;
         }
     }
+    Ok(())
+}
 
-    let mut cursor = [0usize; 7];
-    for slot in &order.define_slots {
-        let i = cursor_index(slot.kind);
-        let n = cursor[i];
-        cursor[i] += 1;
-        match slot.kind {
-            DefineKind::Constant => write_constant(writer, order, include, &defines.constants[n])?,
-            DefineKind::Quantity => write_quantity(writer, order, include, &defines.quantities[n])?,
-            DefineKind::Variable => write_variable(writer, order, include, &defines.variables[n])?,
-            DefineKind::Expression => {
-                write_expression(writer, order, include, &defines.expressions[n])?
-            }
-            DefineKind::Position => write_position(writer, order, include, &defines.positions[n])?,
-            DefineKind::Rotation => write_rotation(writer, order, include, &defines.rotations[n])?,
-            DefineKind::Scale => write_scale(writer, order, include, &defines.scales[n])?,
+/// Name of the `n`th define of `kind`, if there is one.
+fn define_name(defines: &DefineSection, kind: DefineKind, n: usize) -> Option<&String> {
+    match kind {
+        DefineKind::Constant => defines.constants.get(n).map(|x| &x.name),
+        DefineKind::Quantity => defines.quantities.get(n).map(|x| &x.name),
+        DefineKind::Variable => defines.variables.get(n).map(|x| &x.name),
+        DefineKind::Expression => defines.expressions.get(n).map(|x| &x.name),
+        DefineKind::Position => defines.positions.get(n).map(|x| &x.name),
+        DefineKind::Rotation => defines.rotations.get(n).map(|x| &x.name),
+        DefineKind::Scale => defines.scales.get(n).map(|x| &x.name),
+    }
+}
+
+/// The `n`th define of `kind` as its element.
+fn write_define(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    defines: &DefineSection,
+    kind: DefineKind,
+    n: usize,
+) -> Result<()> {
+    match kind {
+        DefineKind::Constant => {
+            let c = &defines.constants[n];
+            let mut elem = BytesStart::new("constant");
+            elem.push_attribute(("name", c.name.as_str()));
+            elem.push_attribute(("value", c.value.as_str()));
+            writer.write_event(Event::Empty(elem))?;
         }
-        write_raws(writer, raws, |after| after == Some(slot.name.as_str()))?;
+        DefineKind::Quantity => {
+            let q = &defines.quantities[n];
+            let mut elem = BytesStart::new("quantity");
+            elem.push_attribute(("name", q.name.as_str()));
+            push_opt(&mut elem, "type", &q.r#type);
+            elem.push_attribute(("value", q.value.as_str()));
+            push_opt(&mut elem, "unit", &q.unit);
+            writer.write_event(Event::Empty(elem))?;
+        }
+        DefineKind::Variable => {
+            let v = &defines.variables[n];
+            let mut elem = BytesStart::new("variable");
+            elem.push_attribute(("name", v.name.as_str()));
+            elem.push_attribute(("value", v.value.as_str()));
+            writer.write_event(Event::Empty(elem))?;
+        }
+        DefineKind::Expression => {
+            let e = &defines.expressions[n];
+            let mut elem = BytesStart::new("expression");
+            elem.push_attribute(("name", e.name.as_str()));
+            writer.write_event(Event::Start(elem))?;
+            writer.write_event(Event::Text(BytesText::new(&e.value)))?;
+            writer.write_event(Event::End(BytesEnd::new("expression")))?;
+        }
+        DefineKind::Position => {
+            let p = &defines.positions[n];
+            write_xyz(writer, "position", &p.name, [&p.x, &p.y, &p.z], &p.unit)?;
+        }
+        DefineKind::Rotation => {
+            let r = &defines.rotations[n];
+            write_xyz(writer, "rotation", &r.name, [&r.x, &r.y, &r.z], &r.unit)?;
+        }
+        DefineKind::Scale => {
+            let s = &defines.scales[n];
+            write_xyz(writer, "scale", &s.name, [&s.x, &s.y, &s.z], &None)?;
+        }
     }
-    Ok(true)
-}
-
-fn write_constant(
-    writer: &mut Writer<Cursor<Vec<u8>>>,
-    order: &DocumentOrder,
-    include: &dyn Fn(&str) -> bool,
-    c: &Constant,
-) -> Result<()> {
-    if !include(&c.name) {
-        return Ok(());
-    }
-    write_comments(writer, order, "define", Some(&c.name))?;
-    let mut elem = BytesStart::new("constant");
-    elem.push_attribute(("name", c.name.as_str()));
-    elem.push_attribute(("value", c.value.as_str()));
-    writer.write_event(Event::Empty(elem))?;
     Ok(())
-}
-
-fn write_quantity(
-    writer: &mut Writer<Cursor<Vec<u8>>>,
-    order: &DocumentOrder,
-    include: &dyn Fn(&str) -> bool,
-    q: &Quantity,
-) -> Result<()> {
-    if !include(&q.name) {
-        return Ok(());
-    }
-    write_comments(writer, order, "define", Some(&q.name))?;
-    let mut elem = BytesStart::new("quantity");
-    elem.push_attribute(("name", q.name.as_str()));
-    if let Some(ref t) = q.r#type {
-        elem.push_attribute(("type", t.as_str()));
-    }
-    elem.push_attribute(("value", q.value.as_str()));
-    if let Some(ref u) = q.unit {
-        elem.push_attribute(("unit", u.as_str()));
-    }
-    writer.write_event(Event::Empty(elem))?;
-    Ok(())
-}
-
-fn write_variable(
-    writer: &mut Writer<Cursor<Vec<u8>>>,
-    order: &DocumentOrder,
-    include: &dyn Fn(&str) -> bool,
-    v: &Variable,
-) -> Result<()> {
-    if !include(&v.name) {
-        return Ok(());
-    }
-    write_comments(writer, order, "define", Some(&v.name))?;
-    let mut elem = BytesStart::new("variable");
-    elem.push_attribute(("name", v.name.as_str()));
-    elem.push_attribute(("value", v.value.as_str()));
-    writer.write_event(Event::Empty(elem))?;
-    Ok(())
-}
-
-fn write_expression(
-    writer: &mut Writer<Cursor<Vec<u8>>>,
-    order: &DocumentOrder,
-    include: &dyn Fn(&str) -> bool,
-    e: &Expression,
-) -> Result<()> {
-    if !include(&e.name) {
-        return Ok(());
-    }
-    write_comments(writer, order, "define", Some(&e.name))?;
-    let mut elem = BytesStart::new("expression");
-    elem.push_attribute(("name", e.name.as_str()));
-    writer.write_event(Event::Start(elem))?;
-    writer.write_event(Event::Text(BytesText::new(&e.value)))?;
-    writer.write_event(Event::End(BytesEnd::new("expression")))?;
-    Ok(())
-}
-
-fn write_position(
-    writer: &mut Writer<Cursor<Vec<u8>>>,
-    order: &DocumentOrder,
-    include: &dyn Fn(&str) -> bool,
-    p: &Position,
-) -> Result<()> {
-    if !include(&p.name) {
-        return Ok(());
-    }
-    write_comments(writer, order, "define", Some(&p.name))?;
-    write_xyz(writer, "position", &p.name, [&p.x, &p.y, &p.z], &p.unit)
-}
-
-fn write_rotation(
-    writer: &mut Writer<Cursor<Vec<u8>>>,
-    order: &DocumentOrder,
-    include: &dyn Fn(&str) -> bool,
-    r: &Rotation,
-) -> Result<()> {
-    if !include(&r.name) {
-        return Ok(());
-    }
-    write_comments(writer, order, "define", Some(&r.name))?;
-    write_xyz(writer, "rotation", &r.name, [&r.x, &r.y, &r.z], &r.unit)
-}
-
-fn write_scale(
-    writer: &mut Writer<Cursor<Vec<u8>>>,
-    order: &DocumentOrder,
-    include: &dyn Fn(&str) -> bool,
-    s: &Scale,
-) -> Result<()> {
-    if !include(&s.name) {
-        return Ok(());
-    }
-    write_comments(writer, order, "define", Some(&s.name))?;
-    write_xyz(writer, "scale", &s.name, [&s.x, &s.y, &s.z], &None)
 }
 
 fn write_materials(
@@ -513,23 +411,11 @@ fn write_materials(
         write_comments(writer, order, "materials", Some(&iso.name))?;
         let mut elem = BytesStart::new("isotope");
         elem.push_attribute(("name", iso.name.as_str()));
-        if let Some(ref n) = iso.n {
-            elem.push_attribute(("N", n.as_str()));
-        }
-        if let Some(ref z) = iso.z {
-            elem.push_attribute(("Z", z.as_str()));
-        }
+        push_opt(&mut elem, "N", &iso.n);
+        push_opt(&mut elem, "Z", &iso.z);
         if let Some(ref av) = iso.atom_value {
             writer.write_event(Event::Start(elem))?;
-            let mut atom = BytesStart::new("atom");
-            atom.push_attribute(("value", av.as_str()));
-            if let Some(ref u) = iso.atom_unit {
-                atom.push_attribute(("unit", u.as_str()));
-            }
-            if let Some(ref t) = iso.atom_type {
-                atom.push_attribute(("type", t.as_str()));
-            }
-            writer.write_event(Event::Empty(atom))?;
+            write_value(writer, "atom", av, &iso.atom_unit, &iso.atom_type)?;
             writer.write_event(Event::End(BytesEnd::new("isotope")))?;
         } else {
             writer.write_event(Event::Empty(elem))?;
@@ -541,30 +427,15 @@ fn write_materials(
         write_comments(writer, order, "materials", Some(&el.name))?;
         let mut elem = BytesStart::new("element");
         elem.push_attribute(("name", el.name.as_str()));
-        if let Some(ref f) = el.formula {
-            elem.push_attribute(("formula", f.as_str()));
-        }
-        if let Some(ref z) = el.z {
-            elem.push_attribute(("Z", z.as_str()));
-        }
+        push_opt(&mut elem, "formula", &el.formula);
+        push_opt(&mut elem, "Z", &el.z);
         if el.atom_value.is_some() || !el.fractions.is_empty() {
             writer.write_event(Event::Start(elem))?;
             if let Some(ref av) = el.atom_value {
-                let mut atom = BytesStart::new("atom");
-                atom.push_attribute(("value", av.as_str()));
-                if let Some(ref u) = el.atom_unit {
-                    atom.push_attribute(("unit", u.as_str()));
-                }
-                if let Some(ref t) = el.atom_type {
-                    atom.push_attribute(("type", t.as_str()));
-                }
-                writer.write_event(Event::Empty(atom))?;
+                write_value(writer, "atom", av, &el.atom_unit, &el.atom_type)?;
             }
             for fr in &el.fractions {
-                let mut fe = BytesStart::new("fraction");
-                fe.push_attribute(("n", fr.n.as_str()));
-                fe.push_attribute(("ref", fr.ref_name.as_str()));
-                writer.write_event(Event::Empty(fe))?;
+                write_component(writer, "fraction", &fr.n, &fr.ref_name)?;
             }
             writer.write_event(Event::End(BytesEnd::new("element")))?;
         } else {
@@ -580,24 +451,13 @@ fn write_materials(
         write_comments(writer, order, "materials", Some(&mat.name))?;
         let mut elem = BytesStart::new("material");
         elem.push_attribute(("name", mat.name.as_str()));
-        if let Some(ref f) = mat.formula {
-            elem.push_attribute(("formula", f.as_str()));
-        }
-        if let Some(ref z) = mat.z {
-            elem.push_attribute(("Z", z.as_str()));
-        }
-        if let Some(ref s) = mat.state {
-            elem.push_attribute(("state", s.as_str()));
-        }
+        push_opt(&mut elem, "formula", &mat.formula);
+        push_opt(&mut elem, "Z", &mat.z);
+        push_opt(&mut elem, "state", &mat.state);
         writer.write_event(Event::Start(elem))?;
 
         if let Some(ref d) = mat.density {
-            let mut de = BytesStart::new("D");
-            de.push_attribute(("value", d.value.as_str()));
-            if let Some(ref u) = d.unit {
-                de.push_attribute(("unit", u.as_str()));
-            }
-            writer.write_event(Event::Empty(de))?;
+            write_value(writer, "D", &d.value, &d.unit, &None)?;
         }
         if let Some(ref dr) = mat.density_ref {
             write_ref(writer, "Dref", dr)?;
@@ -610,51 +470,25 @@ fn write_materials(
             ("AL", &mat.al),
         ] {
             if let Some(property) = property {
-                let mut e = BytesStart::new(tag);
-                e.push_attribute(("value", property.value.as_str()));
-                if let Some(ref u) = property.unit {
-                    e.push_attribute(("unit", u.as_str()));
-                }
-                writer.write_event(Event::Empty(e))?;
+                write_value(writer, tag, &property.value, &property.unit, &None)?;
             }
         }
         for prop in &mat.properties {
             let mut e = BytesStart::new("property");
             e.push_attribute(("name", prop.name.as_str()));
-            if let Some(ref r) = prop.ref_name {
-                e.push_attribute(("ref", r.as_str()));
-            }
-            if let Some(ref v) = prop.values {
-                e.push_attribute(("values", v.as_str()));
-            }
+            push_opt(&mut e, "ref", &prop.ref_name);
+            push_opt(&mut e, "values", &prop.values);
             writer.write_event(Event::Empty(e))?;
         }
         if let Some(ref av) = mat.atom_value {
-            let mut atom = BytesStart::new("atom");
-            atom.push_attribute(("value", av.as_str()));
-            if let Some(ref u) = mat.atom_unit {
-                atom.push_attribute(("unit", u.as_str()));
-            }
-            if let Some(ref t) = mat.atom_type {
-                atom.push_attribute(("type", t.as_str()));
-            }
-            writer.write_event(Event::Empty(atom))?;
+            write_value(writer, "atom", av, &mat.atom_unit, &mat.atom_type)?;
         }
         for comp in &mat.components {
-            match comp {
-                MaterialComponent::Fraction { n, ref_name } => {
-                    let mut fe = BytesStart::new("fraction");
-                    fe.push_attribute(("n", n.as_str()));
-                    fe.push_attribute(("ref", ref_name.as_str()));
-                    writer.write_event(Event::Empty(fe))?;
-                }
-                MaterialComponent::Composite { n, ref_name } => {
-                    let mut ce = BytesStart::new("composite");
-                    ce.push_attribute(("n", n.as_str()));
-                    ce.push_attribute(("ref", ref_name.as_str()));
-                    writer.write_event(Event::Empty(ce))?;
-                }
-            }
+            let (tag, n, ref_name) = match comp {
+                MaterialComponent::Fraction { n, ref_name } => ("fraction", n, ref_name),
+                MaterialComponent::Composite { n, ref_name } => ("composite", n, ref_name),
+            };
+            write_component(writer, tag, n, ref_name)?;
         }
 
         writer.write_event(Event::End(BytesEnd::new("material")))?;
@@ -684,10 +518,45 @@ fn write_xyz(
         .into_iter()
         .zip(xyz.into_iter().chain([unit]))
     {
-        if let Some(value) = value {
-            elem.push_attribute((key, value.as_str()));
-        }
+        push_opt(&mut elem, key, value);
     }
+    writer.write_event(Event::Empty(elem))?;
+    Ok(())
+}
+
+/// Push `key` when `value` is set.
+fn push_opt(elem: &mut BytesStart, key: &str, value: &Option<String>) {
+    if let Some(value) = value {
+        elem.push_attribute((key, value.as_str()));
+    }
+}
+
+/// `<tag value=".."/>` with the `unit` and `type` that are set.
+fn write_value(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    tag: &str,
+    value: &str,
+    unit: &Option<String>,
+    r#type: &Option<String>,
+) -> Result<()> {
+    let mut elem = BytesStart::new(tag);
+    elem.push_attribute(("value", value));
+    push_opt(&mut elem, "unit", unit);
+    push_opt(&mut elem, "type", r#type);
+    writer.write_event(Event::Empty(elem))?;
+    Ok(())
+}
+
+/// `<fraction n=".." ref=".."/>` or `<composite ..>`.
+fn write_component(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    tag: &str,
+    n: &str,
+    ref_name: &str,
+) -> Result<()> {
+    let mut elem = BytesStart::new(tag);
+    elem.push_attribute(("n", n));
+    elem.push_attribute(("ref", ref_name));
     writer.write_event(Event::Empty(elem))?;
     Ok(())
 }
@@ -748,84 +617,46 @@ fn write_solids(
                 elem.push_attribute(("x", b.x.as_str()));
                 elem.push_attribute(("y", b.y.as_str()));
                 elem.push_attribute(("z", b.z.as_str()));
-                if let Some(ref u) = b.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &b.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Tube(t) => {
                 let mut elem = BytesStart::new("tube");
                 elem.push_attribute(("name", t.name.as_str()));
-                if let Some(ref v) = t.rmin {
-                    elem.push_attribute(("rmin", v.as_str()));
-                }
+                push_opt(&mut elem, "rmin", &t.rmin);
                 elem.push_attribute(("rmax", t.rmax.as_str()));
                 elem.push_attribute(("z", t.z.as_str()));
-                if let Some(ref v) = t.startphi {
-                    elem.push_attribute(("startphi", v.as_str()));
-                }
-                if let Some(ref v) = t.deltaphi {
-                    elem.push_attribute(("deltaphi", v.as_str()));
-                }
-                if let Some(ref u) = t.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = t.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "startphi", &t.startphi);
+                push_opt(&mut elem, "deltaphi", &t.deltaphi);
+                push_opt(&mut elem, "aunit", &t.aunit);
+                push_opt(&mut elem, "lunit", &t.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Cone(c) => {
                 let mut elem = BytesStart::new("cone");
                 elem.push_attribute(("name", c.name.as_str()));
-                if let Some(ref v) = c.rmin1 {
-                    elem.push_attribute(("rmin1", v.as_str()));
-                }
+                push_opt(&mut elem, "rmin1", &c.rmin1);
                 elem.push_attribute(("rmax1", c.rmax1.as_str()));
-                if let Some(ref v) = c.rmin2 {
-                    elem.push_attribute(("rmin2", v.as_str()));
-                }
+                push_opt(&mut elem, "rmin2", &c.rmin2);
                 elem.push_attribute(("rmax2", c.rmax2.as_str()));
                 elem.push_attribute(("z", c.z.as_str()));
-                if let Some(ref v) = c.startphi {
-                    elem.push_attribute(("startphi", v.as_str()));
-                }
-                if let Some(ref v) = c.deltaphi {
-                    elem.push_attribute(("deltaphi", v.as_str()));
-                }
-                if let Some(ref u) = c.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = c.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "startphi", &c.startphi);
+                push_opt(&mut elem, "deltaphi", &c.deltaphi);
+                push_opt(&mut elem, "aunit", &c.aunit);
+                push_opt(&mut elem, "lunit", &c.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Sphere(s) => {
                 let mut elem = BytesStart::new("sphere");
                 elem.push_attribute(("name", s.name.as_str()));
-                if let Some(ref v) = s.rmin {
-                    elem.push_attribute(("rmin", v.as_str()));
-                }
+                push_opt(&mut elem, "rmin", &s.rmin);
                 elem.push_attribute(("rmax", s.rmax.as_str()));
-                if let Some(ref v) = s.startphi {
-                    elem.push_attribute(("startphi", v.as_str()));
-                }
-                if let Some(ref v) = s.deltaphi {
-                    elem.push_attribute(("deltaphi", v.as_str()));
-                }
-                if let Some(ref v) = s.starttheta {
-                    elem.push_attribute(("starttheta", v.as_str()));
-                }
-                if let Some(ref v) = s.deltatheta {
-                    elem.push_attribute(("deltatheta", v.as_str()));
-                }
-                if let Some(ref u) = s.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = s.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "startphi", &s.startphi);
+                push_opt(&mut elem, "deltaphi", &s.deltaphi);
+                push_opt(&mut elem, "starttheta", &s.starttheta);
+                push_opt(&mut elem, "deltatheta", &s.deltatheta);
+                push_opt(&mut elem, "aunit", &s.aunit);
+                push_opt(&mut elem, "lunit", &s.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Trd(t) => {
@@ -836,33 +667,21 @@ fn write_solids(
                 elem.push_attribute(("x2", t.x2.as_str()));
                 elem.push_attribute(("y2", t.y2.as_str()));
                 elem.push_attribute(("z", t.z.as_str()));
-                if let Some(ref u) = t.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &t.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Polycone(pc) => {
                 let mut elem = BytesStart::new("polycone");
                 elem.push_attribute(("name", pc.name.as_str()));
-                if let Some(ref v) = pc.startphi {
-                    elem.push_attribute(("startphi", v.as_str()));
-                }
-                if let Some(ref v) = pc.deltaphi {
-                    elem.push_attribute(("deltaphi", v.as_str()));
-                }
-                if let Some(ref u) = pc.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = pc.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "startphi", &pc.startphi);
+                push_opt(&mut elem, "deltaphi", &pc.deltaphi);
+                push_opt(&mut elem, "aunit", &pc.aunit);
+                push_opt(&mut elem, "lunit", &pc.lunit);
                 writer.write_event(Event::Start(elem))?;
                 for zp in &pc.zplanes {
                     let mut zelem = BytesStart::new("zplane");
                     zelem.push_attribute(("z", zp.z.as_str()));
-                    if let Some(ref v) = zp.rmin {
-                        zelem.push_attribute(("rmin", v.as_str()));
-                    }
+                    push_opt(&mut zelem, "rmin", &zp.rmin);
                     zelem.push_attribute(("rmax", zp.rmax.as_str()));
                     writer.write_event(Event::Empty(zelem))?;
                 }
@@ -871,9 +690,7 @@ fn write_solids(
             Solid::Xtru(x) => {
                 let mut elem = BytesStart::new("xtru");
                 elem.push_attribute(("name", x.name.as_str()));
-                if let Some(ref u) = x.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &x.lunit);
                 writer.write_event(Event::Start(elem))?;
                 for v in &x.vertices {
                     let mut velem = BytesStart::new("twoDimVertex");
@@ -895,12 +712,8 @@ fn write_solids(
             Solid::Tessellated(ts) => {
                 let mut elem = BytesStart::new("tessellated");
                 elem.push_attribute(("name", ts.name.as_str()));
-                if let Some(u) = &ts.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
-                if let Some(u) = &ts.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &ts.lunit);
+                push_opt(&mut elem, "aunit", &ts.aunit);
                 writer.write_event(Event::Start(elem))?;
                 for facet in &ts.facets {
                     let (tag, vertices, r#type, lunit) = facet.parts();
@@ -922,9 +735,7 @@ fn write_solids(
                 let mut elem = BytesStart::new("orb");
                 elem.push_attribute(("name", o.name.as_str()));
                 elem.push_attribute(("r", o.r.as_str()));
-                if let Some(ref u) = o.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &o.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Ellipsoid(e) => {
@@ -933,35 +744,21 @@ fn write_solids(
                 elem.push_attribute(("ax", e.ax.as_str()));
                 elem.push_attribute(("by", e.by.as_str()));
                 elem.push_attribute(("cz", e.cz.as_str()));
-                if let Some(ref v) = e.zcut1 {
-                    elem.push_attribute(("zcut1", v.as_str()));
-                }
-                if let Some(ref v) = e.zcut2 {
-                    elem.push_attribute(("zcut2", v.as_str()));
-                }
-                if let Some(ref u) = e.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "zcut1", &e.zcut1);
+                push_opt(&mut elem, "zcut2", &e.zcut2);
+                push_opt(&mut elem, "lunit", &e.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::GenericPolyhedra(gp) => {
                 let mut elem = BytesStart::new("genericPolyhedra");
                 elem.push_attribute(("name", gp.name.as_str()));
-                if let Some(ref v) = gp.startphi {
-                    elem.push_attribute(("startphi", v.as_str()));
-                }
-                if let Some(ref v) = gp.deltaphi {
-                    elem.push_attribute(("deltaphi", v.as_str()));
-                }
+                push_opt(&mut elem, "startphi", &gp.startphi);
+                push_opt(&mut elem, "deltaphi", &gp.deltaphi);
                 if !gp.numsides.is_empty() {
                     elem.push_attribute(("numsides", gp.numsides.as_str()));
                 }
-                if let Some(ref u) = gp.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = gp.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "aunit", &gp.aunit);
+                push_opt(&mut elem, "lunit", &gp.lunit);
                 writer.write_event(Event::Start(elem))?;
                 for rz in &gp.rzpoints {
                     let mut rze = BytesStart::new("rzpoint");
@@ -977,9 +774,7 @@ fn write_solids(
                 elem.push_attribute(("rlo", p.rlo.as_str()));
                 elem.push_attribute(("rhi", p.rhi.as_str()));
                 elem.push_attribute(("dz", p.dz.as_str()));
-                if let Some(ref u) = p.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &p.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Elcone(e) => {
@@ -989,48 +784,28 @@ fn write_solids(
                 elem.push_attribute(("dy", e.dy.as_str()));
                 elem.push_attribute(("zmax", e.zmax.as_str()));
                 elem.push_attribute(("zcut", e.zcut.as_str()));
-                if let Some(ref u) = e.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &e.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Hype(h) => {
                 let mut elem = BytesStart::new("hype");
                 elem.push_attribute(("name", h.name.as_str()));
-                if let Some(ref v) = h.rmin {
-                    elem.push_attribute(("rmin", v.as_str()));
-                }
+                push_opt(&mut elem, "rmin", &h.rmin);
                 elem.push_attribute(("rmax", h.rmax.as_str()));
-                if let Some(ref v) = h.inst {
-                    elem.push_attribute(("inst", v.as_str()));
-                }
-                if let Some(ref v) = h.outst {
-                    elem.push_attribute(("outst", v.as_str()));
-                }
+                push_opt(&mut elem, "inst", &h.inst);
+                push_opt(&mut elem, "outst", &h.outst);
                 elem.push_attribute(("z", h.z.as_str()));
-                if let Some(ref u) = h.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = h.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "aunit", &h.aunit);
+                push_opt(&mut elem, "lunit", &h.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::GenericPolycone(gp) => {
                 let mut elem = BytesStart::new("genericPolycone");
                 elem.push_attribute(("name", gp.name.as_str()));
-                if let Some(ref v) = gp.startphi {
-                    elem.push_attribute(("startphi", v.as_str()));
-                }
-                if let Some(ref v) = gp.deltaphi {
-                    elem.push_attribute(("deltaphi", v.as_str()));
-                }
-                if let Some(ref u) = gp.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = gp.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "startphi", &gp.startphi);
+                push_opt(&mut elem, "deltaphi", &gp.deltaphi);
+                push_opt(&mut elem, "aunit", &gp.aunit);
+                push_opt(&mut elem, "lunit", &gp.lunit);
                 writer.write_event(Event::Start(elem))?;
                 for rz in &gp.rzpoints {
                     let mut rze = BytesStart::new("rzpoint");
@@ -1047,9 +822,7 @@ fn write_solids(
                 elem.push_attribute(("vertex2", t.vertex2.as_str()));
                 elem.push_attribute(("vertex3", t.vertex3.as_str()));
                 elem.push_attribute(("vertex4", t.vertex4.as_str()));
-                if let Some(ref u) = t.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &t.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Eltube(e) => {
@@ -1058,36 +831,24 @@ fn write_solids(
                 elem.push_attribute(("dx", e.dx.as_str()));
                 elem.push_attribute(("dy", e.dy.as_str()));
                 elem.push_attribute(("dz", e.dz.as_str()));
-                if let Some(ref u) = e.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &e.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Polyhedra(ph) => {
                 let mut elem = BytesStart::new("polyhedra");
                 elem.push_attribute(("name", ph.name.as_str()));
-                if let Some(ref v) = ph.startphi {
-                    elem.push_attribute(("startphi", v.as_str()));
-                }
-                if let Some(ref v) = ph.deltaphi {
-                    elem.push_attribute(("deltaphi", v.as_str()));
-                }
+                push_opt(&mut elem, "startphi", &ph.startphi);
+                push_opt(&mut elem, "deltaphi", &ph.deltaphi);
                 if !ph.numsides.is_empty() {
                     elem.push_attribute(("numsides", ph.numsides.as_str()));
                 }
-                if let Some(ref u) = ph.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = ph.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "aunit", &ph.aunit);
+                push_opt(&mut elem, "lunit", &ph.lunit);
                 writer.write_event(Event::Start(elem))?;
                 for zp in &ph.zplanes {
                     let mut zelem = BytesStart::new("zplane");
                     zelem.push_attribute(("z", zp.z.as_str()));
-                    if let Some(ref v) = zp.rmin {
-                        zelem.push_attribute(("rmin", v.as_str()));
-                    }
+                    push_opt(&mut zelem, "rmin", &zp.rmin);
                     zelem.push_attribute(("rmax", zp.rmax.as_str()));
                     writer.write_event(Event::Empty(zelem))?;
                 }
@@ -1096,41 +857,19 @@ fn write_solids(
             Solid::CutTube(ct) => {
                 let mut elem = BytesStart::new("cutTube");
                 elem.push_attribute(("name", ct.name.as_str()));
-                if let Some(ref v) = ct.rmin {
-                    elem.push_attribute(("rmin", v.as_str()));
-                }
+                push_opt(&mut elem, "rmin", &ct.rmin);
                 elem.push_attribute(("rmax", ct.rmax.as_str()));
                 elem.push_attribute(("z", ct.z.as_str()));
-                if let Some(ref v) = ct.startphi {
-                    elem.push_attribute(("startphi", v.as_str()));
-                }
-                if let Some(ref v) = ct.deltaphi {
-                    elem.push_attribute(("deltaphi", v.as_str()));
-                }
-                if let Some(ref v) = ct.low_x {
-                    elem.push_attribute(("lowX", v.as_str()));
-                }
-                if let Some(ref v) = ct.low_y {
-                    elem.push_attribute(("lowY", v.as_str()));
-                }
-                if let Some(ref v) = ct.low_z {
-                    elem.push_attribute(("lowZ", v.as_str()));
-                }
-                if let Some(ref v) = ct.high_x {
-                    elem.push_attribute(("highX", v.as_str()));
-                }
-                if let Some(ref v) = ct.high_y {
-                    elem.push_attribute(("highY", v.as_str()));
-                }
-                if let Some(ref v) = ct.high_z {
-                    elem.push_attribute(("highZ", v.as_str()));
-                }
-                if let Some(ref u) = ct.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = ct.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "startphi", &ct.startphi);
+                push_opt(&mut elem, "deltaphi", &ct.deltaphi);
+                push_opt(&mut elem, "lowX", &ct.low_x);
+                push_opt(&mut elem, "lowY", &ct.low_y);
+                push_opt(&mut elem, "lowZ", &ct.low_z);
+                push_opt(&mut elem, "highX", &ct.high_x);
+                push_opt(&mut elem, "highY", &ct.high_y);
+                push_opt(&mut elem, "highZ", &ct.high_z);
+                push_opt(&mut elem, "aunit", &ct.aunit);
+                push_opt(&mut elem, "lunit", &ct.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Para(p) => {
@@ -1139,117 +878,61 @@ fn write_solids(
                 elem.push_attribute(("x", p.x.as_str()));
                 elem.push_attribute(("y", p.y.as_str()));
                 elem.push_attribute(("z", p.z.as_str()));
-                if let Some(ref v) = p.alpha {
-                    elem.push_attribute(("alpha", v.as_str()));
-                }
-                if let Some(ref v) = p.theta {
-                    elem.push_attribute(("theta", v.as_str()));
-                }
-                if let Some(ref v) = p.phi {
-                    elem.push_attribute(("phi", v.as_str()));
-                }
-                if let Some(ref u) = p.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = p.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "alpha", &p.alpha);
+                push_opt(&mut elem, "theta", &p.theta);
+                push_opt(&mut elem, "phi", &p.phi);
+                push_opt(&mut elem, "aunit", &p.aunit);
+                push_opt(&mut elem, "lunit", &p.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Trap(t) => {
                 let mut elem = BytesStart::new("trap");
                 elem.push_attribute(("name", t.name.as_str()));
                 elem.push_attribute(("z", t.z.as_str()));
-                if let Some(ref v) = t.theta {
-                    elem.push_attribute(("theta", v.as_str()));
-                }
-                if let Some(ref v) = t.phi {
-                    elem.push_attribute(("phi", v.as_str()));
-                }
+                push_opt(&mut elem, "theta", &t.theta);
+                push_opt(&mut elem, "phi", &t.phi);
                 elem.push_attribute(("y1", t.y1.as_str()));
                 elem.push_attribute(("x1", t.x1.as_str()));
                 elem.push_attribute(("x2", t.x2.as_str()));
-                if let Some(ref v) = t.alpha1 {
-                    elem.push_attribute(("alpha1", v.as_str()));
-                }
+                push_opt(&mut elem, "alpha1", &t.alpha1);
                 elem.push_attribute(("y2", t.y2.as_str()));
                 elem.push_attribute(("x3", t.x3.as_str()));
                 elem.push_attribute(("x4", t.x4.as_str()));
-                if let Some(ref v) = t.alpha2 {
-                    elem.push_attribute(("alpha2", v.as_str()));
-                }
-                if let Some(ref u) = t.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = t.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "alpha2", &t.alpha2);
+                push_opt(&mut elem, "aunit", &t.aunit);
+                push_opt(&mut elem, "lunit", &t.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Torus(t) => {
                 let mut elem = BytesStart::new("torus");
                 elem.push_attribute(("name", t.name.as_str()));
-                if let Some(ref v) = t.rmin {
-                    elem.push_attribute(("rmin", v.as_str()));
-                }
+                push_opt(&mut elem, "rmin", &t.rmin);
                 elem.push_attribute(("rmax", t.rmax.as_str()));
                 elem.push_attribute(("rtor", t.rtor.as_str()));
-                if let Some(ref v) = t.startphi {
-                    elem.push_attribute(("startphi", v.as_str()));
-                }
-                if let Some(ref v) = t.deltaphi {
-                    elem.push_attribute(("deltaphi", v.as_str()));
-                }
-                if let Some(ref u) = t.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = t.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "startphi", &t.startphi);
+                push_opt(&mut elem, "deltaphi", &t.deltaphi);
+                push_opt(&mut elem, "aunit", &t.aunit);
+                push_opt(&mut elem, "lunit", &t.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::TwistedTubs(t) => {
                 let mut elem = BytesStart::new("twistedtubs");
                 elem.push_attribute(("name", t.name.as_str()));
                 elem.push_attribute(("twistedangle", t.twistedangle.as_str()));
-                if let Some(ref v) = t.endinnerrad {
-                    elem.push_attribute(("endinnerrad", v.as_str()));
-                }
-                if let Some(ref v) = t.endouterrad {
-                    elem.push_attribute(("endouterrad", v.as_str()));
-                }
-                if let Some(ref v) = t.zlen {
-                    elem.push_attribute(("zlen", v.as_str()));
-                }
-                if let Some(ref v) = t.phi {
-                    elem.push_attribute(("phi", v.as_str()));
-                }
+                push_opt(&mut elem, "endinnerrad", &t.endinnerrad);
+                push_opt(&mut elem, "endouterrad", &t.endouterrad);
+                push_opt(&mut elem, "zlen", &t.zlen);
+                push_opt(&mut elem, "phi", &t.phi);
                 // The zlen == 0 parameterisation. Omitting these on save turned
                 // a mid-radius twistedtubs into an empty one.
-                if let Some(ref v) = t.midinnerrad {
-                    elem.push_attribute(("midinnerrad", v.as_str()));
-                }
-                if let Some(ref v) = t.midouterrad {
-                    elem.push_attribute(("midouterrad", v.as_str()));
-                }
-                if let Some(ref v) = t.negative_endz {
-                    elem.push_attribute(("negativeEndz", v.as_str()));
-                }
-                if let Some(ref v) = t.positive_endz {
-                    elem.push_attribute(("positiveEndz", v.as_str()));
-                }
-                if let Some(ref v) = t.nseg {
-                    elem.push_attribute(("nseg", v.as_str()));
-                }
-                if let Some(ref v) = t.totphi {
-                    elem.push_attribute(("totphi", v.as_str()));
-                }
-                if let Some(ref u) = t.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = t.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "midinnerrad", &t.midinnerrad);
+                push_opt(&mut elem, "midouterrad", &t.midouterrad);
+                push_opt(&mut elem, "negativeEndz", &t.negative_endz);
+                push_opt(&mut elem, "positiveEndz", &t.positive_endz);
+                push_opt(&mut elem, "nseg", &t.nseg);
+                push_opt(&mut elem, "totphi", &t.totphi);
+                push_opt(&mut elem, "aunit", &t.aunit);
+                push_opt(&mut elem, "lunit", &t.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::TwistedTrd(t) => {
@@ -1261,12 +944,8 @@ fn write_solids(
                 elem.push_attribute(("y1", t.y1.as_str()));
                 elem.push_attribute(("y2", t.y2.as_str()));
                 elem.push_attribute(("z", t.z.as_str()));
-                if let Some(ref u) = t.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = t.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "aunit", &t.aunit);
+                push_opt(&mut elem, "lunit", &t.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::TwistedTrap(t) => {
@@ -1283,12 +962,8 @@ fn write_solids(
                 elem.push_attribute(("x3", t.x3.as_str()));
                 elem.push_attribute(("x4", t.x4.as_str()));
                 elem.push_attribute(("Alph", t.alph.as_str()));
-                if let Some(ref u) = t.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = t.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "aunit", &t.aunit);
+                push_opt(&mut elem, "lunit", &t.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::TwistedBox(t) => {
@@ -1298,12 +973,8 @@ fn write_solids(
                 elem.push_attribute(("x", t.x.as_str()));
                 elem.push_attribute(("y", t.y.as_str()));
                 elem.push_attribute(("z", t.z.as_str()));
-                if let Some(ref u) = t.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = t.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "aunit", &t.aunit);
+                push_opt(&mut elem, "lunit", &t.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Arb8(a) => {
@@ -1326,9 +997,7 @@ fn write_solids(
                 elem.push_attribute(("v7y", a.v7y.as_str()));
                 elem.push_attribute(("v8x", a.v8x.as_str()));
                 elem.push_attribute(("v8y", a.v8y.as_str()));
-                if let Some(ref u) = a.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "lunit", &a.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::MultiUnion(mu) => {
@@ -1337,9 +1006,7 @@ fn write_solids(
                 writer.write_event(Event::Start(elem))?;
                 for node in &mu.nodes {
                     let mut node_elem = BytesStart::new("multiUnionNode");
-                    if let Some(ref n) = node.name {
-                        node_elem.push_attribute(("name", n.as_str()));
-                    }
+                    push_opt(&mut node_elem, "name", &node.name);
                     writer.write_event(Event::Start(node_elem))?;
                     write_ref(writer, "solid", &node.solid_ref)?;
                     write_placement_pos(writer, &node.position, "position")?;
@@ -1361,12 +1028,8 @@ fn write_solids(
                 elem.push_attribute(("dx", rs.dx.as_str()));
                 elem.push_attribute(("dy", rs.dy.as_str()));
                 elem.push_attribute(("dz", rs.dz.as_str()));
-                if let Some(ref u) = rs.aunit {
-                    elem.push_attribute(("aunit", u.as_str()));
-                }
-                if let Some(ref u) = rs.lunit {
-                    elem.push_attribute(("lunit", u.as_str()));
-                }
+                push_opt(&mut elem, "aunit", &rs.aunit);
+                push_opt(&mut elem, "lunit", &rs.lunit);
                 writer.write_event(Event::Empty(elem))?;
             }
             Solid::Scaled(ss) => {
@@ -1449,9 +1112,7 @@ fn write_auxiliary(writer: &mut Writer<Cursor<Vec<u8>>>, aux: &Auxiliary) -> Res
     let mut ae = BytesStart::new("auxiliary");
     ae.push_attribute(("auxtype", aux.auxtype.as_str()));
     ae.push_attribute(("auxvalue", aux.auxvalue.as_str()));
-    if let Some(ref u) = aux.auxunit {
-        ae.push_attribute(("auxunit", u.as_str()));
-    }
+    push_opt(&mut ae, "auxunit", &aux.auxunit);
 
     if aux.children.is_empty() {
         writer.write_event(Event::Empty(ae))?;
@@ -1574,20 +1235,14 @@ fn write_structure(
 
         for pv in &vol.physvols {
             let mut pv_elem = BytesStart::new("physvol");
-            if let Some(ref n) = pv.name {
-                pv_elem.push_attribute(("name", n.as_str()));
-            }
-            if let Some(ref c) = pv.copynumber {
-                pv_elem.push_attribute(("copynumber", c.as_str()));
-            }
+            push_opt(&mut pv_elem, "name", &pv.name);
+            push_opt(&mut pv_elem, "copynumber", &pv.copynumber);
             writer.write_event(Event::Start(pv_elem))?;
 
             if let Some(ref fref) = pv.file_ref {
                 let mut fe = BytesStart::new("file");
                 fe.push_attribute(("name", fref.name.as_str()));
-                if let Some(ref vn) = fref.volname {
-                    fe.push_attribute(("volname", vn.as_str()));
-                }
+                push_opt(&mut fe, "volname", &fref.volname);
                 writer.write_event(Event::Empty(fe))?;
             } else {
                 write_ref(writer, "volumeref", &pv.volume_ref)?;
@@ -1610,19 +1265,14 @@ fn write_structure(
 
             write_xyz(writer, "direction", "", replica.direction.each_ref(), &None)?;
 
-            let mut w = BytesStart::new("width");
-            w.push_attribute(("value", replica.width.as_str()));
-            if let Some(ref u) = replica.width_unit {
-                w.push_attribute(("unit", u.as_str()));
-            }
-            writer.write_event(Event::Empty(w))?;
-
-            let mut o = BytesStart::new("offset");
-            o.push_attribute(("value", replica.offset.as_str()));
-            if let Some(ref u) = replica.offset_unit {
-                o.push_attribute(("unit", u.as_str()));
-            }
-            writer.write_event(Event::Empty(o))?;
+            write_value(writer, "width", &replica.width, &replica.width_unit, &None)?;
+            write_value(
+                writer,
+                "offset",
+                &replica.offset,
+                &replica.offset_unit,
+                &None,
+            )?;
 
             writer.write_event(Event::End(BytesEnd::new("replicate_along_axis")))?;
             writer.write_event(Event::End(BytesEnd::new("replicavol")))?;

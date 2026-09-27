@@ -39,7 +39,6 @@ pub struct GdmlDocument {
     /// [`Self::defines`] as before and this only records where each item came
     /// from, letting the writer put it back. `None` means the source had no
     /// nested block; `Some(vec![])` means it had an empty one.
-    #[serde(default)]
     pub materials_define: Option<Vec<String>>,
     /// Human-readable notes about unsupported constructs the parser had to
     /// skip entirely (e.g. `<divisionvol>` inside a volume). Surfaced as load
@@ -83,7 +82,6 @@ pub struct DocumentOrder {
     /// quick-xml counts `<`/`>` within the internal subset, so
     /// `<!DOCTYPE gdml [<!ENTITY size "10">]>` arrives intact. Entity
     /// *references* are not expanded — see the note in the parser.
-    #[serde(default)]
     pub doctype: Option<String>,
     /// The `<define>` children in the order the source declared them.
     ///
@@ -108,7 +106,7 @@ pub struct DefineSlot {
     pub name: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DefineKind {
     Constant,
     Quantity,
@@ -137,7 +135,6 @@ pub struct RawElement {
     /// Geant4 reads each section in one pass, so a `<loop>` or `<assembly>`
     /// moved to the end of `<structure>` lands after the volume that places
     /// it, and the file no longer loads.
-    #[serde(default)]
     pub after: Option<String>,
     pub tag: String,
     pub xml: String,
@@ -233,10 +230,8 @@ pub struct Isotope {
     pub z: Option<String>,
     pub atom_value: Option<String>,
     /// `<atom unit="g/mole"/>` — read but previously discarded.
-    #[serde(default)]
     pub atom_unit: Option<String>,
     /// `<atom type="A"/>`.
-    #[serde(default)]
     pub atom_type: Option<String>,
 }
 
@@ -246,9 +241,7 @@ pub struct Isotope {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaterialProperty {
     pub name: String,
-    #[serde(default)]
     pub ref_name: Option<String>,
-    #[serde(default)]
     pub values: Option<String>,
 }
 
@@ -265,9 +258,7 @@ pub struct Element {
     pub formula: Option<String>,
     pub z: Option<String>,
     pub atom_value: Option<String>,
-    #[serde(default)]
     pub atom_unit: Option<String>,
-    #[serde(default)]
     pub atom_type: Option<String>,
     /// Isotope composition for elements defined via `<fraction>` children.
     #[serde(default)]
@@ -286,28 +277,22 @@ pub struct Material {
     pub formula: Option<String>,
     pub z: Option<String>,
     /// Physical state: "solid" | "liquid" | "gas" (GDML `state` attribute).
-    #[serde(default)]
     pub state: Option<String>,
     pub density: Option<Density>,
     pub density_ref: Option<String>,
     pub temperature: Option<PropertyValue>,
     pub pressure: Option<PropertyValue>,
     /// Mean excitation energy (`<MEE value=".." unit=".."/>`).
-    #[serde(default)]
     pub mee: Option<PropertyValue>,
     pub atom_value: Option<String>,
-    #[serde(default)]
     pub atom_unit: Option<String>,
-    #[serde(default)]
     pub atom_type: Option<String>,
     /// `<property>` bindings — the optical property table.
     #[serde(default)]
     pub properties: Vec<MaterialProperty>,
     /// `<RL value=".." unit=".."/>` radiation length.
-    #[serde(default)]
     pub rl: Option<PropertyValue>,
     /// `<AL value=".." unit=".."/>` absorption length.
-    #[serde(default)]
     pub al: Option<PropertyValue>,
     pub components: Vec<MaterialComponent>,
 }
@@ -609,7 +594,6 @@ pub enum TessellatedFacet {
         vertex2: String,
         vertex3: String,
         r#type: Option<String>,
-        #[serde(default)]
         lunit: Option<String>,
     },
     Quadrangular {
@@ -618,7 +602,6 @@ pub enum TessellatedFacet {
         vertex3: String,
         vertex4: String,
         r#type: Option<String>,
-        #[serde(default)]
         lunit: Option<String>,
     },
 }
@@ -662,9 +645,7 @@ pub struct TessellatedSolid {
     /// `lunit`/`aunit` are inert for tessellated solids — `TessellatedRead`
     /// reads only `name`, and each facet's own `lunit` scales its vertices —
     /// but they are written in real files and were dropped on export.
-    #[serde(default)]
     pub lunit: Option<String>,
-    #[serde(default)]
     pub aunit: Option<String>,
     pub facets: Vec<TessellatedFacet>,
 }
@@ -696,7 +677,6 @@ pub struct TetSolid {
     pub vertex2: String,
     pub vertex3: String,
     pub vertex4: String,
-    #[serde(default)]
     pub lunit: Option<String>,
 }
 
@@ -791,7 +771,6 @@ pub struct Arb8Solid {
 /// `halfzlen`.
 ///
 /// The sweep is `totphi / nseg` when `nseg` is given, else `phi`.
-#[derive(Default)]
 pub struct TwistedTubsSolid {
     pub name: String,
     pub twistedangle: String,
@@ -800,17 +779,11 @@ pub struct TwistedTubsSolid {
     /// Full length (the reader halves it). Absent or zero selects the mid-radius form.
     pub zlen: Option<String>,
     pub phi: Option<String>,
-    #[serde(default)]
     pub midinnerrad: Option<String>,
-    #[serde(default)]
     pub midouterrad: Option<String>,
-    #[serde(default)]
     pub negative_endz: Option<String>,
-    #[serde(default)]
     pub positive_endz: Option<String>,
-    #[serde(default)]
     pub nseg: Option<String>,
-    #[serde(default)]
     pub totphi: Option<String>,
     pub aunit: Option<String>,
     pub lunit: Option<String>,
@@ -869,11 +842,9 @@ pub struct ScaledSolidDef {
     /// `<scale>`. Geant4 accepts both; only the inline form was handled, so a
     /// scaleref silently fell back to (1,1,1) — an unscaled render — and was
     /// rewritten as a fabricated inline scale on export.
-    #[serde(default)]
     pub scale_ref: Option<String>,
     /// `name` of the inline `<scale>`, so it round-trips instead of being
     /// regenerated as "{solid}_scale".
-    #[serde(default)]
     pub scale_name: Option<String>,
 }
 
@@ -898,7 +869,6 @@ pub struct ReflectedSolidDef {
 pub struct MultiUnionNode {
     /// `<multiUnionNode name="..">`. Present in sample_data/solids.gdml and
     /// dropped on export before this was modelled.
-    #[serde(default)]
     pub name: Option<String>,
     pub solid_ref: String,
     pub position: Option<PlacementPos>,
@@ -957,7 +927,6 @@ pub struct ReplicaVol {
     /// Geant4's `AxisRead` accepts these alongside x/y/z. The scene draws a
     /// phi replica as rotated copies, and a rho replica as one un-subdivided
     /// copy with a warning.
-    #[serde(default)]
     pub curvilinear_axis: Option<String>,
     pub width: String,
     pub width_unit: Option<String>,
@@ -979,7 +948,6 @@ pub struct PhysVol {
     /// G4PVPlacement, where it is the copy number used for sensitive-detector
     /// and readout identity — so dropping it on export corrupts the detector,
     /// not just its description.
-    #[serde(default)]
     pub copynumber: Option<String>,
     pub file_ref: Option<FileRef>,
     pub position: Option<PlacementPos>,
@@ -1002,7 +970,6 @@ pub enum PlacementRot {
 pub struct Auxiliary {
     pub auxtype: String,
     pub auxvalue: String,
-    #[serde(default)]
     pub auxunit: Option<String>,
     /// Nested `<auxiliary>` children — e.g. production cuts inside a Region.
     /// Only the self-closing form was handled before, so a nested cut was

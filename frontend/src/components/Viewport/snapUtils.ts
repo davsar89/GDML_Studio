@@ -19,6 +19,11 @@ function toScreen(pos: THREE.Vector3, camera: THREE.Camera, w: number, h: number
   };
 }
 
+/** Vertex indices of triangle `t`, indexed or not. */
+function triangle(index: THREE.BufferAttribute | null, t: number): [number, number, number] {
+  return index ? [index.getX(t * 3), index.getX(t * 3 + 1), index.getX(t * 3 + 2)] : [t * 3, t * 3 + 1, t * 3 + 2];
+}
+
 /**
  * Extract 7 snap candidates (3 vertices, 3 edge midpoints, 1 centroid) from a face.
  */
@@ -28,23 +33,11 @@ function faceCandidates(intersection: THREE.Intersection): SnapCandidate[] {
   const faceIndex = intersection.faceIndex;
 
   if (faceIndex == null) {
-    const p = intersection.point;
-    return [{ position: new THREE.Vector3(p.x, p.y, p.z), type: 'face' }];
+    return [{ position: intersection.point.clone(), type: 'face' }];
   }
 
   const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
-  const index = geometry.getIndex();
-
-  let ia: number, ib: number, ic: number;
-  if (index) {
-    ia = index.getX(faceIndex * 3);
-    ib = index.getX(faceIndex * 3 + 1);
-    ic = index.getX(faceIndex * 3 + 2);
-  } else {
-    ia = faceIndex * 3;
-    ib = faceIndex * 3 + 1;
-    ic = faceIndex * 3 + 2;
-  }
+  const [ia, ib, ic] = triangle(geometry.getIndex(), faceIndex);
 
   const vA = new THREE.Vector3().fromBufferAttribute(posAttr, ia).applyMatrix4(mesh.matrixWorld);
   const vB = new THREE.Vector3().fromBufferAttribute(posAttr, ib).applyMatrix4(mesh.matrixWorld);
@@ -70,16 +63,10 @@ const TYPE_PRIORITY: Record<string, number> = { vertex: 0, edge: 1, face: 2 };
 function dedup(candidates: SnapCandidate[], eps = 0.01): SnapCandidate[] {
   const out: SnapCandidate[] = [];
   for (const c of candidates) {
-    let merged = false;
-    for (const o of out) {
-      if (c.position.distanceTo(o.position) < eps) {
-        // keep higher priority type
-        if (TYPE_PRIORITY[c.type] < TYPE_PRIORITY[o.type]) o.type = c.type;
-        merged = true;
-        break;
-      }
-    }
-    if (!merged) out.push(c);
+    const o = out.find((k) => c.position.distanceTo(k.position) < eps);
+    if (!o) out.push(c);
+    // keep higher priority type
+    else if (TYPE_PRIORITY[c.type] < TYPE_PRIORITY[o.type]) o.type = c.type;
   }
   return out;
 }
@@ -116,16 +103,7 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
 
   const triCount = index ? index.count / 3 : vertexCount / 3;
   for (let t = 0; t < triCount; t++) {
-    let ia: number, ib: number, ic: number;
-    if (index) {
-      ia = index.getX(t * 3);
-      ib = index.getX(t * 3 + 1);
-      ic = index.getX(t * 3 + 2);
-    } else {
-      ia = t * 3;
-      ib = t * 3 + 1;
-      ic = t * 3 + 2;
-    }
+    const [ia, ib, ic] = triangle(index, t);
     triangles.push([ia, ib, ic]);
     tmpAB.subVectors(vertPositions[ib], vertPositions[ia]);
     tmpAC.subVectors(vertPositions[ic], vertPositions[ia]);
@@ -148,16 +126,10 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
   const canonicalByPos = new Map<string, number>();
   for (let i = 0; i < vertexCount; i++) {
     const v = vertPositions[i];
-    const key = `${v.x.toFixed(WELD_DECIMALS)},${v.y.toFixed(WELD_DECIMALS)},${v.z.toFixed(
-      WELD_DECIMALS,
-    )}`;
+    const key = `${v.x.toFixed(WELD_DECIMALS)},${v.y.toFixed(WELD_DECIMALS)},${v.z.toFixed(WELD_DECIMALS)}`;
     const existing = canonicalByPos.get(key);
-    if (existing === undefined) {
-      canonicalByPos.set(key, i);
-      canonicalOf[i] = i;
-    } else {
-      canonicalOf[i] = existing;
-    }
+    if (existing === undefined) canonicalByPos.set(key, i);
+    canonicalOf[i] = existing ?? i;
   }
 
   // --- Build edge → adjacent face indices map ---
@@ -170,12 +142,9 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
       const [ea, eb] = [canonicalOf[va], canonicalOf[vb]];
       if (ea === eb) continue; // degenerate edge
       const key = edgeKey(ea, eb);
-      let faces = edgeFaceMap.get(key);
-      if (!faces) {
-        faces = [];
-        edgeFaceMap.set(key, faces);
-      }
-      faces.push(t);
+      const faces = edgeFaceMap.get(key);
+      if (faces) faces.push(t);
+      else edgeFaceMap.set(key, [t]);
     }
   }
 
@@ -185,21 +154,14 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
   const featureVertexIndices = new Set<number>();
 
   for (const [key, faces] of edgeFaceMap) {
-    let isFeature = false;
-    if (faces.length === 1) {
-      // Boundary edge – always a feature
-      isFeature = true;
-    } else if (faces.length >= 2) {
-      const angle = faceNormals[faces[0]].angleTo(faceNormals[faces[1]]);
-      if (angle > featureAngleRad) {
-        isFeature = true;
-      }
-    }
+    // A boundary edge is always a feature
+    const isFeature = faces.length === 1
+      || (faces.length >= 2 && faceNormals[faces[0]].angleTo(faceNormals[faces[1]]) > featureAngleRad);
     if (isFeature) {
       featureEdgeKeys.add(key);
-      const parts = key.split('-');
-      featureVertexIndices.add(Number(parts[0]));
-      featureVertexIndices.add(Number(parts[1]));
+      const [a, b] = key.split('-').map(Number);
+      featureVertexIndices.add(a);
+      featureVertexIndices.add(b);
     }
   }
 
@@ -209,9 +171,7 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
     candidates.push({ position: vertPositions[i], type: 'vertex' });
   }
   for (const key of featureEdgeKeys) {
-    const parts = key.split('-');
-    const a = Number(parts[0]);
-    const b = Number(parts[1]);
+    const [a, b] = key.split('-').map(Number);
     const mid = new THREE.Vector3().addVectors(vertPositions[a], vertPositions[b]).multiplyScalar(0.5);
     candidates.push({ position: mid, type: 'edge' });
   }
@@ -250,14 +210,7 @@ function thinCandidates(candidates: SnapCandidate[], maxCount: number): SnapCand
   for (let attempt = 0; attempt < 10; attempt++) {
     result = [];
     for (const c of candidates) {
-      let tooClose = false;
-      for (const kept of result) {
-        if (c.position.distanceTo(kept.position) < minSpacing) {
-          tooClose = true;
-          break;
-        }
-      }
-      if (!tooClose) result.push(c);
+      if (!result.some((kept) => c.position.distanceTo(kept.position) < minSpacing)) result.push(c);
     }
     if (result.length <= maxCount) return result;
     minSpacing *= 1.2;

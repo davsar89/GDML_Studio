@@ -7,8 +7,12 @@ use std::path::Path;
 
 use gdml_studio_backend::config::DEFAULT_MESH_SEGMENTS;
 use gdml_studio_backend::eval::engine::EvalEngine;
-use gdml_studio_backend::gdml::parser::parse_gdml;
+use gdml_studio_backend::gdml::parser::{parse_gdml, parse_gdml_from_bytes};
 use gdml_studio_backend::mesh::tessellator::tessellate_all_solids;
+use gdml_studio_backend::mesh::types::TriangleMesh;
+
+mod common;
+use common::signed_volume_about;
 
 /// Locate the project root (two levels up from the backend/tests directory).
 fn project_root() -> &'static Path {
@@ -102,70 +106,30 @@ fn test_pod_asm_pipeline() {
 }
 
 #[test]
-fn test_bgo_det_model_pipeline() {
-    let path = project_root().join("sample_data/BgoDetModel_v2_00.gdml");
-
-    let result = run_pipeline(&path);
-
-    // The file should parse something non-trivial
-
-    assert!(result.num_solids > 0, "Expected at least one solid");
-    assert!(result.num_volumes > 0, "Expected at least one volume");
-    assert!(result.num_meshes > 0, "Expected at least one mesh");
-    assert!(result.total_triangles > 0, "Expected at least one triangle");
-    // Every solid should have produced a mesh
-    assert_eq!(
-        result.num_meshes, result.num_solids,
-        "Every solid should be tessellated into a mesh"
-    );
-}
-
-#[test]
-fn test_fermi_satellite_pipeline() {
-    let path = project_root().join("sample_data/fermi_simple_elements_satellite.gdml");
-
-    let result = run_pipeline(&path);
-
-    assert!(result.num_solids > 0, "Expected at least one solid");
-    assert!(result.num_volumes > 0, "Expected at least one volume");
-    assert!(result.num_meshes > 0, "Expected at least one mesh");
-    assert!(result.total_triangles > 0, "Expected at least one triangle");
-    assert_eq!(
-        result.num_meshes, result.num_solids,
-        "Every solid should be tessellated into a mesh"
-    );
-}
-
-#[test]
-fn test_nai_det_model_pipeline() {
-    let path = project_root().join("sample_data/NaiDetModelWithMLI_v2_00.gdml");
-
-    let result = run_pipeline(&path);
-
-    assert!(result.num_solids > 0, "Expected at least one solid");
-    assert!(result.num_volumes > 0, "Expected at least one volume");
-    assert!(result.num_meshes > 0, "Expected at least one mesh");
-    assert!(result.total_triangles > 0, "Expected at least one triangle");
-    assert_eq!(
-        result.num_meshes, result.num_solids,
-        "Every solid should be tessellated into a mesh"
-    );
-}
-
-#[test]
-fn test_pod_asm_tessellated_pipeline() {
-    let path = project_root().join("sample_data/pod_asm_tessellated.gdml");
-
-    let result = run_pipeline(&path);
-
-    assert!(result.num_solids > 0, "Expected at least one solid");
-    assert!(result.num_volumes > 0, "Expected at least one volume");
-    assert!(result.num_meshes > 0, "Expected at least one mesh");
-    assert!(result.total_triangles > 0, "Expected at least one triangle");
-    assert_eq!(
-        result.num_meshes, result.num_solids,
-        "Every solid should be tessellated into a mesh"
-    );
+fn test_sample_detector_pipelines() {
+    for file in [
+        "BgoDetModel_v2_00.gdml",
+        "fermi_simple_elements_satellite.gdml",
+        "NaiDetModelWithMLI_v2_00.gdml",
+        "pod_asm_tessellated.gdml",
+    ] {
+        let result = run_pipeline(&project_root().join("sample_data").join(file));
+        // The file should parse something non-trivial
+        assert!(result.num_solids > 0, "{file}: expected at least one solid");
+        assert!(
+            result.num_volumes > 0,
+            "{file}: expected at least one volume"
+        );
+        assert!(result.num_meshes > 0, "{file}: expected at least one mesh");
+        assert!(
+            result.total_triangles > 0,
+            "{file}: expected at least one triangle"
+        );
+        assert_eq!(
+            result.num_meshes, result.num_solids,
+            "{file}: every solid should be tessellated into a mesh"
+        );
+    }
 }
 
 #[test]
@@ -218,7 +182,6 @@ fn test_all_features_pipeline() {
 #[test]
 fn test_round_trip_preserves_material_fidelity_and_escaping() {
     use gdml_studio_backend::gdml::materials::serialize_gdml;
-    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
 
     let src = r#"<?xml version="1.0"?>
 <gdml>
@@ -425,7 +388,6 @@ fn test_mesh_geometry_validity() {
 #[test]
 fn raw_elements_round_trip_into_correct_sections() {
     use gdml_studio_backend::gdml::materials::serialize_gdml;
-    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
 
     let gdml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gdml>
@@ -500,8 +462,6 @@ fn raw_elements_round_trip_into_correct_sections() {
 
 #[test]
 fn unsupported_volume_constructs_produce_warnings() {
-    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
-
     let gdml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gdml>
   <materials>
@@ -556,55 +516,12 @@ fn unsupported_volume_constructs_produce_warnings() {
     assert_eq!(world.solid_ref, "world_box");
 }
 
-/// Signed volume by the divergence theorem, summed about `o`.
-fn signed_volume_about(mesh: &gdml_studio_backend::mesh::types::TriangleMesh, o: [f64; 3]) -> f64 {
-    let v = |i: usize| -> [f64; 3] {
-        [
-            mesh.positions[i * 3] as f64 - o[0],
-            mesh.positions[i * 3 + 1] as f64 - o[1],
-            mesh.positions[i * 3 + 2] as f64 - o[2],
-        ]
-    };
-    let mut vol = 0.0;
-    for t in 0..mesh.triangle_count() {
-        let a = v(mesh.indices[t * 3] as usize);
-        let b = v(mesh.indices[t * 3 + 1] as usize);
-        let c = v(mesh.indices[t * 3 + 2] as usize);
-        vol += (a[1] * b[2] - a[2] * b[1]) * c[0]
-            + (a[2] * b[0] - a[0] * b[2]) * c[1]
-            + (a[0] * b[1] - a[1] * b[0]) * c[2];
-    }
-    vol / 6.0
-}
-
-/// Tessellate a `<solids>` fragment through the real parse -> evaluate -> mesh
-/// path and return the named mesh.
-fn mesh_from_solids(solids: &str, name: &str) -> gdml_studio_backend::mesh::types::TriangleMesh {
-    use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
-    let src = format!(
-        r#"<?xml version="1.0"?>
-<gdml>
-  <define/>
-  <materials>
-    <material name="Air" Z="7"><D value="0.0012"/><atom value="14"/></material>
-  </materials>
-  <solids>
-{solids}
-  </solids>
-  <structure>
-    <volume name="World"><materialref ref="Air"/><solidref ref="{name}"/></volume>
-  </structure>
-  <setup name="Default" version="1.0"><world ref="World"/></setup>
-</gdml>"#
-    );
-    let doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
-    let mut engine = EvalEngine::new();
-    engine.evaluate_all(&doc.defines).unwrap();
-    let (meshes, _) = tessellate_all_solids(&doc.solids, &engine, 128).unwrap();
+/// The named mesh of a `<solids>` fragment.
+fn mesh_from_solids(solids: &str, name: &str) -> TriangleMesh {
+    let (mut meshes, _) = common::tessellate(solids, 128);
     meshes
-        .get(name)
+        .remove(name)
         .unwrap_or_else(|| panic!("no mesh for '{name}'"))
-        .clone()
 }
 
 #[test]

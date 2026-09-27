@@ -10,7 +10,6 @@ use super::primitives::{
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
-use crate::gdml::units;
 use generic_polycone_mesh::{curve, tessellate_generic_polycone as revolve};
 
 pub fn tessellate_all_solids(
@@ -299,45 +298,28 @@ fn polyhedra_sides(engine: &EvalEngine, numsides: &str) -> Result<u32> {
 }
 
 fn resolve_opt(engine: &EvalEngine, expr: &Option<String>) -> f64 {
-    match expr {
-        Some(s) => engine.resolve_value(s),
-        None => 0.0,
-    }
-}
-
-/// mm per unit of a declared `lunit`; an unknown one warns and counts as mm.
-fn lunit_factor(engine: &EvalEngine, lunit: &str) -> f64 {
-    units::length_factor(lunit).unwrap_or_else(|| {
-        engine.record_unit_warning(lunit, "length");
-        1.0
-    })
+    expr.as_deref().map_or(0.0, |s| engine.resolve_value(s))
 }
 
 /// Geant4 applies lunit after evaluation, including expressions using quantities.
 fn resolve_with_lunit(engine: &EvalEngine, expr: &str, lunit: &str) -> f64 {
-    engine.resolve_value(expr) * lunit_factor(engine, lunit)
+    engine.resolve_value(expr) * engine.unit_factor(lunit, "length")
 }
 
 fn resolve_opt_with_lunit(engine: &EvalEngine, expr: &Option<String>, lunit: &str) -> f64 {
-    match expr {
-        Some(s) => resolve_with_lunit(engine, s, lunit),
-        None => 0.0,
-    }
+    expr.as_deref()
+        .map_or(0.0, |s| resolve_with_lunit(engine, s, lunit))
 }
 
 /// The declared angle unit is also independent of the expression's symbols.
 fn resolve_with_aunit(engine: &EvalEngine, expr: &str, aunit: &str) -> f64 {
-    if units::angle_factor(aunit).is_none() {
-        engine.record_unit_warning(aunit, "angle");
-    }
-    units::angle_to_rad(engine.resolve_value(expr), aunit)
+    let factor = engine.unit_factor(aunit, "angle");
+    engine.resolve_value(expr) * factor
 }
 
 fn resolve_opt_with_aunit(engine: &EvalEngine, expr: &Option<String>, aunit: &str) -> f64 {
-    match expr {
-        Some(s) => resolve_with_aunit(engine, s, aunit),
-        None => 0.0,
-    }
+    expr.as_deref()
+        .map_or(0.0, |s| resolve_with_aunit(engine, s, aunit))
 }
 
 /// Resolve a `deltaphi` opening angle under Geant4's full-circle rule.
@@ -363,10 +345,9 @@ fn resolve_opt_with_aunit(engine: &EvalEngine, expr: &Option<String>, aunit: &st
 /// sweeps the same surface wherever it starts.
 fn resolve_delta_phi(engine: &EvalEngine, expr: &Option<String>, aunit: &str) -> f64 {
     const TWO_PI: f64 = 2.0 * PI;
-    let raw = match expr {
-        Some(e) => resolve_with_aunit(engine, e, aunit),
-        None => TWO_PI,
-    };
+    let raw = expr
+        .as_deref()
+        .map_or(TWO_PI, |e| resolve_with_aunit(engine, e, aunit));
     // A non-finite angle is nonsense by the same reading, and would otherwise
     // propagate NaN through every vertex of the mesh.
     if !raw.is_finite() || raw <= 0.0 || raw > TWO_PI * (1.0 - f64::EPSILON) {
@@ -509,39 +490,21 @@ fn tessellate_trd_solid(s: &TrdSolid, engine: &EvalEngine) -> Result<TriangleMes
 fn tessellate_arb8_solid(s: &Arb8Solid, engine: &EvalEngine) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let dz = resolve_with_lunit(engine, &s.dz, lunit);
-    let vertices: [[f64; 2]; 8] = [
+    let v = |x: &str, y: &str| {
         [
-            resolve_with_lunit(engine, &s.v1x, lunit),
-            resolve_with_lunit(engine, &s.v1y, lunit),
-        ],
-        [
-            resolve_with_lunit(engine, &s.v2x, lunit),
-            resolve_with_lunit(engine, &s.v2y, lunit),
-        ],
-        [
-            resolve_with_lunit(engine, &s.v3x, lunit),
-            resolve_with_lunit(engine, &s.v3y, lunit),
-        ],
-        [
-            resolve_with_lunit(engine, &s.v4x, lunit),
-            resolve_with_lunit(engine, &s.v4y, lunit),
-        ],
-        [
-            resolve_with_lunit(engine, &s.v5x, lunit),
-            resolve_with_lunit(engine, &s.v5y, lunit),
-        ],
-        [
-            resolve_with_lunit(engine, &s.v6x, lunit),
-            resolve_with_lunit(engine, &s.v6y, lunit),
-        ],
-        [
-            resolve_with_lunit(engine, &s.v7x, lunit),
-            resolve_with_lunit(engine, &s.v7y, lunit),
-        ],
-        [
-            resolve_with_lunit(engine, &s.v8x, lunit),
-            resolve_with_lunit(engine, &s.v8y, lunit),
-        ],
+            resolve_with_lunit(engine, x, lunit),
+            resolve_with_lunit(engine, y, lunit),
+        ]
+    };
+    let vertices = [
+        v(&s.v1x, &s.v1y),
+        v(&s.v2x, &s.v2y),
+        v(&s.v3x, &s.v3y),
+        v(&s.v4x, &s.v4y),
+        v(&s.v5x, &s.v5y),
+        v(&s.v6x, &s.v6y),
+        v(&s.v7x, &s.v7y),
+        v(&s.v8x, &s.v8y),
     ];
     Ok(arb8_mesh::tessellate_arb8(dz, vertices))
 }
@@ -557,21 +520,16 @@ fn tessellate_twisted_tubs_solid(
 
     // `fDPhi = totphi / nseg` when segmented, else the plain `phi`
     // (G4TwistedTubs.cc:129, G4GDMLReadSolids.cc:3333).
-    let nseg = s
-        .nseg
-        .as_ref()
-        .map(|e| engine.resolve_value(e))
-        .unwrap_or(0.0);
+    let nseg = resolve_opt(engine, &s.nseg);
     let deltaphi = if nseg >= 1.0 {
-        match &s.totphi {
-            Some(e) => resolve_with_aunit(engine, e, aunit) / nseg,
-            None => 2.0 * PI / nseg,
-        }
+        s.totphi
+            .as_deref()
+            .map_or(2.0 * PI, |e| resolve_with_aunit(engine, e, aunit))
+            / nseg
     } else {
-        match &s.phi {
-            Some(e) => resolve_with_aunit(engine, e, aunit),
-            None => 2.0 * PI,
-        }
+        s.phi
+            .as_deref()
+            .map_or(2.0 * PI, |e| resolve_with_aunit(engine, e, aunit))
     };
 
     // Two parameterisations, selected by `zlen` being non-zero. `zlen` is the
@@ -699,7 +657,7 @@ fn scaled_positions(
     names: &[&str],
     lunit: Option<&str>,
 ) -> Result<Vec<[f64; 3]>> {
-    let k = lunit_factor(engine, lunit.unwrap_or("mm"));
+    let k = engine.unit_factor(lunit.unwrap_or("mm"), "length");
     names
         .iter()
         .map(|n| Ok(engine.named_position(n)?.map(|c| c * k)))
@@ -785,18 +743,12 @@ fn tessellate_cut_tube_solid(
     let low_norm = [
         resolve_opt(engine, &s.low_x),
         resolve_opt(engine, &s.low_y),
-        match &s.low_z {
-            Some(expr) => engine.resolve_value(expr),
-            None => -1.0,
-        },
+        s.low_z.as_deref().map_or(-1.0, |e| engine.resolve_value(e)),
     ];
     let high_norm = [
         resolve_opt(engine, &s.high_x),
         resolve_opt(engine, &s.high_y),
-        match &s.high_z {
-            Some(expr) => engine.resolve_value(expr),
-            None => 1.0,
-        },
+        s.high_z.as_deref().map_or(1.0, |e| engine.resolve_value(e)),
     ];
     Ok(cut_tube_mesh::tessellate_cut_tube(
         rmin, rmax, z, startphi, deltaphi, low_norm, high_norm, segments,

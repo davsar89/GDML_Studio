@@ -8,6 +8,13 @@ use gdml_studio_backend::{
 };
 use std::collections::HashMap;
 
+mod common;
+
+/// Signed volume about the origin.
+fn volume(mesh: &TriangleMesh) -> f64 {
+    common::signed_volume_about(mesh, [0.0; 3])
+}
+
 const MATERIALS: &str = r#"<materials>
   <material name="M" Z="1"><D value="1"/><atom value="1"/></material>
   <material name="N" Z="1"><D value="2"/><atom value="1"/></material>
@@ -72,29 +79,19 @@ fn bounds(mesh: &TriangleMesh, axis: usize) -> (f64, f64) {
         })
 }
 
-fn x_bounds(mesh: &TriangleMesh) -> (f64, f64) {
-    bounds(mesh, 0)
+/// The loaded document's materials section.
+async fn materials(state: &SharedState) -> MaterialSection {
+    let guard = state.read().await;
+    guard.loaded.as_ref().unwrap().document.materials.clone()
 }
 
-fn volume(mesh: &TriangleMesh) -> f64 {
-    mesh.indices
-        .chunks_exact(3)
-        .map(|tri| {
-            let p = |i: u32| {
-                let k = i as usize * 3;
-                [
-                    mesh.positions[k] as f64,
-                    mesh.positions[k + 1] as f64,
-                    mesh.positions[k + 2] as f64,
-                ]
-            };
-            let [a, b, c] = [p(tri[0]), p(tri[1]), p(tri[2])];
-            (a[0] * (b[1] * c[2] - b[2] * c[1])
-                + a[1] * (b[2] * c[0] - b[0] * c[2])
-                + a[2] * (b[0] * c[1] - b[1] * c[0]))
-                / 6.0
-        })
-        .sum()
+/// The loaded solid `name`'s mesh.
+async fn mesh(state: &SharedState, name: &str) -> TriangleMesh {
+    state.read().await.loaded.as_ref().unwrap().meshes[name].clone()
+}
+
+fn x_bounds(mesh: &TriangleMesh) -> (f64, f64) {
+    bounds(mesh, 0)
 }
 
 #[tokio::test]
@@ -188,13 +185,8 @@ async fn generated_defines_and_material_edits_agree_after_reload() {
                 < 1e-12
         );
     }
-    let mesh_before = state.read().await.loaded.as_ref().unwrap().meshes["scaled"]
-        .positions
-        .clone();
-    assert_eq!(
-        x_bounds(&state.read().await.loaded.as_ref().unwrap().meshes["scaled"]),
-        (-1.0, 1.0)
-    );
+    let mesh_before = mesh(&state, "scaled").await.positions.clone();
+    assert_eq!(x_bounds(&mesh(&state, "scaled").await), (-1.0, 1.0));
     let _ = update_volume_material_ref(
         State(state.clone()),
         Json(UpdateMaterialRefRequest {
@@ -204,16 +196,7 @@ async fn generated_defines_and_material_edits_agree_after_reload() {
     )
     .await
     .unwrap();
-    let mut mat = state
-        .read()
-        .await
-        .loaded
-        .as_ref()
-        .unwrap()
-        .document
-        .materials
-        .materials[0]
-        .clone();
+    let mut mat = materials(&state).await.materials[0].clone();
     mat.name = "Renamed & M".into();
     let _ = update_material(
         State(state.clone()),
@@ -225,10 +208,7 @@ async fn generated_defines_and_material_edits_agree_after_reload() {
     )
     .await
     .unwrap();
-    let saved = export_gdml(State(state.clone())).await.unwrap().0["gdml"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let saved = export(&state).await;
     assert!(saved.contains("<loop"));
     assert!(saved.contains("Renamed &amp; M"));
     let reloaded = load(&saved).await;
@@ -250,10 +230,7 @@ async fn generated_defines_and_material_edits_agree_after_reload() {
                 }
             );
         }
-        assert_eq!(
-            state.read().await.loaded.as_ref().unwrap().meshes["scaled"].positions,
-            mesh_before
-        );
+        assert_eq!(mesh(&state, "scaled").await.positions, mesh_before);
     }
 }
 
@@ -308,10 +285,7 @@ async fn module_export_preserves_definitions_and_dependency_order() {
     )
     .await
     .unwrap();
-    let saved = export_gdml(State(state.clone())).await.unwrap().0["gdml"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let saved = export(&state).await;
     assert!(
         saved.find("<volume name=\"child\"").unwrap() < saved.find("<volume name=\"W\"").unwrap()
     );
@@ -324,16 +298,7 @@ async fn module_export_preserves_definitions_and_dependency_order() {
     assert_eq!(doc.defines.scales.len(), 1);
     assert_eq!(doc.materials_define, Some(vec!["rho".into()]));
     assert_eq!(
-        x_bounds(
-            &load(&saved)
-                .await
-                .read()
-                .await
-                .loaded
-                .as_ref()
-                .unwrap()
-                .meshes["scaled"]
-        ),
+        x_bounds(&mesh(&load(&saved).await, "scaled").await),
         (-4.0, 4.0)
     );
 
@@ -372,10 +337,7 @@ async fn module_export_preserves_definitions_and_dependency_order() {
     )
     .await
     .unwrap();
-    let saved = export_gdml(State(state)).await.unwrap().0["gdml"]
-        .as_str()
-        .unwrap()
-        .to_string();
+    let saved = export(&state).await;
     assert!(
         saved.find("<volume name=\"ChildWorld\"").unwrap()
             < saved.find("<volume name=\"MotherWorld\"").unwrap()
@@ -390,16 +352,7 @@ async fn material_and_nist_elements_commit_atomically() {
         r#"<volume name="W"><materialref ref="M"/><solidref ref="B"/></volume>"#,
     ))
     .await;
-    let mut material = state
-        .read()
-        .await
-        .loaded
-        .as_ref()
-        .unwrap()
-        .document
-        .materials
-        .materials[0]
-        .clone();
+    let mut material = materials(&state).await.materials[0].clone();
     let element = Element {
         name: "NewElement".into(),
         formula: None,
@@ -425,16 +378,7 @@ async fn material_and_nist_elements_commit_atomically() {
     )
     .await
     .is_err());
-    assert!(state
-        .read()
-        .await
-        .loaded
-        .as_ref()
-        .unwrap()
-        .document
-        .materials
-        .elements
-        .is_empty());
+    assert!(materials(&state).await.elements.is_empty());
     material.density.as_mut().unwrap().value = "-1".into();
     assert!(update_material(
         State(state.clone()),
@@ -446,16 +390,7 @@ async fn material_and_nist_elements_commit_atomically() {
     )
     .await
     .is_err());
-    assert!(state
-        .read()
-        .await
-        .loaded
-        .as_ref()
-        .unwrap()
-        .document
-        .materials
-        .elements
-        .is_empty());
+    assert!(materials(&state).await.elements.is_empty());
     material.density.as_mut().unwrap().value = "3.25".into();
     let _ = update_material(
         State(state.clone()),
@@ -467,19 +402,7 @@ async fn material_and_nist_elements_commit_atomically() {
     )
     .await
     .unwrap();
-    assert_eq!(
-        state
-            .read()
-            .await
-            .loaded
-            .as_ref()
-            .unwrap()
-            .document
-            .materials
-            .elements
-            .len(),
-        1
-    );
+    assert_eq!(materials(&state).await.elements.len(), 1);
     let mut conflicting = element;
     conflicting.z = Some("2".into());
     material.density.as_mut().unwrap().value = "4".into();
@@ -494,15 +417,7 @@ async fn material_and_nist_elements_commit_atomically() {
     .await
     .is_err());
     assert_eq!(
-        state
-            .read()
-            .await
-            .loaded
-            .as_ref()
-            .unwrap()
-            .document
-            .materials
-            .materials[0]
+        materials(&state).await.materials[0]
             .density
             .as_ref()
             .unwrap()
@@ -916,13 +831,11 @@ fn mixture_of(mut material: Material, component: &str) -> Material {
 }
 
 async fn edit_material(state: &SharedState, name: &str, component: &str) -> bool {
-    let guard = state.read().await;
-    let materials = &guard.loaded.as_ref().unwrap().document.materials.materials;
+    let materials = materials(state).await.materials;
     let material = mixture_of(
-        materials.iter().find(|m| m.name == name).unwrap().clone(),
+        materials.into_iter().find(|m| m.name == name).unwrap(),
         component,
     );
-    drop(guard);
     update_material(
         State(state.clone()),
         Json(UpdateMaterialRequest {
@@ -1150,13 +1063,8 @@ fn element(name: &str, z: Option<&str>, fractions: Vec<Fraction>) -> Element {
 }
 
 async fn elements(state: &SharedState) -> Vec<(String, Option<String>)> {
-    let guard = state.read().await;
-    let materials = &guard.loaded.as_ref().unwrap().document.materials;
-    materials
-        .elements
-        .iter()
-        .map(|e| (e.name.clone(), e.z.clone()))
-        .collect()
+    let elements = materials(state).await.elements;
+    elements.into_iter().map(|e| (e.name, e.z)).collect()
 }
 
 #[tokio::test]
@@ -1209,16 +1117,7 @@ async fn material_without_composition_is_rejected() {
     // Z and <atom> (G4GDMLReadMaterials.cc:673-676), and G4Element refuses
     // Z < 1. The Materials "+" stored exactly that: a name and a density.
     let state = load(&document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "")).await;
-    let mut empty = state
-        .read()
-        .await
-        .loaded
-        .as_ref()
-        .unwrap()
-        .document
-        .materials
-        .materials[0]
-        .clone();
+    let mut empty = materials(&state).await.materials[0].clone();
     empty.z = None;
     empty.atom_value = None;
     let added = add_material(
@@ -1312,16 +1211,7 @@ async fn material_named_like_an_element_can_be_edited() {
         <material name="Oxide"><D value="3.9"/><composite n="2" ref="Al"/><composite n="3" ref="O"/></material>"#,
     );
     let state = load(&xml).await;
-    let aluminium = state
-        .read()
-        .await
-        .loaded
-        .as_ref()
-        .unwrap()
-        .document
-        .materials
-        .materials[0]
-        .clone();
+    let aluminium = materials(&state).await.materials[0].clone();
     for (name, material) in [
         (
             "Al",
@@ -1604,16 +1494,7 @@ async fn composite_must_name_an_element() {
     // MixtureRead resolves a <fraction> as an element or a material, but a
     // <composite> through GetElement alone, which is fatal on a miss.
     let state = load(&document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "")).await;
-    let m = state
-        .read()
-        .await
-        .loaded
-        .as_ref()
-        .unwrap()
-        .document
-        .materials
-        .materials[0]
-        .clone();
+    let m = materials(&state).await.materials[0].clone();
     let mut material = mixture_of(m, "N");
     material.components = vec![MaterialComponent::Composite {
         n: "1".into(),

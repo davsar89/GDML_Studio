@@ -2,14 +2,9 @@
 # GDML Studio — build backend, run tests, start backend + frontend, open browser
 set -euo pipefail
 
-# Kill whatever we started, however we exit.
-#
-# Defined and trapped before the first background launch: previously the trap was
-# registered ~45 lines later, leaving the backend unprotected during the
-# readiness wait. Ctrl+C happened to work anyway (a non-interactive shell has no
-# job control, so SIGINT from the terminal reaches the whole process group), but
-# a signal from outside the group, or `set -e` aborting mid-script, orphaned the
-# backend holding port 4001 -- and the next run then died on "Failed to bind".
+# Kill whatever we started, however we exit. Trapped before the first background
+# launch, so a signal from outside the process group, or `set -e` aborting
+# mid-script, cannot orphan the backend holding port 4001.
 BACKEND_PID=""
 FRONTEND_PID=""
 cleanup() {
@@ -91,7 +86,7 @@ BACKEND_PID=$!
 # Wait for backend to be ready
 echo "Waiting for backend on port 4001..."
 for i in $(seq 1 30); do
-    if curl -s http://127.0.0.1:4001/api/health > /dev/null 2>&1 || nc -z 127.0.0.1 4001 2>/dev/null; then
+    if curl -s -o /dev/null http://127.0.0.1:4001/api/document/summary || nc -z 127.0.0.1 4001 2>/dev/null; then
         echo "Backend is ready."
         break
     fi

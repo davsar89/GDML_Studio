@@ -233,38 +233,29 @@ impl EvalEngine {
         finite_value(value)
     }
 
-    fn eval_position(&self, pos: &Position) -> Result<[f64; 3]> {
-        let unit = pos.unit.as_deref().unwrap_or("mm");
-        if units::length_factor(unit).is_none() {
-            self.record_unit_warning(unit, "length");
-        }
-        let comp = |expr: &Option<String>| -> Result<f64> {
-            finite_value(units::length_to_mm(
-                expr.as_deref()
-                    .map(|e| self.eval_expr(e))
-                    .transpose()?
-                    .unwrap_or(0.0),
-                unit,
-            ))
-        };
-        Ok([comp(&pos.x)?, comp(&pos.y)?, comp(&pos.z)?])
+    fn eval_position(&self, p: &Position) -> Result<[f64; 3]> {
+        self.eval_xyz(
+            [&p.x, &p.y, &p.z],
+            p.unit.as_deref().unwrap_or("mm"),
+            "length",
+        )
     }
 
-    fn eval_rotation(&self, rot: &Rotation) -> Result<[f64; 3]> {
-        let unit = rot.unit.as_deref().unwrap_or("rad");
-        if units::angle_factor(unit).is_none() {
-            self.record_unit_warning(unit, "angle");
-        }
-        let comp = |expr: &Option<String>| -> Result<f64> {
-            finite_value(units::angle_to_rad(
-                expr.as_deref()
-                    .map(|e| self.eval_expr(e))
-                    .transpose()?
-                    .unwrap_or(0.0),
-                unit,
-            ))
+    fn eval_rotation(&self, r: &Rotation) -> Result<[f64; 3]> {
+        self.eval_xyz(
+            [&r.x, &r.y, &r.z],
+            r.unit.as_deref().unwrap_or("rad"),
+            "angle",
+        )
+    }
+
+    /// Three components in `unit`, converted to mm or rad; an absent one is 0.
+    fn eval_xyz(&self, xyz: [&Option<String>; 3], unit: &str, kind: &str) -> Result<[f64; 3]> {
+        let factor = self.unit_factor(unit, kind);
+        let comp = |e: &Option<String>| -> Result<f64> {
+            finite_value(e.as_deref().map_or(Ok(0.0), |e| self.eval_expr(e))? * factor)
         };
-        Ok([comp(&rot.x)?, comp(&rot.y)?, comp(&rot.z)?])
+        Ok([comp(xyz[0])?, comp(xyz[1])?, comp(xyz[2])?])
     }
 
     pub fn resolve_value(&self, expr_str: &str) -> f64 {
@@ -281,18 +272,25 @@ impl EvalEngine {
         }
     }
 
-    /// Report a `lunit`/`aunit` string that is not in Geant4's unit table.
+    /// mm per `length` unit, or rad per `angle` unit.
     ///
-    /// Geant4 refuses to load such a file; this viewer falls back to the base
-    /// unit, which silently renders wrong geometry, so the fallback has to be
-    /// visible.
-    pub fn record_unit_warning(&self, unit: &str, kind: &str) {
-        self.record_warning(format!(
-            "Unknown {kind} unit \"{unit}\"; treated as {}. Geant4 would reject \
-             this file — check the spelling (note `micron` and `dm` are not GDML \
-             units; use `um` and `cm`).",
-            if kind == "length" { "mm" } else { "rad" }
-        ));
+    /// Geant4 refuses to load a file whose `lunit`/`aunit` is not in its unit
+    /// table; this viewer falls back to the base unit, which silently renders
+    /// wrong geometry, so the fallback has to be visible.
+    pub fn unit_factor(&self, unit: &str, kind: &str) -> f64 {
+        let (factor, base) = if kind == "length" {
+            (units::length_factor(unit), "mm")
+        } else {
+            (units::angle_factor(unit), "rad")
+        };
+        factor.unwrap_or_else(|| {
+            self.record_warning(format!(
+                "Unknown {kind} unit \"{unit}\"; treated as {base}. Geant4 would reject \
+                 this file — check the spelling (note `micron` and `dm` are not GDML \
+                 units; use `um` and `cm`)."
+            ));
+            1.0
+        })
     }
 
     fn record_warning(&self, msg: String) {

@@ -22,11 +22,9 @@ async fn main() {
     // origin can drive the full (mutating) API against the one in-memory document.
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::predicate(|origin, _| {
-            if let Ok(s) = origin.to_str() {
+            origin.to_str().is_ok_and(|s| {
                 s.starts_with("http://localhost:") || s.starts_with("http://127.0.0.1:")
-            } else {
-                false
-            }
+            })
         }))
         .allow_methods([Method::GET, Method::POST, Method::PUT])
         .allow_headers([HeaderName::from_static("content-type")]);
@@ -40,18 +38,15 @@ async fn main() {
     };
 
     let app = if frontend_dir.exists() {
-        api_router
-            .fallback_service(ServeDir::new(frontend_dir))
-            .layer(cors)
-            .layer(DefaultBodyLimit::max(64 * 1024 * 1024)) // 64 MB for large tessellated GDML files
+        api_router.fallback_service(ServeDir::new(frontend_dir))
     } else {
         tracing::info!(
             "No frontend/dist found, serving API only (use Vite dev server for frontend)"
         );
         api_router
-            .layer(cors)
-            .layer(DefaultBodyLimit::max(64 * 1024 * 1024))
-    };
+    }
+    .layer(cors)
+    .layer(DefaultBodyLimit::max(64 * 1024 * 1024)); // 64 MB for large tessellated GDML files
 
     let addr = SocketAddr::from(([127, 0, 0, 1], config::port()));
     tracing::info!("GDML Studio backend starting on http://{}", addr);

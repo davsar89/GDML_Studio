@@ -59,8 +59,7 @@ pub fn extract_identifiers(expr: &str) -> Vec<String> {
                 current.push(chars[i]);
                 i += 1;
             }
-            // Filter out common math functions that evalexpr provides
-            if !is_builtin_function(&current) {
+            if !BUILTINS.contains(&current.as_str()) {
                 ids.push(current.clone());
             }
             current.clear();
@@ -77,36 +76,9 @@ pub fn extract_identifiers(expr: &str) -> Vec<String> {
     ids
 }
 
-fn is_builtin_function(name: &str) -> bool {
-    matches!(
-        name,
-        "sin"
-            | "cos"
-            | "tan"
-            | "asin"
-            | "acos"
-            | "atan"
-            | "atan2"
-            | "sinh"
-            | "cosh"
-            | "tanh"
-            | "sqrt"
-            | "cbrt"
-            | "abs"
-            | "ln"
-            | "log"
-            | "log2"
-            | "log10"
-            | "exp"
-            | "exp2"
-            | "floor"
-            | "ceil"
-            | "round"
-            | "min"
-            | "max"
-            | "pow"
-            | "if"
-            | "true"
-            | "false"
-    )
-}
+/// Math functions and literals that evalexpr provides.
+const BUILTINS: &[&str] = &[
+    "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "sinh", "cosh", "tanh", "sqrt", "cbrt",
+    "abs", "ln", "log", "log2", "log10", "exp", "exp2", "floor", "ceil", "round", "min", "max",
+    "pow", "if", "true", "false",
+];

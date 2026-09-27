@@ -9,7 +9,7 @@ import { clearAllGeometries } from '../components/Viewport/geometryCache';
  */
 export async function loadDocument(upload: () => Promise<DocumentSummary>, what: string): Promise<void> {
   const store = useAppStore.getState();
-  store.setLoading(true);
+  useAppStore.setState({ loading: true });
   let uploaded = false;
   try {
     const summary = await upload();
@@ -31,7 +31,7 @@ export async function loadDocument(upload: () => Promise<DocumentSummary>, what:
     if (uploaded) store.reset();
     store.setError(`Failed to load ${what}: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
-    store.setLoading(false);
+    useAppStore.setState({ loading: false });
   }
 }
 
@@ -51,20 +51,12 @@ export function refreshMaterials(): Promise<void> {
 export async function refreshMaterialsAndScene(): Promise<void> {
   await refreshMaterials();
   try {
-    const [sceneData, structData] = await Promise.all([
-      api.getScene(),
-      api.getStructure(),
-    ]);
+    const [sceneData, structData] = await Promise.all([api.getScene(), api.getStructure()]);
     useAppStore.setState({ sceneGraph: sceneData.scene_graph, volumes: structData.volumes });
   } catch (e: unknown) {
     // Surfaced rather than logged: a silent failure here leaves the materials
     // list updated while the 3D view still shows pre-edit colours.
-    useAppStore
-      .getState()
-      .setError(
-        `Could not refresh the view after the edit: ${
-          e instanceof Error ? e.message : String(e)
-        }`,
-      );
+    const message = e instanceof Error ? e.message : String(e);
+    useAppStore.getState().setError(`Could not refresh the view after the edit: ${message}`);
   }
 }

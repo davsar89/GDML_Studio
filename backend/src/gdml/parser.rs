@@ -96,18 +96,10 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         root_open = open;
                         root_attributes = e
                             .attributes()
-                            .filter_map(|a| a.ok())
+                            .flatten()
                             .map(|a| {
-                                // Unescape on read; the writer re-escapes, which
-                                // preserves the no-double-escape invariant that
-                                // `get_attr` documents.
-                                let raw = String::from_utf8_lossy(&a.value);
-                                (
-                                    String::from_utf8_lossy(a.key.as_ref()).to_string(),
-                                    quick_xml::escape::unescape(&raw)
-                                        .map(|c| c.into_owned())
-                                        .unwrap_or_else(|_| raw.into_owned()),
-                                )
+                                let key = String::from_utf8_lossy(a.key.as_ref());
+                                (key.to_string(), unescaped(&a.value))
                             })
                             .collect();
                     }
@@ -122,7 +114,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         };
                         defines.expressions.push(Expression {
                             name: get_attr(e, "name").unwrap_or_default(),
-                            value: collapse_spaces(&text),
+                            value: text.split_whitespace().collect::<Vec<_>>().join(" "),
                         });
                     }
                     b"position" if in_define => defines.positions.push(position_from(e)),
@@ -283,9 +275,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                             section = Section::None;
                         }
                     }
-                    b"materials" => section = Section::None,
-                    b"solids" => section = Section::None,
-                    b"structure" => section = Section::None,
+                    b"materials" | b"solids" | b"structure" => section = Section::None,
                     b"gdml" => root_open = false,
                     _ => {}
                 }
@@ -337,13 +327,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             }
             Ok(Event::Eof) if root_open => bail!("Unexpected end of file: <gdml> is not closed"),
             Ok(Event::Eof) => break,
-            Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "XML parse error at pos {}: {}",
-                    reader.buffer_position(),
-                    e
-                ))
-            }
+            Err(e) => bail!("XML parse error at pos {}: {e}", reader.buffer_position()),
             _ => {}
         }
     }
@@ -564,43 +548,26 @@ fn anchor_pending_comments(
 }
 
 fn get_attr(e: &BytesStart, name: &str) -> Option<String> {
-    for attr in e.attributes().flatten() {
-        if attr.key.as_ref() == name.as_bytes() {
-            // quick_xml does NOT auto-unescape attribute values, so decode XML
-            // entities here (e.g. "&amp;" -> "&"). The serializer re-escapes on
-            // write, making the round-trip correct instead of double-escaping.
-            // (GDML uploads are UTF-8; `unescape_value` is unavailable with the
-            // `encoding` feature, so decode the bytes then unescape entities.)
-            let raw = String::from_utf8_lossy(&attr.value);
-            return Some(
-                quick_xml::escape::unescape(&raw)
-                    .map(|c| c.into_owned())
-                    .unwrap_or_else(|_| raw.into_owned()),
-            );
-        }
-    }
-    None
+    let mut attrs = e.attributes().flatten();
+    attrs
+        .find(|a| a.key.as_ref() == name.as_bytes())
+        .map(|a| unescaped(&a.value))
+}
+
+/// An attribute value with its XML entities decoded (e.g. "&amp;" -> "&").
+/// quick_xml does NOT auto-unescape attribute values; the serializer re-escapes
+/// on write, making the round-trip correct instead of double-escaping.
+/// (GDML uploads are UTF-8; `unescape_value` is unavailable with the
+/// `encoding` feature, so decode the bytes then unescape entities.)
+fn unescaped(value: &[u8]) -> String {
+    let raw = String::from_utf8_lossy(value);
+    quick_xml::escape::unescape(&raw)
+        .map(|c| c.into_owned())
+        .unwrap_or_else(|_| raw.into_owned())
 }
 
 fn get_attr_or(e: &BytesStart, name: &str, default: &str) -> String {
     get_attr(e, name).unwrap_or_else(|| default.to_string())
-}
-
-fn collapse_spaces(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    let mut prev_space = false;
-    for c in s.chars() {
-        if c.is_whitespace() {
-            if !prev_space {
-                result.push(' ');
-            }
-            prev_space = true;
-        } else {
-            result.push(c);
-            prev_space = false;
-        }
-    }
-    result.trim().to_string()
 }
 
 // ─── Define parsers ──────────────────────────────────────────────────────────

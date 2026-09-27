@@ -20,12 +20,9 @@ pub struct UploadFilesRequest {
     pub segments: Option<u32>,
 }
 
-fn definitions_equivalent<T: Serialize>(existing: &T, incoming: &T) -> Result<bool, ApiError> {
-    let existing = serde_json::to_value(existing)
-        .map_err(|e| ApiError::internal(&format!("Failed to compare merged definitions: {}", e)))?;
-    let incoming = serde_json::to_value(incoming)
-        .map_err(|e| ApiError::internal(&format!("Failed to compare merged definitions: {}", e)))?;
-    Ok(existing == incoming)
+/// Whether two definitions are field-for-field the same.
+fn same_definition<T: Serialize>(a: &T, b: &T) -> bool {
+    matches!((serde_json::to_value(a), serde_json::to_value(b)), (Ok(a), Ok(b)) if a == b)
 }
 
 /// Append child items whose names are not already taken, warning when a name is
@@ -52,8 +49,7 @@ fn merge_by_name<T, F>(
             target.push(item.clone());
             continue;
         };
-        let conflicting = !definitions_equivalent(existing, item).unwrap_or(false);
-        if conflicting {
+        if !same_definition(existing, item) {
             warnings.push(format!(
                 "File \"{file_ref_name}\" defines {kind} \"{name}\" differently from the \
                  main document. The main document's version is used; this file's is \
@@ -305,8 +301,7 @@ fn ensure_material_ref_exists(doc: &GdmlDocument, candidate: &str) -> Result<(),
         || nist::find_nist_material(candidate).is_some();
     if !exists {
         return Err(ApiError::bad_request(&format!(
-            "Material '{}' does not exist",
-            candidate
+            "Material '{candidate}' does not exist"
         )));
     }
     Ok(())
@@ -580,30 +575,27 @@ async fn with_loaded<T: Send + 'static>(
 /// re-uploading the whole scene to the GPU.
 pub async fn get_scene(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     with_loaded(state, |loaded| {
-        let mut scene_warnings = Vec::new();
-        let scene_graph = build_scene_graph(
-            loaded.geometry(),
-            &loaded.document.materials,
-            &loaded.engine,
-            &mut scene_warnings,
-        );
-        Json(json!({
-            "scene_graph": scene_graph,
-            "warnings": scene_warnings,
-        }))
+        let (scene_graph, warnings) = scene(loaded);
+        Json(json!({ "scene_graph": scene_graph, "warnings": warnings }))
     })
     .await
 }
 
+/// The loaded document's scene graph and its warnings.
+fn scene(loaded: &LoadedDocument) -> (SceneNode, Vec<String>) {
+    let mut warnings = Vec::new();
+    let graph = build_scene_graph(
+        loaded.geometry(),
+        &loaded.document.materials,
+        &loaded.engine,
+        &mut warnings,
+    );
+    (graph, warnings)
+}
+
 pub async fn get_meshes(State(state): State<SharedState>) -> Result<Response, ApiError> {
     with_loaded(state, |loaded| {
-        let mut scene_warnings = Vec::new();
-        let scene_graph = build_scene_graph(
-            loaded.geometry(),
-            &loaded.document.materials,
-            &loaded.engine,
-            &mut scene_warnings,
-        );
+        let (scene_graph, warnings) = scene(loaded);
 
         // The buffers are serialised by reference straight into the response:
         // a serde_json::Value tree cost one 32-byte Value per number and widened
@@ -618,7 +610,7 @@ pub async fn get_meshes(State(state): State<SharedState>) -> Result<Response, Ap
         Json(MeshesResponse {
             meshes: placed_meshes(loaded),
             scene_graph,
-            warnings: scene_warnings,
+            warnings,
         })
         .into_response()
     })
@@ -641,46 +633,38 @@ pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>
         kind: String,
     }
 
-    let mut defines: Vec<DefineValue> = Vec::new();
-
-    for c in &doc.defines.constants {
-        defines.push(DefineValue {
-            name: c.name.clone(),
-            expression: c.value.clone(),
-            evaluated: engine.get(&c.name),
-            unit: None,
-            kind: "constant".to_string(),
-        });
-    }
-    for q in &doc.defines.quantities {
-        // Shown next to its unit, so in that unit rather than in mm or rad.
-        let factor = q.unit.as_deref().map_or(Ok(1.0), |u| engine.eval_expr(u));
-        defines.push(DefineValue {
-            name: q.name.clone(),
-            expression: q.value.clone(),
-            evaluated: engine.get(&q.name).map(|v| v / factor.unwrap_or(1.0)),
-            unit: q.unit.clone(),
-            kind: "quantity".to_string(),
-        });
-    }
-    for v in &doc.defines.variables {
-        defines.push(DefineValue {
-            name: v.name.clone(),
-            expression: v.value.clone(),
-            evaluated: engine.get(&v.name),
-            unit: None,
-            kind: "variable".to_string(),
-        });
-    }
-    for e in &doc.defines.expressions {
-        defines.push(DefineValue {
-            name: e.name.clone(),
-            expression: e.value.clone(),
-            evaluated: engine.get(&e.name),
-            unit: None,
-            kind: "expression".to_string(),
-        });
-    }
+    let plain = |name: &String, value: &String, kind: &str| DefineValue {
+        name: name.clone(),
+        expression: value.clone(),
+        evaluated: engine.get(name),
+        unit: None,
+        kind: kind.to_string(),
+    };
+    let d = &doc.defines;
+    let defines: Vec<DefineValue> = d
+        .constants
+        .iter()
+        .map(|c| plain(&c.name, &c.value, "constant"))
+        .chain(d.quantities.iter().map(|q| {
+            // Shown next to its unit, so in that unit rather than in mm or rad.
+            let factor = q.unit.as_deref().map_or(Ok(1.0), |u| engine.eval_expr(u));
+            DefineValue {
+                evaluated: engine.get(&q.name).map(|v| v / factor.unwrap_or(1.0)),
+                unit: q.unit.clone(),
+                ..plain(&q.name, &q.value, "quantity")
+            }
+        }))
+        .chain(
+            d.variables
+                .iter()
+                .map(|v| plain(&v.name, &v.value, "variable")),
+        )
+        .chain(
+            d.expressions
+                .iter()
+                .map(|e| plain(&e.name, &e.value, "expression")),
+        )
+        .collect();
 
     Ok(Json(json!({ "defines": defines })))
 }
@@ -1060,37 +1044,23 @@ fn build_volume_node(
                     depth + 1,
                     budget,
                 ));
-            } else if is_phi {
-                for n in 0..number {
-                    // G4ReplicaNavigation.cc:682 sets
-                    //   val = -(offset + width*(replicaNo + 0.5))
-                    // and applies rotateZ(val) to the physical volume. That
-                    // stored matrix is the mother-from-daughter rotation, i.e.
-                    // the inverse of the daughter's orientation, which is the
-                    // same convention SceneNode::rotation uses (the viewer
-                    // negates it) -- so `val` goes in directly.
-                    let val = -(offset + width * (n as f64 + 0.5));
-                    let Some(child_node) = build_volume_node(
-                        child_vol,
-                        vol_map,
-                        density_map,
-                        engine,
-                        [0.0; 3],
-                        [0.0, 0.0, val],
-                        false,
-                        visited,
-                        &instance_id,
-                        format!("/replica[{}]:{}", n, replica.volume_ref),
-                        warnings,
-                        depth + 1,
-                        budget,
-                    ) else {
-                        break;
-                    };
-                    children.push(child_node);
-                }
             } else {
-                if offset.abs() > 1e-9 {
+                // A Cartesian replica is stacked along x, y or z; a phi one is
+                // rotated instead.
+                let along = |i: usize| {
+                    let v = replica.direction[i].as_deref();
+                    v.map_or(0.0, |v| engine.resolve_value(v)).abs() > 0.5
+                };
+                let axis = if is_phi {
+                    None
+                } else if along(0) {
+                    Some(0)
+                } else if along(1) {
+                    Some(1)
+                } else {
+                    Some(2)
+                };
+                if axis.is_some() && offset.abs() > 1e-9 {
                     // Matches Geant4: ComputeTransformation's kXAxis/kYAxis/
                     // kZAxis cases compute the centred position from width and
                     // replicaNo alone and never read `offset`
@@ -1102,40 +1072,31 @@ fn build_volume_node(
                     ));
                 }
 
-                // Determine axis index: x=0, y=1, z=2
-                let axis = if replica.direction[0]
-                    .as_deref()
-                    .map(|v| engine.resolve_value(v))
-                    .unwrap_or(0.0)
-                    .abs()
-                    > 0.5
-                {
-                    0
-                } else if replica.direction[1]
-                    .as_deref()
-                    .map(|v| engine.resolve_value(v))
-                    .unwrap_or(0.0)
-                    .abs()
-                    > 0.5
-                {
-                    1
-                } else {
-                    2
-                };
-
                 for n in 0..number {
-                    let mut pos = [0.0_f64; 3];
-                    // G4ReplicaNavigation.cc:667 --
-                    //   val = -width*0.5*(nReplicas-1) + width*replicaNo
-                    pos[axis] =
-                        -width * 0.5 * (number.saturating_sub(1) as f64) + (n as f64) * width;
+                    let (mut pos, mut rot) = ([0.0_f64; 3], [0.0_f64; 3]);
+                    match axis {
+                        // G4ReplicaNavigation.cc:667 --
+                        //   val = -width*0.5*(nReplicas-1) + width*replicaNo
+                        Some(axis) => {
+                            pos[axis] = -width * 0.5 * (number.saturating_sub(1) as f64)
+                                + (n as f64) * width
+                        }
+                        // G4ReplicaNavigation.cc:682 sets
+                        //   val = -(offset + width*(replicaNo + 0.5))
+                        // and applies rotateZ(val) to the physical volume. That
+                        // stored matrix is the mother-from-daughter rotation, i.e.
+                        // the inverse of the daughter's orientation, which is the
+                        // same convention SceneNode::rotation uses (the viewer
+                        // negates it) -- so `val` goes in directly.
+                        None => rot[2] = -(offset + width * (n as f64 + 0.5)),
+                    }
                     let Some(child_node) = build_volume_node(
                         child_vol,
                         vol_map,
                         density_map,
                         engine,
                         pos,
-                        [0.0; 3],
+                        rot,
                         false,
                         visited,
                         &instance_id,
@@ -1214,8 +1175,7 @@ fn ensure_material_name_available(
         .any(|m| m.name == candidate && Some(m.name.as_str()) != excluding_material);
     if material_conflict {
         return Err(ApiError::bad_request(&format!(
-            "Material '{}' already exists",
-            candidate
+            "Material '{candidate}' already exists"
         )));
     }
 
@@ -1225,8 +1185,7 @@ fn ensure_material_name_available(
         Some(candidate) != excluding_material && doc.elements.iter().any(|e| e.name == candidate);
     if element_conflict {
         return Err(ApiError::bad_request(&format!(
-            "Name '{}' is already used by an element",
-            candidate
+            "Name '{candidate}' is already used by an element"
         )));
     }
 
@@ -1239,15 +1198,13 @@ fn ensure_element_name_available(doc: &MaterialSection, candidate: &str) -> Resu
     }
     if doc.elements.iter().any(|e| e.name == candidate) {
         return Err(ApiError::bad_request(&format!(
-            "Element '{}' already exists",
-            candidate
+            "Element '{candidate}' already exists"
         )));
     }
 
     if doc.materials.iter().any(|m| m.name == candidate) {
         return Err(ApiError::bad_request(&format!(
-            "Name '{}' is already used by a material",
-            candidate
+            "Name '{candidate}' is already used by a material"
         )));
     }
 
@@ -1290,7 +1247,7 @@ fn with_staged_elements(
     let mut staged = materials.clone();
     for element in elements {
         if let Some(existing) = staged.elements.iter().find(|e| e.name == element.name) {
-            if !definitions_equivalent(existing, element)? {
+            if !same_definition(existing, element) {
                 return Err(ApiError::bad_request(&format!(
                     "Element '{}' already has a different definition",
                     element.name
@@ -1551,14 +1508,7 @@ pub async fn delete_element(
     let mut state_w = state.write().await;
     let loaded = loaded(state_w.loaded.as_mut())?;
 
-    // Check if element is referenced by any material component
-    let in_use = loaded.document.materials.materials.iter().any(|m| {
-        m.components.iter().any(|c| match c {
-            MaterialComponent::Fraction { ref_name, .. } => ref_name == &req.name,
-            MaterialComponent::Composite { ref_name, .. } => ref_name == &req.name,
-        })
-    });
-    if in_use {
+    if is_name_referenced_in_material_components(&loaded.document.materials.materials, &req.name) {
         return Err(ApiError::bad_request(&format!(
             "Element '{}' is still referenced by one or more materials",
             req.name
@@ -1703,6 +1653,17 @@ mod tests {
         }
     }
 
+    fn physvol(name: &str, volume_ref: &str) -> PhysVol {
+        PhysVol {
+            name: Some(name.to_string()),
+            volume_ref: volume_ref.to_string(),
+            copynumber: None,
+            file_ref: None,
+            position: None,
+            rotation: None,
+        }
+    }
+
     fn file_ref_physvol(file: &str, volname: Option<&str>) -> PhysVol {
         PhysVol {
             name: None,
@@ -1736,9 +1697,10 @@ mod tests {
         let mut grand = base_doc("grand.gdml", "GrandWorld");
         grand.structure.volumes.push(volume("GrandWorld", "Vacuum"));
 
-        let mut child_docs = HashMap::new();
-        child_docs.insert("child.gdml".to_string(), child);
-        child_docs.insert("grand.gdml".to_string(), grand);
+        let child_docs = HashMap::from([
+            ("child.gdml".to_string(), child),
+            ("grand.gdml".to_string(), grand),
+        ]);
 
         let warnings = resolve_all_file_refs(&mut main, &child_docs);
         assert!(warnings.is_empty());
@@ -1767,14 +1729,7 @@ mod tests {
     async fn material_rename_cascades_to_components_and_volumes() {
         let mut doc = base_doc("test.gdml", "World");
         let mut world = volume("World", "Steel");
-        world.physvols.push(PhysVol {
-            name: Some("pv_leaf".to_string()),
-            volume_ref: "Leaf".to_string(),
-            copynumber: None,
-            file_ref: None,
-            position: None,
-            rotation: None,
-        });
+        world.physvols.push(physvol("pv_leaf", "Leaf"));
         doc.structure.volumes.push(world);
         doc.structure.volumes.push(volume("Leaf", "Steel"));
 
@@ -1938,30 +1893,33 @@ mod tests {
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 
-    #[test]
-    fn resolve_all_file_refs_deduplicates_identical_define_names() {
+    /// Merge a "child.gdml" into a "main.gdml" that defines A = 1, where the
+    /// child defines A = `child_a`.
+    fn merge_child_defining_a(child_a: &str) -> (GdmlDocument, Vec<String>) {
+        let constant_a = |value: &str| Constant {
+            name: "A".to_string(),
+            value: value.to_string(),
+        };
         let mut main = base_doc("main.gdml", "MainWorld");
         let mut main_world = volume("MainWorld", "Vacuum");
         main_world
             .physvols
             .push(file_ref_physvol("child.gdml", None));
         main.structure.volumes.push(main_world);
-        main.defines.constants.push(Constant {
-            name: "A".to_string(),
-            value: "1".to_string(),
-        });
+        main.defines.constants.push(constant_a("1"));
 
         let mut child = base_doc("child.gdml", "ChildWorld");
         child.structure.volumes.push(volume("ChildWorld", "Vacuum"));
-        child.defines.constants.push(Constant {
-            name: "A".to_string(),
-            value: "1".to_string(),
-        });
+        child.defines.constants.push(constant_a(child_a));
 
-        let mut child_docs = HashMap::new();
-        child_docs.insert("child.gdml".to_string(), child);
-
+        let child_docs = HashMap::from([("child.gdml".to_string(), child)]);
         let warnings = resolve_all_file_refs(&mut main, &child_docs);
+        (main, warnings)
+    }
+
+    #[test]
+    fn resolve_all_file_refs_deduplicates_identical_define_names() {
+        let (main, warnings) = merge_child_defining_a("1");
         assert!(warnings.is_empty());
         assert_eq!(main.defines.constants.len(), 1);
     }
@@ -1971,28 +1929,7 @@ mod tests {
         // Geant4 loads such a pair: each module file gets its own evaluator. One
         // namespace cannot hold both values, so the main file's is kept and the
         // clash reported, instead of refusing the whole upload.
-        let mut main = base_doc("main.gdml", "MainWorld");
-        let mut main_world = volume("MainWorld", "Vacuum");
-        main_world
-            .physvols
-            .push(file_ref_physvol("child.gdml", None));
-        main.structure.volumes.push(main_world);
-        main.defines.constants.push(Constant {
-            name: "A".to_string(),
-            value: "1".to_string(),
-        });
-
-        let mut child = base_doc("child.gdml", "ChildWorld");
-        child.structure.volumes.push(volume("ChildWorld", "Vacuum"));
-        child.defines.constants.push(Constant {
-            name: "A".to_string(),
-            value: "2".to_string(),
-        });
-
-        let mut child_docs = HashMap::new();
-        child_docs.insert("child.gdml".to_string(), child);
-
-        let warnings = resolve_all_file_refs(&mut main, &child_docs);
+        let (main, warnings) = merge_child_defining_a("2");
         assert!(
             warnings.iter().any(|w| w.contains("constant \"A\"")),
             "{warnings:?}"
@@ -2009,22 +1946,8 @@ mod tests {
     fn repeated_logical_volume_instances_have_unique_instance_ids() {
         let mut doc = base_doc("test.gdml", "World");
         let mut world = volume("World", "Vacuum");
-        world.physvols.push(PhysVol {
-            name: Some("pv_0".to_string()),
-            volume_ref: "Leaf".to_string(),
-            copynumber: None,
-            file_ref: None,
-            position: None,
-            rotation: None,
-        });
-        world.physvols.push(PhysVol {
-            name: Some("pv_1".to_string()),
-            volume_ref: "Leaf".to_string(),
-            copynumber: None,
-            file_ref: None,
-            position: None,
-            rotation: None,
-        });
+        world.physvols.push(physvol("pv_0", "Leaf"));
+        world.physvols.push(physvol("pv_1", "Leaf"));
         doc.structure.volumes.push(world);
         doc.structure.volumes.push(volume("Leaf", "Vacuum"));
 
@@ -2058,29 +1981,21 @@ mod tests {
 
     #[test]
     fn replica_positions_are_centered_in_mother() {
-        let mut doc = base_doc("test.gdml", "World");
-        let mut world = volume("World", "Vacuum");
-        world.replica = Some(crate::gdml::model::ReplicaVol {
-            volume_ref: "Slice".to_string(),
-            curvilinear_axis: None,
-            number: "4".to_string(),
-            direction: [Some("1".to_string()), None, None],
-            width: "10".to_string(),
-            width_unit: Some("mm".to_string()),
-            offset: "0".to_string(),
-            offset_unit: None,
-        });
-        doc.structure.volumes.push(world);
-        doc.structure.volumes.push(volume("Slice", "Vacuum"));
-
-        let engine = EvalEngine::new();
-        let mut warnings = Vec::new();
-        let graph = build_scene_graph(&doc, &doc.materials, &engine, &mut warnings);
+        let (graph, warnings) = replica_scene(
+            None,
+            [Some("1".to_string()), None, None],
+            "4",
+            "10",
+            Some("mm"),
+            "0",
+            None,
+        );
         // Geant4 centers the stack: 4 slices of width 10 -> x = -15, -5, +5, +15
         let xs: Vec<f64> = graph.children.iter().map(|c| c.position[0]).collect();
         assert_eq!(xs, vec![-15.0, -5.0, 5.0, 15.0]);
         assert!(warnings.is_empty(), "unexpected warnings: {warnings:?}");
     }
+
     /// Build a scene whose world replicates "Slice" along `curvilinear`, or
     /// `direction` when that is `None`.
     fn replica_scene(
@@ -2094,7 +2009,7 @@ mod tests {
     ) -> (SceneNode, Vec<String>) {
         let mut doc = base_doc("test.gdml", "World");
         let mut world = volume("World", "Vacuum");
-        world.replica = Some(crate::gdml::model::ReplicaVol {
+        world.replica = Some(ReplicaVol {
             volume_ref: "Slice".to_string(),
             curvilinear_axis: curvilinear.map(|s| s.to_string()),
             number: number.to_string(),

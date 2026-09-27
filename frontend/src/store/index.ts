@@ -52,7 +52,6 @@ interface AppState {
   hoverCandidates: SnapPoint[];
   surfaceCandidates: SnapPoint[];
 
-  setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   markDirty: () => void;
   markSaved: (revision?: number) => void;
@@ -90,7 +89,6 @@ const initialState = () => ({
 export const useAppStore = create<AppState>((set, get) => ({
   ...initialState(),
 
-  setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
   markDirty: () => set((state) => ({ dirty: true, editRevision: state.editRevision + 1 })),
   markSaved: (revision) => set((state) => revision === undefined || revision === state.editRevision ? { dirty: false } : {}),
@@ -137,11 +135,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleInstanceVisibility: (instanceId) =>
     set((state) => {
       const next = new Set(state.hiddenInstances);
-      if (next.has(instanceId)) {
-        next.delete(instanceId);
-      } else {
-        next.add(instanceId);
-      }
+      if (!next.delete(instanceId)) next.add(instanceId);
       return { hiddenInstances: next };
     }),
   openContextMenu: (x, y, items) => set({ contextMenu: { x, y, items } }),
@@ -152,9 +146,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set(on ? { measureMode: true } : { measureMode: false, pendingPoint: null, hoverSnap: null, hoverCandidates: [], surfaceCandidates: [] }),
   placeMeasurePoint: (snap) =>
     set((state) => {
-      if (!state.pendingPoint) {
-        return { pendingPoint: snap };
-      }
+      if (!state.pendingPoint) return { pendingPoint: snap };
       const a = state.pendingPoint.position;
       const b = snap.position;
       const distance = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
