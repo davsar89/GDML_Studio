@@ -21,6 +21,25 @@ pub struct EvalEngine {
     warnings: std::sync::Mutex<Vec<String>>,
 }
 
+/// Names seeded below that G4GDMLEvaluator does not predefine, so a file may
+/// define them: CLHEP's twopi and halfpi, the perCent family, unit plurals, and
+/// symbols only G4UnitsTable or this viewer knows.
+const NOT_GEANT4_NAMES: &[&str] = &[
+    "twopi",
+    "halfpi",
+    "perCent",
+    "perThousand",
+    "perMillion",
+    "radians",
+    "degrees",
+    "Ang",
+    "fm",
+    "inch",
+    "in",
+    "foot",
+    "ft",
+];
+
 impl Default for EvalEngine {
     fn default() -> Self {
         Self::new()
@@ -108,6 +127,17 @@ impl EvalEngine {
             .collect();
         let order = dependency_order(&deps, "define", |i| entries[i].0)
             .context("Failed to resolve define dependencies")?;
+
+        // G4GDMLEvaluator refuses to redefine one of its own names ("Redefinition
+        // of constant or variable"). Here the define wins; say so.
+        for &(name, ..) in &entries {
+            if self.get(name).is_some() && !NOT_GEANT4_NAMES.contains(&name) {
+                self.record_warning(format!(
+                    "Define \"{name}\" shadows a CLHEP unit/constant; Geant4 rejects this \
+                     file. Here the define is used wherever \"{name}\" appears."
+                ));
+            }
+        }
 
         for (name, expression, unit) in order.into_iter().map(|i| entries[i]) {
             // A define that cannot be evaluated is a warning, not a fatal error.

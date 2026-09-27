@@ -1094,7 +1094,12 @@ async fn clhep_units_evaluate_like_geant4() {
     let state = load(&xml).await;
     let guard = state.read().await;
     let loaded = guard.loaded.as_ref().unwrap();
-    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    // Geant4 would refuse the `e` define itself; here only that is reported.
+    assert!(
+        loaded.warnings.len() == 1 && loaded.warnings[0].contains(r#""e" shadows"#),
+        "{:?}",
+        loaded.warnings
+    );
     for (axis, half) in [(0, 0.5), (1, 2.5), (2, 0.5 * 6.241509074)] {
         let (lo, hi) = bounds(&loaded.meshes["U"], axis);
         assert!(
@@ -1625,4 +1630,34 @@ async fn composite_must_name_an_element() {
     .await;
     assert_eq!(updated.err().map(|e| e.status.as_u16()), Some(400));
     assert!(edit_material(&state, "M", "N").await, "a fraction may");
+}
+
+#[tokio::test]
+async fn define_named_like_a_unit_is_reported() {
+    // DefineConstant and DefineVariable are fatal on a name the evaluator
+    // already holds, and it holds every CLHEP unit; twopi is not among them.
+    let summary = upload_file(
+        State(create_shared_state()),
+        Json(UploadFileRequest {
+            filename: "units.gdml".into(),
+            content: document(
+                r#"<constant name="deg" value="2"/><variable name="L" value="1"/>
+                <quantity name="g" value="1" unit="mm"/><constant name="twopi" value="6"/>"#,
+                r#"<box name="B" x="deg" y="1" z="1"/>"#,
+                r#"<volume name="W"><materialref ref="M"/><solidref ref="B"/></volume>"#,
+            ),
+            segments: None,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+    let warnings = summary["warnings"].to_string();
+    for name in ["deg", "L", "g"] {
+        assert!(
+            warnings.contains(&format!(r#"Define \"{name}\" shadows"#)),
+            "{name}: {warnings}"
+        );
+    }
+    assert!(!warnings.contains("twopi"), "{warnings}");
 }
