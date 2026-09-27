@@ -1,3 +1,4 @@
+import { memo, useState } from 'react';
 import { useAppStore } from '../../store';
 import type { SceneNode } from '../../store/types';
 
@@ -11,14 +12,12 @@ export default function VolumeTree() {
   return <VolumeNode node={sceneGraph} depth={0} />;
 }
 
-function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
-  const selectedVolume = useAppStore((s) => s.selectedVolume);
-  const setSelectedVolume = useAppStore((s) => s.setSelectedVolume);
-  const hiddenInstances = useAppStore((s) => s.hiddenInstances);
-  const toggleInstanceVisibility = useAppStore((s) => s.toggleInstanceVisibility);
-  const openContextMenu = useAppStore((s) => s.openContextMenu);
-  const isSelected = selectedVolume === node.volume_name;
-  const isHidden = hiddenInstances.has(node.instance_id);
+// Memoised with per-node selectors, and collapsed from depth 2 so a large geometry opens as a few rows.
+const VolumeNode = memo(({ node, depth }: { node: SceneNode; depth: number }) => {
+  const isSelected = useAppStore((s) => s.selectedVolume === node.volume_name);
+  const isHidden = useAppStore((s) => s.hiddenInstances.has(node.instance_id));
+  const [expanded, setExpanded] = useState(depth < 2);
+  const { setSelectedVolume, toggleInstanceVisibility, openContextMenu } = useAppStore.getState();
 
   return (
     <div>
@@ -26,9 +25,8 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          const hidden = hiddenInstances.has(node.instance_id);
           openContextMenu(e.clientX, e.clientY, [
-            { label: hidden ? 'Show' : 'Hide', action: () => toggleInstanceVisibility(node.instance_id) },
+            { label: isHidden ? 'Show' : 'Hide', action: () => toggleInstanceVisibility(node.instance_id) },
             { label: 'Change Material', action: () => { setSelectedVolume(node.volume_name); } },
           ]);
         }}
@@ -63,15 +61,19 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
         >
           {isHidden ? '\u{1F441}\u{200D}\u{1F5E8}' : '\u{1F441}'}
         </button>
+        <button className="plain" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}
+          aria-label={`${expanded ? 'Collapse' : 'Expand'} ${node.name}`}
+          style={{ width: '2ch', flexShrink: 0, visibility: node.children.length > 0 ? 'visible' : 'hidden' }}>
+          {expanded ? '\u25BC' : '\u25B6'}
+        </button>
         <button className="plain" onClick={() => setSelectedVolume(node.volume_name)}
           style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {node.children.length > 0 ? '\u25B6 ' : '  '}
           {node.name}
         </button>
       </div>
-      {node.children.map((child, i) => (
+      {expanded && node.children.map((child, i) => (
         <VolumeNode key={child.instance_id || `${child.volume_name}-${i}`} node={child} depth={depth + 1} />
       ))}
     </div>
   );
-}
+});
