@@ -4,7 +4,6 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import { useAppStore } from '../../store';
 import { formatDistance } from './snapUtils';
-import type { SnapPoint, Measurement } from '../../store/types';
 
 const SNAP_COLORS: Record<string, number> = {
   vertex: 0x22c55e, // green
@@ -97,12 +96,7 @@ function SnapCandidates() {
 }
 
 /** Dashed line using native THREE.Line + LineDashedMaterial */
-function DashedLine({ start, end, color = LINE_COLOR, depthTest = false }: {
-  start: [number, number, number];
-  end: [number, number, number];
-  color?: number;
-  depthTest?: boolean;
-}) {
+function DashedLine({ start, end }: { start: [number, number, number]; end: [number, number, number] }) {
   // Destructure before the memo so the closure reads six scalars rather than the
   // two tuples. Callers pass fresh arrays each render, so depending on the tuples
   // would rebuild the geometry every frame; depending on `start[0]`-style member
@@ -121,15 +115,8 @@ function DashedLine({ start, end, color = LINE_COLOR, depthTest = false }: {
   }, [sx, sy, sz, ex, ey, ez]);
 
   const material = useMemo(
-    () =>
-      new THREE.LineDashedMaterial({
-        color,
-        dashSize: 4,
-        gapSize: 3,
-        depthTest,
-        depthWrite: false,
-      }),
-    [color, depthTest],
+    () => new THREE.LineDashedMaterial({ color: LINE_COLOR, dashSize: 4, gapSize: 3, depthTest: false, depthWrite: false }),
+    [],
   );
 
   // Memoize the Line itself (avoids allocating a new THREE.Line every render) and
@@ -154,65 +141,29 @@ function DashedLine({ start, end, color = LINE_COLOR, depthTest = false }: {
   );
 }
 
-/** Distance label rendered at a world position */
-function DistanceLabel({ position, distance }: { position: [number, number, number]; distance: number }) {
+/** A measured segment: dashed line from a to b, with its length at the midpoint. */
+function Segment({ a, b }: { a: [number, number, number]; b: [number, number, number] }) {
   return (
-    <Html position={position} center style={{ pointerEvents: 'none' }}>
-      <div
-        style={{
-          background: 'rgba(22,33,62,0.92)',
-          color: '#e0e0e0',
-          padding: '3px 10px',
-          borderRadius: 10,
-          fontSize: 12,
-          fontFamily: 'monospace',
-          whiteSpace: 'nowrap',
-          border: '1px solid rgba(233,69,96,0.6)',
-          userSelect: 'none',
-        }}
-      >
-        {formatDistance(distance)}
-      </div>
-    </Html>
-  );
-}
-
-/** A completed measurement: two dots, a line, and a label */
-function CompletedMeasurement({ m }: { m: Measurement }) {
-  const midpoint: [number, number, number] = [
-    (m.pointA.position[0] + m.pointB.position[0]) / 2,
-    (m.pointA.position[1] + m.pointB.position[1]) / 2,
-    (m.pointA.position[2] + m.pointB.position[2]) / 2,
-  ];
-
-  return (
-    <group userData={{ isMeasureTool: true }}>
-      <SnapDot position={m.pointA.position} type={m.pointA.type} />
-      <SnapDot position={m.pointB.position} type={m.pointB.type} />
-      <DashedLine start={m.pointA.position} end={m.pointB.position} />
-      <DistanceLabel position={midpoint} distance={m.distance} />
-    </group>
-  );
-}
-
-/** Live preview line from pending point to hover snap */
-function PendingPreview({ pending, hover }: { pending: SnapPoint; hover: SnapPoint }) {
-  const dx = hover.position[0] - pending.position[0];
-  const dy = hover.position[1] - pending.position[1];
-  const dz = hover.position[2] - pending.position[2];
-  const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-  const midpoint: [number, number, number] = [
-    (pending.position[0] + hover.position[0]) / 2,
-    (pending.position[1] + hover.position[1]) / 2,
-    (pending.position[2] + hover.position[2]) / 2,
-  ];
-
-  return (
-    <group userData={{ isMeasureTool: true }}>
-      <DashedLine start={pending.position} end={hover.position} />
-      <DistanceLabel position={midpoint} distance={dist} />
-    </group>
+    <>
+      <DashedLine start={a} end={b} />
+      <Html position={a.map((v, i) => (v + b[i]) / 2) as [number, number, number]} center style={{ pointerEvents: 'none' }}>
+        <div
+          style={{
+            background: 'rgba(22,33,62,0.92)',
+            color: '#e0e0e0',
+            padding: '3px 10px',
+            borderRadius: 10,
+            fontSize: 12,
+            fontFamily: 'monospace',
+            whiteSpace: 'nowrap',
+            border: '1px solid rgba(233,69,96,0.6)',
+            userSelect: 'none',
+          }}
+        >
+          {formatDistance(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]))}
+        </div>
+      </Html>
+    </>
   );
 }
 
@@ -224,23 +175,20 @@ export default function MeasureOverlay() {
 
   return (
     <group>
-      {/* Completed measurements (always visible) */}
       {measurements.map((m) => (
-        <CompletedMeasurement key={m.id} m={m} />
+        <group key={m.id}>
+          <SnapDot position={m.pointA.position} type={m.pointA.type} />
+          <SnapDot position={m.pointB.position} type={m.pointB.type} />
+          <Segment a={m.pointA.position} b={m.pointB.position} />
+        </group>
       ))}
 
       {/* Snap candidate indicators */}
       <SnapCandidates />
 
-      {/* Pending point dot */}
-      {pendingPoint && (
-        <SnapDot position={pendingPoint.position} type={pendingPoint.type} />
-      )}
-
-      {/* Preview line from pending to hover */}
-      {pendingPoint && hoverSnap && measureMode && (
-        <PendingPreview pending={pendingPoint} hover={hoverSnap} />
-      )}
+      {/* Pending point and the live preview to the hovered snap */}
+      {pendingPoint && <SnapDot position={pendingPoint.position} type={pendingPoint.type} />}
+      {pendingPoint && hoverSnap && measureMode && <Segment a={pendingPoint.position} b={hoverSnap.position} />}
     </group>
   );
 }
