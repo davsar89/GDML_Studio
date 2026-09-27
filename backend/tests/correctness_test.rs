@@ -1031,3 +1031,24 @@ async fn polyhedra_without_numsides_is_reported_not_invented() {
         "numsides was invented on save"
     );
 }
+
+#[tokio::test]
+async fn delete_material_used_only_inside_a_loop_is_refused() {
+    // N is named only by the volumes a structure <loop> declares. Export
+    // writes the loop back verbatim, so deleting N saved a loop whose
+    // materialref Geant4 cannot resolve.
+    let xml = document(
+        r#"<variable name="i" value="0"/>"#,
+        r#"<box name="B" x="1" y="1" z="1"/><box name="Big" x="100" y="100" z="100"/>"#,
+        r#"<loop for="i" from="1" to="2" step="1"><volume name="Slab[i]"><materialref ref="N"/><solidref ref="B"/></volume></loop>
+      <volume name="W"><materialref ref="M"/><solidref ref="Big"/><physvol><volumeref ref="Slab_0"/></physvol></volume>"#,
+    );
+    let state = load(&xml).await;
+    let refused = delete_material(
+        State(state.clone()),
+        Json(DeleteMaterialRequest { name: "N".into() }),
+    )
+    .await;
+    assert!(refused.is_err(), "a material used by a loop was deleted");
+    assert!(material_names(&export(&state).await).contains(&"N".to_string()));
+}

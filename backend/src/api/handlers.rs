@@ -1559,14 +1559,21 @@ pub async fn delete_material(
     let in_use_by_component =
         is_name_referenced_in_material_components(&loaded.document.materials.materials, &req.name);
 
-    if in_use_by_volume || in_use_by_component {
-        let mut contexts = Vec::new();
-        if in_use_by_volume {
-            contexts.push("one or more volumes");
-        }
-        if in_use_by_component {
-            contexts.push("one or more material components");
-        }
+    // A volume inside a preserved <loop> counts too: export writes the loop
+    // back verbatim, and its reference would dangle.
+    let in_use_by_loop = loaded
+        .preserved_xml_uses_material(&req.name)
+        .map_err(|e| ApiError::internal(&format!("Cannot read preserved XML: {e}")))?;
+
+    let contexts: Vec<&str> = [
+        (in_use_by_volume, "one or more volumes"),
+        (in_use_by_component, "one or more material components"),
+        (in_use_by_loop, "a preserved <loop>"),
+    ]
+    .into_iter()
+    .filter_map(|(used, what)| used.then_some(what))
+    .collect();
+    if !contexts.is_empty() {
         return Err(ApiError::bad_request(&format!(
             "Material '{}' is still referenced by {}",
             req.name,

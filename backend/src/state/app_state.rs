@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::eval::engine::EvalEngine;
-use crate::gdml::model::GdmlDocument;
+use crate::gdml::model::{GdmlDocument, RawElement};
 use crate::mesh::types::TriangleMesh;
 
 pub struct LoadedDocument {
@@ -30,6 +30,27 @@ impl LoadedDocument {
         self.render.as_ref().unwrap_or(&self.document)
     }
 
+    /// Every element export writes back verbatim: the preserved top-level ones
+    /// and the `<loop>`s inside volumes.
+    fn preserved_xml_mut(&mut self) -> impl Iterator<Item = &mut RawElement> {
+        let doc = &mut self.document;
+        doc.raw_unknown
+            .iter_mut()
+            .chain(doc.structure.volumes.iter_mut().flat_map(|v| &mut v.loops))
+    }
+
+    /// Whether preserved XML names `material` in a `<materialref>`, e.g. a
+    /// volume declared inside a `<loop>`.
+    pub fn preserved_xml_uses_material(&mut self, material: &str) -> anyhow::Result<bool> {
+        for raw in self.preserved_xml_mut() {
+            // Renaming to itself changes nothing; it only reports a match.
+            if rename_material_refs(&raw.xml, material, material)?.is_some() {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
     /// Change an assignment (one source volume) or cascade a rename (all volumes).
     /// Rewrite preserved references before committing anything that can fail.
     pub fn change_material_refs(
@@ -40,32 +61,13 @@ impl LoadedDocument {
     ) -> anyhow::Result<()> {
         if volume.is_none() {
             let rewritten = self
-                .document
-                .raw_unknown
-                .iter()
-                .chain(
-                    self.document
-                        .structure
-                        .volumes
-                        .iter()
-                        .flat_map(|v| &v.loops),
-                )
+                .preserved_xml_mut()
                 .map(|raw| rename_material_refs(&raw.xml, old, new))
                 .collect::<anyhow::Result<Vec<_>>>()?;
-            for (raw, xml) in self
-                .document
-                .raw_unknown
-                .iter_mut()
-                .chain(
-                    self.document
-                        .structure
-                        .volumes
-                        .iter_mut()
-                        .flat_map(|v| &mut v.loops),
-                )
-                .zip(rewritten)
-            {
-                raw.xml = xml;
+            for (raw, xml) in self.preserved_xml_mut().zip(rewritten) {
+                if let Some(xml) = xml {
+                    raw.xml = xml;
+                }
             }
         }
         for vol in self.document.structure.volumes.iter_mut().chain(
@@ -82,16 +84,18 @@ impl LoadedDocument {
 }
 
 /// Replace only an exact materialref, never comments, substrings, or other refs.
-fn rename_material_refs(xml: &str, old: &str, new: &str) -> anyhow::Result<String> {
+/// `None` when no materialref in `xml` names `old`.
+fn rename_material_refs(xml: &str, old: &str, new: &str) -> anyhow::Result<Option<String>> {
     use quick_xml::events::{BytesStart, Event};
     let mut reader = quick_xml::Reader::from_str(xml);
     let mut writer = quick_xml::Writer::new(Vec::new());
+    let mut found = false;
     loop {
         let event = reader.read_event()?;
         if matches!(event, Event::Eof) {
             break;
         }
-        let rewrite = |e: &BytesStart| -> anyhow::Result<BytesStart<'static>> {
+        let mut rewrite = |e: &BytesStart| -> anyhow::Result<BytesStart<'static>> {
             if e.local_name().as_ref() != b"materialref" {
                 return Ok(e.clone().into_owned());
             }
@@ -101,6 +105,7 @@ fn rename_material_refs(xml: &str, old: &str, new: &str) -> anyhow::Result<Strin
                 let attr = attr?;
                 let value = attr.decode_and_unescape_value(reader.decoder())?;
                 let value = if attr.key.as_ref() == b"ref" && value == old {
+                    found = true;
                     new
                 } else {
                     &value
@@ -115,7 +120,9 @@ fn rename_material_refs(xml: &str, old: &str, new: &str) -> anyhow::Result<Strin
             e => e.into_owned(),
         })?;
     }
-    Ok(String::from_utf8(writer.into_inner())?)
+    Ok(found
+        .then(|| String::from_utf8(writer.into_inner()))
+        .transpose()?)
 }
 
 pub type SharedState = Arc<RwLock<AppState>>;
