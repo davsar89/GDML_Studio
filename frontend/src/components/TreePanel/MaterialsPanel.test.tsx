@@ -331,6 +331,18 @@ describe('material drafts and document actions', () => {
     expect(useAppStore.getState().summary?.filename).toBe('copy.gdml');
   });
 
+  it('returns focus to the control that started an action once it finishes', async () => {
+    let finish!: (value: { gdml: string; filename: string }) => void;
+    mocked.exportGdml.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
+    const user = mount();
+    await user.click(screen.getByRole('button', { name: 'Save As' }));
+    await user.type(await screen.findByRole('textbox', { name: 'File name' }), '{Enter}');
+    // A few frames pass after the dialog closes while the export still holds the lock.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    await act(async () => finish({ gdml: '<gdml/>', filename: 'original.gdml' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save As' })).toHaveFocus());
+  });
+
   it('asks in-app before deleting', async () => {
     serverElements = [{ name: 'H', formula: null, z: '1', atom_value: '1.008', atom_unit: null, atom_type: null, fractions: [] }];
     useAppStore.setState({ elements: serverElements });

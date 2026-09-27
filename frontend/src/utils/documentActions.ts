@@ -44,6 +44,7 @@ export async function askFilename(initial: string): Promise<string | null> {
 /** One document action at a time, including the dialogs that precede it. */
 export async function runDocumentAction(action: () => Promise<void>): Promise<void> {
   if (useAppStore.getState().documentBusy) return;
+  const initiator = document.activeElement;
   useAppStore.setState({ documentBusy: true, error: null });
   try {
     await action();
@@ -51,6 +52,11 @@ export async function runDocumentAction(action: () => Promise<void>): Promise<vo
     useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
   } finally {
     useAppStore.setState({ documentBusy: false });
+    // The lock disabled the control that started the action and its dialogs took focus.
+    // Return focus once React has re-enabled that control, unless the user moved it elsewhere.
+    requestAnimationFrame(() => {
+      if (initiator instanceof HTMLElement && document.activeElement === document.body) initiator.focus();
+    });
   }
 }
 

@@ -9,22 +9,14 @@ export default function DocumentDialog() {
   const messageId = useId();
   useEffect(() => {
     if (!decision || !ref.current) return;
-    const previous = document.activeElement;
     const dialog = ref.current;
     dialog.showModal();
     // Set per decision, so a previous dialog's typing never carries over.
     const input = inputRef.current;
     if (input) { input.value = decision.input ?? ''; input.select(); }
     else dialog.querySelector<HTMLButtonElement>('[data-cancel]')?.focus();
-    return () => {
-      dialog.close();
-      // The initiating control is disabled until the document action releases
-      // its lock. Restore focus after React has committed that state change;
-      // if the action is still running (another dialog follows), leave focus.
-      requestAnimationFrame(() => {
-        if (previous instanceof HTMLElement && previous.isConnected && !previous.matches(':disabled')) previous.focus();
-      });
-    };
+    // runDocumentAction returns focus to the control that opened the dialog.
+    return () => dialog.close();
   }, [decision]);
 
   if (!decision) return null;
