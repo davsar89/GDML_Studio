@@ -489,22 +489,7 @@ fn write_position(
         return Ok(());
     }
     write_comments(writer, order, "define", Some(&p.name))?;
-    let mut elem = BytesStart::new("position");
-    elem.push_attribute(("name", p.name.as_str()));
-    if let Some(ref x) = p.x {
-        elem.push_attribute(("x", x.as_str()));
-    }
-    if let Some(ref y) = p.y {
-        elem.push_attribute(("y", y.as_str()));
-    }
-    if let Some(ref z) = p.z {
-        elem.push_attribute(("z", z.as_str()));
-    }
-    if let Some(ref u) = p.unit {
-        elem.push_attribute(("unit", u.as_str()));
-    }
-    writer.write_event(Event::Empty(elem))?;
-    Ok(())
+    write_xyz(writer, "position", &p.name, [&p.x, &p.y, &p.z], &p.unit)
 }
 
 fn write_rotation(
@@ -517,22 +502,7 @@ fn write_rotation(
         return Ok(());
     }
     write_comments(writer, order, "define", Some(&r.name))?;
-    let mut elem = BytesStart::new("rotation");
-    elem.push_attribute(("name", r.name.as_str()));
-    if let Some(ref x) = r.x {
-        elem.push_attribute(("x", x.as_str()));
-    }
-    if let Some(ref y) = r.y {
-        elem.push_attribute(("y", y.as_str()));
-    }
-    if let Some(ref z) = r.z {
-        elem.push_attribute(("z", z.as_str()));
-    }
-    if let Some(ref u) = r.unit {
-        elem.push_attribute(("unit", u.as_str()));
-    }
-    writer.write_event(Event::Empty(elem))?;
-    Ok(())
+    write_xyz(writer, "rotation", &r.name, [&r.x, &r.y, &r.z], &r.unit)
 }
 
 fn write_scale(
@@ -545,19 +515,7 @@ fn write_scale(
         return Ok(());
     }
     write_comments(writer, order, "define", Some(&s.name))?;
-    let mut elem = BytesStart::new("scale");
-    elem.push_attribute(("name", s.name.as_str()));
-    if let Some(ref x) = s.x {
-        elem.push_attribute(("x", x.as_str()));
-    }
-    if let Some(ref y) = s.y {
-        elem.push_attribute(("y", y.as_str()));
-    }
-    if let Some(ref z) = s.z {
-        elem.push_attribute(("z", z.as_str()));
-    }
-    writer.write_event(Event::Empty(elem))?;
-    Ok(())
+    write_xyz(writer, "scale", &s.name, [&s.x, &s.y, &s.z], &None)
 }
 
 fn write_materials(
@@ -669,9 +627,7 @@ fn write_materials(
             writer.write_event(Event::Empty(de))?;
         }
         if let Some(ref dr) = mat.density_ref {
-            let mut dref = BytesStart::new("Dref");
-            dref.push_attribute(("ref", dr.as_str()));
-            writer.write_event(Event::Empty(dref))?;
+            write_ref(writer, "Dref", dr)?;
         }
         if let Some(ref t) = mat.temperature {
             let mut te = BytesStart::new("T");
@@ -762,74 +718,67 @@ fn write_materials(
     Ok(())
 }
 
-fn write_placement_pos(
+/// A `<position>`, `<rotation>` or `<scale>`: its name when it has one, then
+/// the components and unit that are set.
+fn write_xyz(
     writer: &mut Writer<Cursor<Vec<u8>>>,
-    pos: &PlacementPos,
-    inline_tag: &str,
-    ref_tag: &str,
+    tag: &str,
+    name: &str,
+    xyz: [&Option<String>; 3],
+    unit: &Option<String>,
 ) -> Result<()> {
-    match pos {
-        PlacementPos::Inline(p) => {
-            let mut pe = BytesStart::new(inline_tag);
-            if !p.name.is_empty() {
-                pe.push_attribute(("name", p.name.as_str()));
-            }
-            if let Some(ref x) = p.x {
-                pe.push_attribute(("x", x.as_str()));
-            }
-            if let Some(ref y) = p.y {
-                pe.push_attribute(("y", y.as_str()));
-            }
-            if let Some(ref z) = p.z {
-                pe.push_attribute(("z", z.as_str()));
-            }
-            if let Some(ref u) = p.unit {
-                pe.push_attribute(("unit", u.as_str()));
-            }
-            writer.write_event(Event::Empty(pe))?;
-        }
-        PlacementPos::Ref(name) => {
-            let mut pr = BytesStart::new(ref_tag);
-            pr.push_attribute(("ref", name.as_str()));
-            writer.write_event(Event::Empty(pr))?;
+    let mut elem = BytesStart::new(tag);
+    if !name.is_empty() {
+        elem.push_attribute(("name", name));
+    }
+    for (key, value) in ["x", "y", "z", "unit"]
+        .into_iter()
+        .zip(xyz.into_iter().chain([unit]))
+    {
+        if let Some(value) = value {
+            elem.push_attribute((key, value.as_str()));
         }
     }
+    writer.write_event(Event::Empty(elem))?;
     Ok(())
 }
 
+/// `<tag ref="name"/>`.
+fn write_ref(writer: &mut Writer<Cursor<Vec<u8>>>, tag: &str, name: &str) -> Result<()> {
+    let mut elem = BytesStart::new(tag);
+    elem.push_attribute(("ref", name));
+    writer.write_event(Event::Empty(elem))?;
+    Ok(())
+}
+
+/// A placement's position: inline as `<tag>`, or by reference as `<tagref>`.
+fn write_placement_pos(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    pos: &Option<PlacementPos>,
+    tag: &str,
+) -> Result<()> {
+    match pos {
+        Some(PlacementPos::Inline(p)) => {
+            write_xyz(writer, tag, &p.name, [&p.x, &p.y, &p.z], &p.unit)
+        }
+        Some(PlacementPos::Ref(name)) => write_ref(writer, &format!("{tag}ref"), name),
+        None => Ok(()),
+    }
+}
+
+/// A placement's rotation: inline as `<tag>`, or by reference as `<tagref>`.
 fn write_placement_rot(
     writer: &mut Writer<Cursor<Vec<u8>>>,
-    rot: &PlacementRot,
-    inline_tag: &str,
-    ref_tag: &str,
+    rot: &Option<PlacementRot>,
+    tag: &str,
 ) -> Result<()> {
     match rot {
-        PlacementRot::Inline(r) => {
-            let mut re = BytesStart::new(inline_tag);
-            if !r.name.is_empty() {
-                re.push_attribute(("name", r.name.as_str()));
-            }
-            if let Some(ref x) = r.x {
-                re.push_attribute(("x", x.as_str()));
-            }
-            if let Some(ref y) = r.y {
-                re.push_attribute(("y", y.as_str()));
-            }
-            if let Some(ref z) = r.z {
-                re.push_attribute(("z", z.as_str()));
-            }
-            if let Some(ref u) = r.unit {
-                re.push_attribute(("unit", u.as_str()));
-            }
-            writer.write_event(Event::Empty(re))?;
+        Some(PlacementRot::Inline(r)) => {
+            write_xyz(writer, tag, &r.name, [&r.x, &r.y, &r.z], &r.unit)
         }
-        PlacementRot::Ref(name) => {
-            let mut rr = BytesStart::new(ref_tag);
-            rr.push_attribute(("ref", name.as_str()));
-            writer.write_event(Event::Empty(rr))?;
-        }
+        Some(PlacementRot::Ref(name)) => write_ref(writer, &format!("{tag}ref"), name),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 fn write_solids(
@@ -1443,15 +1392,9 @@ fn write_solids(
                         node_elem.push_attribute(("name", n.as_str()));
                     }
                     writer.write_event(Event::Start(node_elem))?;
-                    let mut sref = BytesStart::new("solid");
-                    sref.push_attribute(("ref", node.solid_ref.as_str()));
-                    writer.write_event(Event::Empty(sref))?;
-                    if let Some(ref pos) = node.position {
-                        write_placement_pos(writer, pos, "position", "positionref")?;
-                    }
-                    if let Some(ref rot) = node.rotation {
-                        write_placement_rot(writer, rot, "rotation", "rotationref")?;
-                    }
+                    write_ref(writer, "solid", &node.solid_ref)?;
+                    write_placement_pos(writer, &node.position, "position")?;
+                    write_placement_rot(writer, &node.rotation, "rotation")?;
                     writer.write_event(Event::End(BytesEnd::new("multiUnionNode")))?;
                 }
                 writer.write_event(Event::End(BytesEnd::new("multiUnion")))?;
@@ -1481,15 +1424,11 @@ fn write_solids(
                 let mut elem = BytesStart::new("scaledSolid");
                 elem.push_attribute(("name", ss.name.as_str()));
                 writer.write_event(Event::Start(elem))?;
-                let mut sref = BytesStart::new("solidref");
-                sref.push_attribute(("ref", ss.solid_ref.as_str()));
-                writer.write_event(Event::Empty(sref))?;
+                write_ref(writer, "solidref", &ss.solid_ref)?;
                 if let Some(ref r) = ss.scale_ref {
                     // Written as a reference in the source; keep it one rather
                     // than substituting a fabricated inline scale.
-                    let mut sr = BytesStart::new("scaleref");
-                    sr.push_attribute(("ref", r.as_str()));
-                    writer.write_event(Event::Empty(sr))?;
+                    write_ref(writer, "scaleref", r)?;
                 } else {
                     let mut scale = BytesStart::new("scale");
                     let scale_name = ss
@@ -1514,26 +1453,12 @@ fn write_solids(
                 elem.push_attribute(("name", bs.name.as_str()));
                 writer.write_event(Event::Start(elem))?;
 
-                let mut first = BytesStart::new("first");
-                first.push_attribute(("ref", bs.first_ref.as_str()));
-                writer.write_event(Event::Empty(first))?;
-
-                let mut second = BytesStart::new("second");
-                second.push_attribute(("ref", bs.second_ref.as_str()));
-                writer.write_event(Event::Empty(second))?;
-
-                if let Some(ref pos) = bs.position {
-                    write_placement_pos(writer, pos, "position", "positionref")?;
-                }
-                if let Some(ref rot) = bs.rotation {
-                    write_placement_rot(writer, rot, "rotation", "rotationref")?;
-                }
-                if let Some(ref pos) = bs.first_position {
-                    write_placement_pos(writer, pos, "firstposition", "firstpositionref")?;
-                }
-                if let Some(ref rot) = bs.first_rotation {
-                    write_placement_rot(writer, rot, "firstrotation", "firstrotationref")?;
-                }
+                write_ref(writer, "first", &bs.first_ref)?;
+                write_ref(writer, "second", &bs.second_ref)?;
+                write_placement_pos(writer, &bs.position, "position")?;
+                write_placement_rot(writer, &bs.rotation, "rotation")?;
+                write_placement_pos(writer, &bs.first_position, "firstposition")?;
+                write_placement_rot(writer, &bs.first_rotation, "firstrotation")?;
 
                 writer.write_event(Event::End(BytesEnd::new(tag_name)))?;
             }
@@ -1695,13 +1620,8 @@ fn write_structure(
             writer.write_event(Event::Comment(BytesText::from_escaped(text)))?;
         }
 
-        let mut mref = BytesStart::new("materialref");
-        mref.push_attribute(("ref", vol.material_ref.as_str()));
-        writer.write_event(Event::Empty(mref))?;
-
-        let mut sref = BytesStart::new("solidref");
-        sref.push_attribute(("ref", vol.solid_ref.as_str()));
-        writer.write_event(Event::Empty(sref))?;
+        write_ref(writer, "materialref", &vol.material_ref)?;
+        write_ref(writer, "solidref", &vol.solid_ref)?;
 
         for pv in &vol.physvols {
             let mut pv_elem = BytesStart::new("physvol");
@@ -1721,66 +1641,10 @@ fn write_structure(
                 }
                 writer.write_event(Event::Empty(fe))?;
             } else {
-                let mut vref = BytesStart::new("volumeref");
-                vref.push_attribute(("ref", pv.volume_ref.as_str()));
-                writer.write_event(Event::Empty(vref))?;
+                write_ref(writer, "volumeref", &pv.volume_ref)?;
             }
-
-            match &pv.position {
-                Some(PlacementPos::Inline(p)) => {
-                    let mut pe = BytesStart::new("position");
-                    if !p.name.is_empty() {
-                        pe.push_attribute(("name", p.name.as_str()));
-                    }
-                    if let Some(ref x) = p.x {
-                        pe.push_attribute(("x", x.as_str()));
-                    }
-                    if let Some(ref y) = p.y {
-                        pe.push_attribute(("y", y.as_str()));
-                    }
-                    if let Some(ref z) = p.z {
-                        pe.push_attribute(("z", z.as_str()));
-                    }
-                    if let Some(ref u) = p.unit {
-                        pe.push_attribute(("unit", u.as_str()));
-                    }
-                    writer.write_event(Event::Empty(pe))?;
-                }
-                Some(PlacementPos::Ref(name)) => {
-                    let mut pr = BytesStart::new("positionref");
-                    pr.push_attribute(("ref", name.as_str()));
-                    writer.write_event(Event::Empty(pr))?;
-                }
-                None => {}
-            }
-
-            match &pv.rotation {
-                Some(PlacementRot::Inline(r)) => {
-                    let mut re = BytesStart::new("rotation");
-                    if !r.name.is_empty() {
-                        re.push_attribute(("name", r.name.as_str()));
-                    }
-                    if let Some(ref x) = r.x {
-                        re.push_attribute(("x", x.as_str()));
-                    }
-                    if let Some(ref y) = r.y {
-                        re.push_attribute(("y", y.as_str()));
-                    }
-                    if let Some(ref z) = r.z {
-                        re.push_attribute(("z", z.as_str()));
-                    }
-                    if let Some(ref u) = r.unit {
-                        re.push_attribute(("unit", u.as_str()));
-                    }
-                    writer.write_event(Event::Empty(re))?;
-                }
-                Some(PlacementRot::Ref(name)) => {
-                    let mut rr = BytesStart::new("rotationref");
-                    rr.push_attribute(("ref", name.as_str()));
-                    writer.write_event(Event::Empty(rr))?;
-                }
-                None => {}
-            }
+            write_placement_pos(writer, &pv.position, "position")?;
+            write_placement_rot(writer, &pv.rotation, "rotation")?;
 
             writer.write_event(Event::End(BytesEnd::new("physvol")))?;
         }
@@ -1791,23 +1655,11 @@ fn write_structure(
             rv.push_attribute(("number", replica.number.as_str()));
             writer.write_event(Event::Start(rv))?;
 
-            let mut vref = BytesStart::new("volumeref");
-            vref.push_attribute(("ref", replica.volume_ref.as_str()));
-            writer.write_event(Event::Empty(vref))?;
+            write_ref(writer, "volumeref", &replica.volume_ref)?;
 
             writer.write_event(Event::Start(BytesStart::new("replicate_along_axis")))?;
 
-            let mut dir = BytesStart::new("direction");
-            if let Some(ref x) = replica.direction[0] {
-                dir.push_attribute(("x", x.as_str()));
-            }
-            if let Some(ref y) = replica.direction[1] {
-                dir.push_attribute(("y", y.as_str()));
-            }
-            if let Some(ref z) = replica.direction[2] {
-                dir.push_attribute(("z", z.as_str()));
-            }
-            writer.write_event(Event::Empty(dir))?;
+            write_xyz(writer, "direction", "", replica.direction.each_ref(), &None)?;
 
             let mut w = BytesStart::new("width");
             w.push_attribute(("value", replica.width.as_str()));
@@ -1854,9 +1706,7 @@ fn write_setup(writer: &mut Writer<Cursor<Vec<u8>>>, setup: &SetupSection) -> Re
     elem.push_attribute(("version", setup.version.as_str()));
     writer.write_event(Event::Start(elem))?;
 
-    let mut world = BytesStart::new("world");
-    world.push_attribute(("ref", setup.world_ref.as_str()));
-    writer.write_event(Event::Empty(world))?;
+    write_ref(writer, "world", &setup.world_ref)?;
 
     writer.write_event(Event::End(BytesEnd::new("setup")))?;
     Ok(())
