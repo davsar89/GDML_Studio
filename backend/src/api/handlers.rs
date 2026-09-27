@@ -1887,8 +1887,9 @@ mod tests {
 
         let steel = material("Steel");
         let mut alloy = material("Alloy");
-        alloy.components.push(MaterialComponent::Composite {
-            n: "1".to_string(),
+        // A <fraction> may name a material; a <composite> only an element.
+        alloy.components.push(MaterialComponent::Fraction {
+            n: "1.0".to_string(),
             ref_name: "Steel".to_string(),
         });
         doc.materials.materials.push(steel);
