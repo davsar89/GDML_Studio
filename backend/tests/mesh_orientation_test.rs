@@ -425,6 +425,8 @@ fn parameters_geant4_rejects_are_reported() {
     for xml in [
         // G4Tubs: rmin >= rmax.
         r#"<tube name="S" rmin="10" rmax="5" z="20"/>"#,
+        // G4Sphere: rmin >= rmax.
+        r#"<sphere name="S" rmin="10" rmax="5"/>"#,
         // G4Polycone.cc:80: rInner > rOuter at a plane.
         r#"<polycone name="S"><zplane z="-5" rmin="12" rmax="10"/><zplane z="5" rmax="10"/></polycone>"#,
     ] {

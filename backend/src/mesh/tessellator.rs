@@ -5,14 +5,14 @@ use std::f64::consts::PI;
 use super::csg;
 use super::primitives::{
     arb8_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, face_normal,
-    generic_polycone_mesh, hype_mesh, paraboloid_mesh, sphere_mesh, torus_mesh, twisted_trap_mesh,
+    generic_polycone_mesh, hype_mesh, paraboloid_mesh, torus_mesh, twisted_trap_mesh,
     twisted_tubs_mesh, xtru_mesh,
 };
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::model::*;
 use crate::gdml::units;
-use generic_polycone_mesh::tessellate_generic_polycone as revolve;
+use generic_polycone_mesh::{curve, tessellate_generic_polycone as revolve};
 
 pub fn tessellate_all_solids(
     solids: &SolidSection,
@@ -471,9 +471,36 @@ fn tessellate_sphere_solid(
         None => PI,
     }
     .min(PI - starttheta);
-    Ok(sphere_mesh::tessellate_sphere(
+    Ok(sphere(
         rmin, rmax, startphi, deltaphi, starttheta, deltatheta, segments,
     ))
+}
+
+/// A spherical shell sector: the outer arc up from the end of the theta
+/// range to its start, then the inner arc back down. With rmin = 0 that arc
+/// is a point at the centre, so a theta cut is a cone to the origin.
+/// G4Sphere refuses rmin >= rmax.
+fn sphere(
+    rmin: f64,
+    rmax: f64,
+    startphi: f64,
+    deltaphi: f64,
+    starttheta: f64,
+    deltatheta: f64,
+    segments: u32,
+) -> TriangleMesh {
+    if rmin >= rmax {
+        return TriangleMesh::default();
+    }
+    let (t0, t1) = (starttheta, starttheta + deltatheta);
+    let arc = |r: f64, from: f64, to: f64| {
+        curve((segments / 2).max(2), move |t| {
+            let theta = from + (to - from) * t;
+            (r * theta.sin(), r * theta.cos())
+        })
+    };
+    let outline = arc(rmax, t1, t0).chain(arc(rmin, t0, t1));
+    revolve(outline, startphi, deltaphi, segments, None)
 }
 
 fn tessellate_trd_solid(s: &TrdSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
@@ -837,15 +864,7 @@ fn tessellate_torus_solid(
 fn tessellate_orb_solid(s: &OrbSolid, engine: &EvalEngine, segments: u32) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     let r = resolve_with_lunit(engine, &s.r, lunit);
-    Ok(sphere_mesh::tessellate_sphere(
-        0.0,
-        r,
-        0.0,
-        2.0 * PI,
-        0.0,
-        PI,
-        segments,
-    ))
+    Ok(sphere(0.0, r, 0.0, 2.0 * PI, 0.0, PI, segments))
 }
 
 fn tessellate_ellipsoid_solid(
