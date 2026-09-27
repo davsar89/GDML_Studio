@@ -98,7 +98,7 @@ pub fn tessellate_generic_polycone(
             indices.extend([a, c, b]);
         }
     };
-    let mut shared: Vec<Option<u32>> = vec![None; n_pts];
+    let mut shared: Vec<Option<(u32, u32)>> = vec![None; n_pts];
     for (i, en) in edge_n.iter().enumerate() {
         let Some(en) = *en else { continue };
         let j = (i + 1) % n_pts;
@@ -119,25 +119,28 @@ pub fn tessellate_generic_polycone(
             continue;
         }
         // Smooth revolution: a ring of vertices per end, shared with the next
-        // band where the outline is smooth.
+        // band where the outline is smooth. The centre of a flat face on the
+        // axis has one normal at every phi, so it is one vertex (stride 0).
         let mut ring = |p: usize| {
             let mut push = |(nr, nz): (f64, f64)| {
+                let one = pts[p].0 == 0.0 && nr == 0.0;
                 let base = m.positions.len() as u32 / 3;
-                for &(s, c) in &sc {
+                for &(s, c) in &sc[..if one { 1 } else { sc.len() }] {
                     m.positions.extend(at(pts[p], (s, c)));
                     m.normals
                         .extend([(nr * c) as f32, (nr * s) as f32, nz as f32]);
                 }
-                base
+                (base, u32::from(!one))
             };
             match point_n[p] {
                 Some(n) => *shared[p].get_or_insert_with(|| push(n)),
                 None => push(en),
             }
         };
-        let (a, b) = (ring(i), ring(j));
+        let ((a, sa), (b, sb)) = (ring(i), ring(j));
         for k in 0..steps {
-            quad(&mut m.indices, [a + k, b + k, b + k + 1, a + k + 1], ri, rj);
+            let (a0, a1, b0, b1) = (a + sa * k, a + sa * (k + 1), b + sb * k, b + sb * (k + 1));
+            quad(&mut m.indices, [a0, b0, b1, a1], ri, rj);
         }
     }
 
