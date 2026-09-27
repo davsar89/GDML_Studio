@@ -1389,3 +1389,28 @@ async fn comment_before_a_preserved_element_survives_export() {
         "{saved}"
     );
 }
+
+#[tokio::test]
+async fn truncated_file_is_a_parse_error() {
+    // Xerces rejects a document whose elements are not closed. Cut at a tag
+    // boundary, the body readers stopped quietly at end of input and the
+    // upload succeeded with the rest of the geometry silently missing.
+    let xml = document(
+        "",
+        r#"<box name="B" x="1" y="1" z="1"/>"#,
+        r#"<volume name="W"><materialref ref="M"/><solidref ref="B"/></volume>"#,
+    );
+    for cut in ["</volume>", "</structure>", "</gdml>"] {
+        let truncated = &xml[..xml.find(cut).unwrap()];
+        let refused = upload_file(
+            State(create_shared_state()),
+            Json(UploadFileRequest {
+                filename: "cut.gdml".into(),
+                content: truncated.into(),
+                segments: None,
+            }),
+        )
+        .await;
+        assert_eq!(refused.err().map(|e| e.status.as_u16()), Some(400), "{cut}");
+    }
+}

@@ -35,6 +35,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
     // Comments seen since the last element; they anchor to whatever comes next.
     let mut pending_comments: Vec<String> = Vec::new();
     let mut seen_root = false;
+    // The body readers stop quietly at end of input, so a file cut off inside
+    // any element shows up here as a root that never closed.
+    let mut root_open = false;
     // Unsupported constructs that had to be dropped entirely (warn the user).
     let mut skipped_unsupported: Vec<String> = Vec::new();
 
@@ -90,6 +93,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     // reproduce them instead of substituting a hardcoded pair.
                     b"gdml" => {
                         seen_root = true;
+                        root_open = open;
                         root_attributes = e
                             .attributes()
                             .filter_map(|a| a.ok())
@@ -282,6 +286,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"materials" => section = Section::None,
                     b"solids" => section = Section::None,
                     b"structure" => section = Section::None,
+                    b"gdml" => root_open = false,
                     _ => {}
                 }
             }
@@ -330,6 +335,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                 }
                 order.doctype = Some(text);
             }
+            Ok(Event::Eof) if root_open => bail!("Unexpected end of file: <gdml> is not closed"),
             Ok(Event::Eof) => break,
             Err(e) => {
                 return Err(anyhow::anyhow!(
