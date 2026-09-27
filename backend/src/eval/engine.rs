@@ -1,14 +1,16 @@
 use anyhow::{Context, Result};
-use evalexpr::*;
+use evalexpr::{Context as _, *};
 use std::collections::HashMap;
+use std::f64::consts::PI;
 
-use super::context::EvalContext;
-use super::dependency::{topological_sort, DefineEntry};
+use super::dependency::{dependency_order, extract_identifiers};
 use crate::gdml::model::{DefineSection, PlacementPos, PlacementRot, Position, Rotation};
 use crate::gdml::units;
 
 pub struct EvalEngine {
-    pub context: EvalContext,
+    /// Every variable an expression can name, seeded once with what
+    /// G4GDMLEvaluator starts with and updated as defines are evaluated.
+    context: HashMapContext,
     pub position_values: HashMap<String, [f64; 3]>,
     pub scale_values: HashMap<String, [f64; 3]>,
     pub rotation_values: HashMap<String, [f64; 3]>,
@@ -27,94 +29,109 @@ impl Default for EvalEngine {
 
 impl EvalEngine {
     pub fn new() -> Self {
-        Self {
-            context: EvalContext::new(),
+        let mut engine = Self {
+            context: HashMapContext::new(),
             position_values: HashMap::new(),
             rotation_values: HashMap::new(),
             scale_values: HashMap::new(),
             warnings: std::sync::Mutex::new(Vec::new()),
+        };
+        // setStdMath's constants and every CLHEP unit, so `2*cm` or
+        // `1.5*g/cm3` is valid in any expression. CLHEP's twopi and halfpi are
+        // kept as a convenience.
+        let constants = [
+            ("pi", PI),
+            ("e", std::f64::consts::E),
+            ("gamma", 0.577_215_664_901_532_9),
+            ("twopi", 2.0 * PI),
+            ("halfpi", PI / 2.0),
+        ];
+        for (name, value) in units::all().chain(constants) {
+            engine.set(name, value);
         }
+        engine
+    }
+
+    pub fn set(&mut self, name: &str, value: f64) {
+        // Every variable is a Float, so set_value's type check cannot fail.
+        let _ = self
+            .context
+            .set_value(name.to_string(), Value::Float(value));
+    }
+
+    pub fn get(&self, name: &str) -> Option<f64> {
+        self.context.get_value(name)?.as_float().ok()
     }
 
     pub fn evaluate_all(&mut self, defines: &DefineSection) -> Result<()> {
         // Rebuild derived state from scratch for the current document.
-        self.context = EvalContext::new();
-        self.position_values.clear();
-        self.scale_values.clear();
-        self.rotation_values.clear();
-        if let Ok(mut w) = self.warnings.lock() {
-            w.clear();
-        }
+        *self = Self::new();
 
-        // Collect all define entries for dependency analysis
-        let mut entries: Vec<DefineEntry> = Vec::new();
-
-        for c in &defines.constants {
-            entries.push(DefineEntry {
-                name: c.name.clone(),
-                expression: c.value.clone(),
-            });
-        }
-        for q in &defines.quantities {
-            entries.push(DefineEntry {
-                name: q.name.clone(),
-                expression: q.value.clone(),
-            });
-        }
-        for v in &defines.variables {
-            entries.push(DefineEntry {
-                name: v.name.clone(),
-                expression: v.value.clone(),
-            });
-        }
-        for e in &defines.expressions {
-            entries.push(DefineEntry {
-                name: e.name.clone(),
-                expression: e.value.clone(),
-            });
-        }
-
-        let order = topological_sort(&entries).context("Failed to resolve define dependencies")?;
-
-        // Build unit map for quantities
-        let quantity_units: HashMap<String, String> = defines
-            .quantities
+        // Name, expression and, for a quantity, its unit.
+        let entries: Vec<(&str, &str, Option<&str>)> = defines
+            .constants
             .iter()
-            .filter_map(|q| q.unit.as_ref().map(|u| (q.name.clone(), u.clone())))
+            .map(|c| (c.name.as_str(), c.value.as_str(), None))
+            .chain(
+                defines
+                    .quantities
+                    .iter()
+                    .map(|q| (q.name.as_str(), q.value.as_str(), q.unit.as_deref())),
+            )
+            .chain(
+                defines
+                    .variables
+                    .iter()
+                    .map(|v| (v.name.as_str(), v.value.as_str(), None)),
+            )
+            .chain(
+                defines
+                    .expressions
+                    .iter()
+                    .map(|e| (e.name.as_str(), e.value.as_str(), None)),
+            )
             .collect();
-        // QuantityRead applies the declared unit independently of the type hint.
-        for idx in order {
-            let entry = &entries[idx];
+        // A name that is also a builtin unit or constant is still a dependency:
+        // the define is the value used.
+        let index: HashMap<&str, usize> =
+            entries.iter().enumerate().map(|(i, e)| (e.0, i)).collect();
+        let deps: Vec<Vec<usize>> = entries
+            .iter()
+            .enumerate()
+            .map(|(i, e)| {
+                extract_identifiers(e.1)
+                    .iter()
+                    .filter_map(|name| index.get(name.as_str()).copied())
+                    .filter(|&j| j != i)
+                    .collect()
+            })
+            .collect();
+        let order = dependency_order(&deps, "define", |i| entries[i].0)
+            .context("Failed to resolve define dependencies")?;
 
+        for (name, expression, unit) in order.into_iter().map(|i| entries[i]) {
             // A define that cannot be evaluated is a warning, not a fatal error.
             // The identical expression appearing in a solid attribute already
             // degrades to 0 with a warning via `resolve_value`; propagating here
             // instead meant one bad <constant> returned HTTP 500 and the user saw
             // nothing at all rather than a geometry with one hole in it.
-            let value = match self.eval_expr(&entry.expression) {
+            let value = match self.eval_expr(expression) {
                 Ok(v) => v,
                 Err(e) => {
                     tracing::warn!(
-                        "Failed to evaluate define '{}' = '{}': {} -- using 0.0",
-                        entry.name,
-                        entry.expression,
-                        e
+                        "Failed to evaluate define '{name}' = '{expression}': {e} -- using 0.0"
                     );
                     self.record_warning(format!(
-                        "Could not evaluate define \"{}\" = \"{}\"; treated as 0. \
+                        "Could not evaluate define \"{name}\" = \"{}\"; treated as 0. \
                          Anything referencing it will be wrong.",
-                        entry.name,
-                        entry.expression.trim()
+                        expression.trim()
                     ));
                     0.0
                 }
             };
-
-            let final_value = quantity_units
-                .get(&entry.name)
-                .map(|unit| units::apply_unit(value, unit))
-                .unwrap_or(value);
-            self.context.set(&entry.name, finite_value(final_value)?);
+            // QuantityRead applies the declared unit independently of the type hint.
+            let value = unit.map_or(value, |unit| units::apply_unit(value, unit));
+            self.set(name, finite_value(value)?);
         }
 
         // A bad position or rotation is a warning too, not a rejected file. It
@@ -166,29 +183,21 @@ impl EvalEngine {
         }
 
         // Try direct variable lookup
-        if let Some(v) = self.context.get(expr) {
+        if let Some(v) = self.get(expr) {
             return finite_value(v);
-        }
-
-        // Build evalexpr context with all known values
-        let mut eval_context: HashMapContext = HashMapContext::new();
-        for (name, value) in &self.context.values {
-            eval_context
-                .set_value(name.clone(), Value::Float(*value))
-                .ok();
         }
 
         // Rewrite GDML/CLHEP conventions for evalexpr:
         //  - bare math functions (sin, sqrt, …) live under the `math::` namespace
         //  - `**` is power in some GDML; evalexpr spells power as `^`
-        let prepared = fix_gdml_expr(&rewrite_math_functions(expr).replace("**", "^"));
+        let prepared = rewrite_math_functions(expr).replace("**", "^");
         let mut tree = build_operator_tree(&prepared)
             .map_err(|e| anyhow::anyhow!("Invalid expression '{expr}': {e}"))?;
         // GDML arithmetic is real-valued. Casting only the final result is too
         // late: evalexpr otherwise evaluates 1/2 as integer division first.
         float_literals(&mut tree);
         let value = tree
-            .eval_number_with_context(&eval_context)
+            .eval_number_with_context(&self.context)
             .map_err(|e| anyhow::anyhow!("Invalid expression '{expr}': {e}"))?;
         finite_value(value)
     }
@@ -316,30 +325,6 @@ fn float_literals(node: &mut Node) {
     for child in node.children_mut() {
         float_literals(child);
     }
-}
-
-/// Fix common GDML expression patterns for evalexpr.
-/// Handles any `<digit>.*` pattern (e.g. "360.*deg", "-1.*pi") by inserting ".0*".
-/// Iterates over chars (not bytes) so multi-byte UTF-8 input passes through intact.
-fn fix_gdml_expr(expr: &str) -> String {
-    let chars: Vec<char> = expr.chars().collect();
-    let mut result = String::with_capacity(expr.len() + 8);
-    let mut i = 0;
-    while i < chars.len() {
-        result.push(chars[i]);
-        if chars[i].is_ascii_digit()
-            && i + 2 < chars.len()
-            && chars[i + 1] == '.'
-            && chars[i + 2] == '*'
-        {
-            // Convert "N.*" to "N.0*"
-            result.push_str(".0*");
-            i += 3;
-        } else {
-            i += 1;
-        }
-    }
-    result
 }
 
 /// Map a bare GDML/CLHEP math-function name to evalexpr's `math::` namespace.
@@ -503,6 +488,24 @@ mod tests {
         assert_eq!(e.eval_expr("2*3").unwrap(), 6.0);
         assert_eq!(e.eval_expr("360/8").unwrap(), 45.0); // integer division
         assert_eq!(e.eval_expr("10-1").unwrap(), 9.0);
+    }
+
+    #[test]
+    fn trailing_dot_literals_evaluate() {
+        // C++-written GDML spells floats `360.`; evalexpr 13 parses them as is.
+        let e = EvalEngine::new();
+        for (expr, expected) in [
+            ("360.*deg", 2.0 * PI),
+            ("-1.*pi", -PI),
+            ("2.*3", 6.0),
+            ("1.e3", 1000.0),
+            ("1.", 1.0),
+        ] {
+            assert!(
+                (e.eval_expr(expr).unwrap() - expected).abs() < 1e-12,
+                "{expr}"
+            );
+        }
     }
 
     #[test]

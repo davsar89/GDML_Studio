@@ -1,11 +1,12 @@
 use anyhow::Result;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::LazyLock;
 
 use super::model::*;
+use crate::eval::dependency::dependency_order;
 
 // ─── NIST Material Database ─────────────────────────────────────────────────
 
@@ -1581,47 +1582,6 @@ fn write_auxiliary(writer: &mut Writer<Cursor<Vec<u8>>>, aux: &Auxiliary) -> Res
         writer.write_event(Event::End(BytesEnd::new("auxiliary")))?;
     }
     Ok(())
-}
-
-/// Kahn's algorithm: an order in which every item comes after the items it
-/// depends on (`deps[i]`). The lowest ready index goes first, so an order that
-/// is already valid comes back unchanged. A cycle is an error naming the items
-/// on or behind it.
-fn dependency_order<'a>(
-    deps: &[Vec<usize>],
-    what: &str,
-    name: impl Fn(usize) -> &'a str,
-) -> Result<Vec<usize>> {
-    let mut dependents = vec![Vec::new(); deps.len()];
-    let mut remaining = vec![0usize; deps.len()];
-    for (i, d) in deps.iter().enumerate() {
-        let unique: BTreeSet<usize> = d.iter().copied().collect();
-        remaining[i] = unique.len();
-        for j in unique {
-            dependents[j].push(i);
-        }
-    }
-    let mut ready: BTreeSet<usize> = (0..deps.len()).filter(|&i| remaining[i] == 0).collect();
-    let mut order = Vec::with_capacity(deps.len());
-    while let Some(i) = ready.pop_first() {
-        order.push(i);
-        for &p in &dependents[i] {
-            remaining[p] -= 1;
-            if remaining[p] == 0 {
-                ready.insert(p);
-            }
-        }
-    }
-    let stuck: Vec<&str> = (0..deps.len())
-        .filter(|&i| remaining[i] > 0)
-        .map(name)
-        .collect();
-    anyhow::ensure!(
-        stuck.is_empty(),
-        "Cyclic {what} references: {}",
-        stuck.join(", ")
-    );
-    Ok(order)
 }
 
 /// Export order for materials: each after the materials its components name.

@@ -27,7 +27,7 @@ fn invalid_loop_bounds_are_not_silently_replaced_with_zero() {
         &engine
     )
     .is_err());
-    engine.context.set("i", 2.0);
+    engine.set("i", 2.0);
     let expanded = expand_loops(
         r#"<loop for="i" to="3" step="1"><position name="p[i]" x="i"/></loop>"#,
         &engine,

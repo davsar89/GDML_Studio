@@ -708,7 +708,7 @@ pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>
         defines.push(DefineValue {
             name: c.name.clone(),
             expression: c.value.clone(),
-            evaluated: engine.context.get(&c.name),
+            evaluated: engine.get(&c.name),
             unit: None,
             kind: "constant".to_string(),
         });
@@ -717,7 +717,7 @@ pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>
         defines.push(DefineValue {
             name: q.name.clone(),
             expression: q.value.clone(),
-            evaluated: engine.context.get(&q.name),
+            evaluated: engine.get(&q.name),
             unit: q.unit.clone(),
             kind: "quantity".to_string(),
         });
@@ -726,7 +726,7 @@ pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>
         defines.push(DefineValue {
             name: v.name.clone(),
             expression: v.value.clone(),
-            evaluated: engine.context.get(&v.name),
+            evaluated: engine.get(&v.name),
             unit: None,
             kind: "variable".to_string(),
         });
@@ -735,7 +735,7 @@ pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>
         defines.push(DefineValue {
             name: e.name.clone(),
             expression: e.value.clone(),
-            evaluated: engine.context.get(&e.name),
+            evaluated: engine.get(&e.name),
             unit: None,
             kind: "expression".to_string(),
         });

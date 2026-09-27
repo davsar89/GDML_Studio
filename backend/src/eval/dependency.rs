@@ -1,69 +1,44 @@
-use anyhow::{anyhow, Result};
-use std::collections::{HashMap, VecDeque};
+use anyhow::Result;
+use std::collections::BTreeSet;
 
-#[derive(Debug, Clone)]
-pub struct DefineEntry {
-    pub name: String,
-    pub expression: String,
-}
-
-/// A reference to another define is a dependency even when the name is also a
-/// builtin unit or constant: the user's definition is the one that is used.
-pub fn topological_sort(entries: &[DefineEntry]) -> Result<Vec<usize>> {
-    let name_to_idx: HashMap<&str, usize> = entries
-        .iter()
-        .enumerate()
-        .map(|(i, e)| (e.name.as_str(), i))
+/// Kahn's algorithm: an order in which every item comes after the items it
+/// depends on (`deps[i]`). The lowest ready index goes first, so an order that
+/// is already valid comes back unchanged. A cycle is an error naming the items
+/// on or behind it.
+pub fn dependency_order<'a>(
+    deps: &[Vec<usize>],
+    what: &str,
+    name: impl Fn(usize) -> &'a str,
+) -> Result<Vec<usize>> {
+    let mut dependents = vec![Vec::new(); deps.len()];
+    let mut remaining = vec![0usize; deps.len()];
+    for (i, d) in deps.iter().enumerate() {
+        let unique: BTreeSet<usize> = d.iter().copied().collect();
+        remaining[i] = unique.len();
+        for j in unique {
+            dependents[j].push(i);
+        }
+    }
+    let mut ready: BTreeSet<usize> = (0..deps.len()).filter(|&i| remaining[i] == 0).collect();
+    let mut order = Vec::with_capacity(deps.len());
+    while let Some(i) = ready.pop_first() {
+        order.push(i);
+        for &p in &dependents[i] {
+            remaining[p] -= 1;
+            if remaining[p] == 0 {
+                ready.insert(p);
+            }
+        }
+    }
+    let stuck: Vec<&str> = (0..deps.len())
+        .filter(|&i| remaining[i] > 0)
+        .map(name)
         .collect();
-
-    let n = entries.len();
-    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-    let mut in_degree: Vec<usize> = vec![0; n];
-
-    for (i, entry) in entries.iter().enumerate() {
-        let refs = extract_identifiers(&entry.expression);
-        for ref_name in &refs {
-            if let Some(&j) = name_to_idx.get(ref_name.as_str()) {
-                if j != i {
-                    adj[j].push(i);
-                    in_degree[i] += 1;
-                }
-            }
-            // If not found, it might be a number or we'll handle the error at eval time
-        }
-    }
-
-    // Kahn's algorithm
-    let mut queue: VecDeque<usize> = VecDeque::new();
-    for (i, &deg) in in_degree.iter().enumerate() {
-        if deg == 0 {
-            queue.push_back(i);
-        }
-    }
-
-    let mut order = Vec::with_capacity(n);
-    while let Some(u) = queue.pop_front() {
-        order.push(u);
-        for &v in &adj[u] {
-            in_degree[v] -= 1;
-            if in_degree[v] == 0 {
-                queue.push_back(v);
-            }
-        }
-    }
-
-    if order.len() != n {
-        // Find cycle participants for error message
-        let in_cycle: Vec<&str> = (0..n)
-            .filter(|i| in_degree[*i] > 0)
-            .map(|i| entries[i].name.as_str())
-            .collect();
-        return Err(anyhow!(
-            "Cyclic dependency detected among defines: {:?}",
-            in_cycle
-        ));
-    }
-
+    anyhow::ensure!(
+        stuck.is_empty(),
+        "Cyclic {what} references: {}",
+        stuck.join(", ")
+    );
     Ok(order)
 }
 
