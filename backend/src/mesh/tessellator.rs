@@ -730,7 +730,7 @@ fn tessellate_twisted_tubs_solid(
 
     if (z_pos - z_neg).abs() < 1e-12 || rmax_mid <= 1e-12 {
         anyhow::bail!(
-            "twistedtubs \"{}\" has no extent (outer radius {} mm over z {}..{} mm);              check that either zlen or midouterrad/negativeEndz/positiveEndz is set.",
+            "twistedtubs \"{}\" has no extent (outer radius {} mm over z {}..{} mm); check that either zlen or midouterrad/negativeEndz/positiveEndz is set.",
             s.name,
             rmax_mid,
             z_neg,

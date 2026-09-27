@@ -496,7 +496,7 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
             .collect();
         if !loop_files.is_empty() {
             loop_warnings.push(format!(
-                "<loop> is not expanded for multi-file loads ({}); those placements are              missing from the preview. The saved file is unaffected.",
+                "<loop> is not expanded for multi-file loads ({}); those placements are missing from the preview. The saved file is unaffected.",
                 loop_files.join(", ")
             ));
         }
@@ -771,7 +771,7 @@ fn build_render_document(
                 Ok(doc) => Some(doc),
                 Err(e) => {
                     warnings.push(format!(
-                        "<loop> expanded but the result did not parse ({e}); the preview                          shows the geometry unexpanded. The saved file is unaffected."
+                        "<loop> expanded but the result did not parse ({e}); the preview shows the geometry unexpanded. The saved file is unaffected."
                     ));
                     None
                 }
@@ -779,7 +779,7 @@ fn build_render_document(
         }
         Err(e) => {
             warnings.push(format!(
-                "<loop> could not be expanded ({e}); its placements are missing from the                  preview. The saved file is unaffected."
+                "<loop> could not be expanded ({e}); its placements are missing from the preview. The saved file is unaffected."
             ));
             None
         }
@@ -1084,7 +1084,7 @@ fn build_volume_node(
                 // coincident copies would cost N times the geometry and show
                 // exactly what one copy shows, so draw one and say so.
                 warnings.push(format!(
-                    "replicavol '{}': radial (kRho) replication subdivides the solid                      itself, which is not modelled; one un-subdivided copy is drawn                      in place of the {} slices.",
+                    "replicavol '{}': radial (kRho) replication subdivides the solid itself, which is not modelled; one un-subdivided copy is drawn in place of the {} slices.",
                     replica.volume_ref, number
                 ));
                 children.extend(build_volume_node(
@@ -1139,7 +1139,7 @@ fn build_volume_node(
                     // (G4ReplicaNavigation.cc:667-679). Said here because the
                     // number in the file has no effect on what is drawn.
                     warnings.push(format!(
-                        "replicavol '{}': offset ({} mm) does not move a Cartesian                          stack -- Geant4 ignores it here too; the stack is centred                          in its mother.",
+                        "replicavol '{}': offset ({} mm) does not move a Cartesian stack -- Geant4 ignores it here too; the stack is centred in its mother.",
                         replica.volume_ref, offset
                     ));
                 }
