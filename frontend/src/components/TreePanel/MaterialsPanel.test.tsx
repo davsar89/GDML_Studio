@@ -30,7 +30,7 @@ let serverElements: ElementInfo[];
 let exportedDensity: string | undefined;
 
 beforeEach(() => {
-  useAppStore.getState().reset();
+  useAppStore.setState(useAppStore.getInitialState(), true);
   vi.resetAllMocks();
   serverMaterials = [makeMaterial(), makeMaterial('N')];
   serverElements = [];

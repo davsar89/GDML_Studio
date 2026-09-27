@@ -24,7 +24,7 @@ function makeDefines(n: number): DefineValue[] {
 }
 
 beforeEach(() => {
-  useAppStore.getState().reset();
+  useAppStore.setState(useAppStore.getInitialState(), true);
 });
 
 afterEach(() => {

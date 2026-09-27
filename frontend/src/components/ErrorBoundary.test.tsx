@@ -19,7 +19,7 @@ function Boom() {
 beforeEach(() => {
   // React logs the caught error; keep the test output readable.
   vi.spyOn(console, 'error').mockImplementation(() => {});
-  useAppStore.getState().reset();
+  useAppStore.setState(useAppStore.getInitialState(), true);
 });
 
 afterEach(() => {

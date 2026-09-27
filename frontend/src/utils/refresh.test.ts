@@ -26,7 +26,7 @@ const volumes: VolumeInfo[] = [{ name: 'World', material_ref: 'NewMaterial', sol
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useAppStore.getState().reset();
+  useAppStore.setState(useAppStore.getInitialState(), true);
   mocked.getMaterials.mockResolvedValue({ materials: [], elements });
   mocked.getScene.mockResolvedValue({ scene_graph: scene });
   mocked.getStructure.mockResolvedValue({ volumes, world_ref: 'World' });

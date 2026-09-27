@@ -37,7 +37,7 @@ function mockFetch(ok: boolean, body: unknown = { ok: true }) {
 }
 
 beforeEach(() => {
-  useAppStore.getState().reset();
+  useAppStore.setState(useAppStore.getInitialState(), true);
 });
 
 afterEach(() => {
