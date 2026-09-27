@@ -337,14 +337,16 @@ fn validate_material_components(
             | MaterialComponent::Composite { ref_name, .. } => ref_name,
         };
 
-        if ref_name == &material.name {
+        // MixtureRead looks a name up as an element first, so naming an
+        // element that shares the material's name is not a self-reference.
+        let element_exists = doc.elements.iter().any(|e| e.name == *ref_name);
+        if ref_name == &material.name && !element_exists {
             return Err(ApiError::bad_request(&format!(
                 "Material '{}' cannot reference itself in components",
                 material.name
             )));
         }
 
-        let element_exists = doc.elements.iter().any(|e| e.name == *ref_name);
         let material_exists = doc
             .materials
             .iter()
@@ -1302,7 +1304,10 @@ fn ensure_material_name_available(
         )));
     }
 
-    let element_conflict = doc.elements.iter().any(|e| e.name == candidate);
+    // Elements and materials are separate tables in Geant4, so a material the
+    // file already names like an element may keep that name.
+    let element_conflict =
+        Some(candidate) != excluding_material && doc.elements.iter().any(|e| e.name == candidate);
     if element_conflict {
         return Err(ApiError::bad_request(&format!(
             "Name '{}' is already used by an element",
@@ -1332,7 +1337,8 @@ fn ensure_element_name_available(
         )));
     }
 
-    let material_conflict = doc.materials.iter().any(|m| m.name == candidate);
+    let material_conflict =
+        Some(candidate) != excluding_element && doc.materials.iter().any(|m| m.name == candidate);
     if material_conflict {
         return Err(ApiError::bad_request(&format!(
             "Name '{}' is already used by a material",
@@ -1508,7 +1514,10 @@ pub async fn update_material(
         .position(|m| m.name == old_name)
         .ok_or_else(|| ApiError::not_found(&format!("Material '{}' not found", req.name)))?;
     staged.materials[index] = req.material;
-    cascade_component_ref_rename(&mut staged.materials, &old_name, &new_name);
+    // A component naming an element of the old name meant that element.
+    if !staged.elements.iter().any(|e| e.name == old_name) {
+        cascade_component_ref_rename(&mut staged.materials, &old_name, &new_name);
+    }
     ensure_material_order(&staged)?;
     if old_name != new_name {
         loaded

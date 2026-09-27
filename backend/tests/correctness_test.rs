@@ -1263,3 +1263,85 @@ async fn quantity_is_listed_in_its_declared_unit() {
         evaluated("qa")
     );
 }
+
+#[tokio::test]
+async fn material_named_like_an_element_can_be_edited() {
+    // Elements and materials are separate tables, and MixtureRead resolves a
+    // component name as an element first (G4GDMLReadMaterials.cc:770-779); a
+    // <composite> can only name an element (795). Both large samples name
+    // materials like elements. Editing either one was refused, making the
+    // material a mixture of its element was a "self-reference", and renaming
+    // it rewrote every <composite ref> to the element into a name Geant4
+    // cannot find.
+    let xml = document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "").replace(
+        "<materials>",
+        r#"<materials><element name="Al" Z="13"><atom value="26.98"/></element>
+        <element name="O" Z="8"><atom value="16"/></element>
+        <material name="Al" Z="13"><D value="2.7"/><atom value="26.98"/></material>
+        <material name="Oxide"><D value="3.9"/><composite n="2" ref="Al"/><composite n="3" ref="O"/></material>"#,
+    );
+    let state = load(&xml).await;
+    let element = state
+        .read()
+        .await
+        .loaded
+        .as_ref()
+        .unwrap()
+        .document
+        .materials
+        .elements[0]
+        .clone();
+    let edited = update_element(
+        State(state.clone()),
+        Json(UpdateElementRequest {
+            name: "Al".into(),
+            element,
+        }),
+    )
+    .await;
+    assert!(edited.is_ok(), "{:?}", edited.err());
+    let aluminium = state
+        .read()
+        .await
+        .loaded
+        .as_ref()
+        .unwrap()
+        .document
+        .materials
+        .materials[0]
+        .clone();
+    for (name, material) in [
+        (
+            "Al",
+            Material {
+                density: Some(Density {
+                    value: "2.71".into(),
+                    unit: None,
+                }),
+                ..aluminium.clone()
+            },
+        ),
+        ("Al", mixture_of(aluminium.clone(), "Al")),
+        (
+            "Al",
+            Material {
+                name: "AlMat".into(),
+                ..aluminium
+            },
+        ),
+    ] {
+        let result = update_material(
+            State(state.clone()),
+            Json(UpdateMaterialRequest {
+                name: name.into(),
+                material: material.clone(),
+                elements: vec![],
+            }),
+        )
+        .await;
+        assert!(result.is_ok(), "{}: {:?}", material.name, result.err());
+    }
+    let saved = export(&state).await;
+    assert!(saved.contains(r#"<composite n="2" ref="Al"/>"#), "{saved}");
+    assert_eq!(material_names(&saved), ["AlMat", "Oxide", "M", "N"]);
+}
