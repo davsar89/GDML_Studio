@@ -19,15 +19,23 @@
 use std::f64::consts::PI;
 
 use gdml_studio_backend::mesh::primitives::{
-    arb8_mesh::tessellate_arb8, box_mesh::tessellate_box, cone_mesh::tessellate_cone,
-    cut_tube_mesh::tessellate_cut_tube, elcone_mesh::tessellate_elcone,
-    ellipsoid_mesh::tessellate_ellipsoid, eltube_mesh::tessellate_eltube,
-    generic_polycone_mesh::tessellate_generic_polycone, hype_mesh::tessellate_hype,
-    paraboloid_mesh::tessellate_paraboloid, polycone_mesh::tessellate_polycone,
-    polyhedra_mesh::tessellate_polyhedra, sphere_mesh::tessellate_sphere,
-    torus_mesh::tessellate_torus, trap_mesh::tessellate_trap, trd_mesh::tessellate_trd,
-    tube_mesh::tessellate_tube, twisted_trap_mesh::tessellate_twisted_trap,
-    twisted_tubs_mesh::tessellate_twisted_tubs, xtru_mesh::tessellate_xtru,
+    arb8_mesh::{tessellate_arb8, tessellate_box, tessellate_trap, tessellate_trd},
+    cone_mesh::tessellate_cone,
+    cut_tube_mesh::tessellate_cut_tube,
+    elcone_mesh::tessellate_elcone,
+    ellipsoid_mesh::tessellate_ellipsoid,
+    eltube_mesh::tessellate_eltube,
+    generic_polycone_mesh::tessellate_generic_polycone,
+    hype_mesh::tessellate_hype,
+    paraboloid_mesh::tessellate_paraboloid,
+    polycone_mesh::tessellate_polycone,
+    polyhedra_mesh::tessellate_polyhedra,
+    sphere_mesh::tessellate_sphere,
+    torus_mesh::tessellate_torus,
+    tube_mesh::tessellate_tube,
+    twisted_trap_mesh::tessellate_twisted_trap,
+    twisted_tubs_mesh::tessellate_twisted_tubs,
+    xtru_mesh::tessellate_xtru,
 };
 use gdml_studio_backend::mesh::types::TriangleMesh;
 

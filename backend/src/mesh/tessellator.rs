@@ -4,10 +4,9 @@ use std::f64::consts::PI;
 
 use super::csg;
 use super::primitives::{
-    arb8_mesh, box_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh,
-    face_normal, generic_polycone_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh,
-    sphere_mesh, torus_mesh, trap_mesh, trd_mesh, tube_mesh, twisted_trap_mesh, twisted_tubs_mesh,
-    xtru_mesh,
+    arb8_mesh, cone_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, face_normal,
+    generic_polycone_mesh, hype_mesh, paraboloid_mesh, polycone_mesh, polyhedra_mesh, sphere_mesh,
+    torus_mesh, tube_mesh, twisted_trap_mesh, twisted_tubs_mesh, xtru_mesh,
 };
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
@@ -392,7 +391,7 @@ fn tessellate_box_solid(s: &BoxSolid, engine: &EvalEngine) -> Result<TriangleMes
     let x = resolve_with_lunit(engine, &s.x, lunit);
     let y = resolve_with_lunit(engine, &s.y, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    Ok(box_mesh::tessellate_box(x, y, z))
+    Ok(arb8_mesh::tessellate_box(x, y, z))
 }
 
 fn tessellate_tube_solid(
@@ -461,7 +460,7 @@ fn tessellate_trd_solid(s: &TrdSolid, engine: &EvalEngine) -> Result<TriangleMes
     let x2 = resolve_with_lunit(engine, &s.x2, lunit);
     let y2 = resolve_with_lunit(engine, &s.y2, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
-    Ok(trd_mesh::tessellate_trd(x1, y1, x2, y2, z))
+    Ok(arb8_mesh::tessellate_trd(x1, y1, x2, y2, z))
 }
 
 fn tessellate_arb8_solid(s: &Arb8Solid, engine: &EvalEngine) -> Result<TriangleMesh> {
@@ -749,7 +748,7 @@ fn tessellate_para_solid(s: &ParaSolid, engine: &EvalEngine) -> Result<TriangleM
     let theta = resolve_opt_with_aunit(engine, &s.theta, aunit);
     let phi = resolve_opt_with_aunit(engine, &s.phi, aunit);
     // Para is Trap with uniform x/y dimensions
-    Ok(trap_mesh::tessellate_trap(
+    Ok(arb8_mesh::tessellate_trap(
         z, theta, phi, y, x, x, alpha, y, x, x, alpha,
     ))
 }
@@ -768,7 +767,7 @@ fn tessellate_trap_solid(s: &TrapSolid, engine: &EvalEngine) -> Result<TriangleM
     let x3 = resolve_with_lunit(engine, &s.x3, lunit);
     let x4 = resolve_with_lunit(engine, &s.x4, lunit);
     let alpha2 = resolve_opt_with_aunit(engine, &s.alpha2, aunit);
-    Ok(trap_mesh::tessellate_trap(
+    Ok(arb8_mesh::tessellate_trap(
         z, theta, phi, y1, x1, x2, alpha1, y2, x3, x4, alpha2,
     ))
 }

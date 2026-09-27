@@ -6,7 +6,6 @@
 #![allow(clippy::too_many_arguments)]
 
 pub mod arb8_mesh;
-pub mod box_mesh;
 pub mod cone_mesh;
 pub mod cut_tube_mesh;
 pub mod elcone_mesh;
@@ -19,8 +18,6 @@ pub mod polycone_mesh;
 pub mod polyhedra_mesh;
 pub mod sphere_mesh;
 pub mod torus_mesh;
-pub mod trap_mesh;
-pub mod trd_mesh;
 pub mod tube_mesh;
 pub mod twisted_trap_mesh;
 pub mod twisted_tubs_mesh;

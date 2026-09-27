@@ -730,7 +730,7 @@ fn lerp3_normalize(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::primitives::{box_mesh, sphere_mesh};
+    use crate::mesh::primitives::{arb8_mesh::tessellate_box, sphere_mesh};
 
     fn mesh_is_finite(mesh: &TriangleMesh) -> bool {
         mesh.positions.iter().all(|v| v.is_finite()) && mesh.normals.iter().all(|v| v.is_finite())
@@ -794,8 +794,8 @@ mod tests {
 
     #[test]
     fn coplanar_identical_boxes_remain_finite() {
-        let a = box_mesh::tessellate_box(10.0, 10.0, 10.0);
-        let b = box_mesh::tessellate_box(10.0, 10.0, 10.0);
+        let a = tessellate_box(10.0, 10.0, 10.0);
+        let b = tessellate_box(10.0, 10.0, 10.0);
 
         let i = boolean(&a, &b, &BooleanOp::Intersection);
         let s = boolean(&a, &b, &BooleanOp::Subtraction);
@@ -806,7 +806,7 @@ mod tests {
 
     #[test]
     fn touching_coplanar_faces_remain_finite() {
-        let a = box_mesh::tessellate_box(10.0, 10.0, 10.0);
+        let a = tessellate_box(10.0, 10.0, 10.0);
         let b = transform_mesh(&a, [10.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
 
         let i = boolean(&a, &b, &BooleanOp::Intersection);
@@ -821,7 +821,7 @@ mod tests {
 
     #[test]
     fn subtract_half_overlap_has_correct_volume() {
-        let a = box_mesh::tessellate_box(100.0, 100.0, 100.0);
+        let a = tessellate_box(100.0, 100.0, 100.0);
         let b = transform_mesh(&a, [50.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
         assert_volume(
             &boolean(&a, &b, &BooleanOp::Subtraction),
@@ -833,7 +833,7 @@ mod tests {
 
     #[test]
     fn intersect_half_overlap_has_correct_volume() {
-        let a = box_mesh::tessellate_box(100.0, 100.0, 100.0);
+        let a = tessellate_box(100.0, 100.0, 100.0);
         let b = transform_mesh(&a, [50.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
         assert_volume(
             &boolean(&a, &b, &BooleanOp::Intersection),
@@ -847,7 +847,7 @@ mod tests {
     fn union_of_disjoint_boxes_sums_volumes() {
         // `union` had no assertion anywhere in the suite; it ran only as a
         // crash test via sample_data/solids.gdml.
-        let a = box_mesh::tessellate_box(10.0, 10.0, 10.0);
+        let a = tessellate_box(10.0, 10.0, 10.0);
         let b = transform_mesh(&a, [40.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
         assert_volume(
             &boolean(&a, &b, &BooleanOp::Union),
@@ -865,7 +865,7 @@ mod tests {
         let pi = std::f64::consts::PI;
         let a = sphere_mesh::tessellate_sphere(0.0, 40.0, 0.0, 2.0 * pi, 0.0, pi, 24);
         let b = transform_mesh(
-            &box_mesh::tessellate_box(50.0, 60.0, 70.0),
+            &tessellate_box(50.0, 60.0, 70.0),
             [30.0, 10.0, -5.0],
             [0.3, 0.4, 0.5],
         );
@@ -891,8 +891,8 @@ mod tests {
     fn subtract_fully_enclosed_cavity() {
         // The inner surface must come out wound inward, so the signed volumes
         // subtract. An inverted cavity would read as 1000 + 125 instead.
-        let outer = box_mesh::tessellate_box(10.0, 10.0, 10.0);
-        let inner = box_mesh::tessellate_box(5.0, 5.0, 5.0);
+        let outer = tessellate_box(10.0, 10.0, 10.0);
+        let inner = tessellate_box(5.0, 5.0, 5.0);
         assert_volume(
             &boolean(&outer, &inner, &BooleanOp::Subtraction),
             875.0,
@@ -903,7 +903,7 @@ mod tests {
 
     #[test]
     fn nested_booleans_stay_correct() {
-        let a = box_mesh::tessellate_box(100.0, 100.0, 100.0);
+        let a = tessellate_box(100.0, 100.0, 100.0);
         let b = transform_mesh(&a, [50.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
         let c = transform_mesh(&a, [0.0, 50.0, 0.0], [0.0, 0.0, 0.0]);
         // (a - b) - c: keeps x in [-50,0] and y in [-50,0] => 50*50*100.
@@ -925,7 +925,7 @@ mod tests {
         // on the broken code.
         for offset in [0.0, 1_000.0, 100_000.0, 1_000_000.0] {
             let rot = [0.3, 0.4, 0.5];
-            let unit = box_mesh::tessellate_box(100.0, 100.0, 100.0);
+            let unit = tessellate_box(100.0, 100.0, 100.0);
             let a = transform_mesh(&unit, [offset, offset, offset], rot);
             let shifted = transform_mesh(&unit, [50.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
             let b = transform_mesh(&shifted, [offset, offset, offset], rot);
@@ -959,7 +959,7 @@ mod tests {
                     std::f64::consts::PI,
                     128,
                 );
-                let cutter = box_mesh::tessellate_box(40.0, 40.0, 400.0);
+                let cutter = tessellate_box(40.0, 40.0, 400.0);
                 let result = boolean(&sphere, &cutter, &BooleanOp::Subtraction);
                 assert!(mesh_is_finite(&result));
                 assert!(result.triangle_count() > 0);
