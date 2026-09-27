@@ -7,7 +7,7 @@ vi.mock('../Viewport/geometryCache', () => ({
 
 import DefinesTree from './DefinesTree';
 import { useAppStore } from '../../store';
-import type { DefineValue } from '../../store/types';
+import type { DefineValue, DocumentSummary } from '../../store/types';
 
 /** Far more than any shipped sample: the largest shows 400 scalar defines.
  *  Sized to prove the window holds for a user file well beyond the corpus. */
@@ -73,6 +73,12 @@ describe('DefinesTree', () => {
     expect(screen.getByText('10')).toBeInTheDocument();
     expect(screen.getByText('0.333333')).toBeInTheDocument();
     expect(screen.getByTitle(/tiny = 1e-9 => 1e-9/)).toBeInTheDocument();
+  });
+
+  it("shows 'No defines' for a loaded document without defines", () => {
+    useAppStore.setState({ summary: { filename: 'x.gdml' } as DocumentSummary });
+    render(<DefinesTree />);
+    expect(screen.getByText('No defines')).toBeInTheDocument();
   });
 
   it('shows the empty state with no document', () => {

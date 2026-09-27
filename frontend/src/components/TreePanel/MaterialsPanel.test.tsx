@@ -111,6 +111,12 @@ async function chooseFile(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('material drafts and document actions', () => {
+  it('offers Add for a loaded document without materials', () => {
+    useAppStore.setState({ materials: [], selectedMaterial: null });
+    mount();
+    expect(screen.getByRole('button', { name: 'Add material' })).toBeInTheDocument();
+  });
+
   it('Add material stays local until Apply', async () => {
     serverMaterials = [makeMaterial('Material_1')];
     serverElements = [{ name: 'Material_2', formula: null, z: '1', atom_value: '1', atom_unit: null, atom_type: null, fractions: [] }];

@@ -30,6 +30,7 @@ const OVERSCAN = 8;
  */
 export default function DefinesTree() {
   const defines = useAppStore((s) => s.defines);
+  const loaded = useAppStore((s) => s.summary !== null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
@@ -45,7 +46,7 @@ export default function DefinesTree() {
   }, []);
 
   if (defines.length === 0) {
-    return <div style={{ color: '#666', fontSize: 12, padding: 8 }}>No file loaded</div>;
+    return <div style={{ color: '#666', fontSize: 12, padding: 8 }}>{loaded ? 'No defines' : 'No file loaded'}</div>;
   }
 
   const total = defines.length;

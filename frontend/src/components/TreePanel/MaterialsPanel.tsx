@@ -12,8 +12,9 @@ export default function MaterialsPanel() {
   const elements = useAppStore((s) => s.elements);
   const selectedMaterial = useAppStore((s) => s.selectedMaterial);
   const setSelectedMaterial = useAppStore((s) => s.setSelectedMaterial);
+  const loaded = useAppStore((s) => s.summary !== null);
 
-  if (materials.length === 0 && elements.length === 0) {
+  if (!loaded) {
     return <div style={{ color: '#666', fontSize: 12 }}>No file loaded</div>;
   }
 
