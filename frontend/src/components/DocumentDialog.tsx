@@ -19,9 +19,10 @@ export default function DocumentDialog() {
     return () => {
       dialog.close();
       // The initiating control is disabled until the document action releases
-      // its lock. Restore focus after React has committed that state change.
+      // its lock. Restore focus after React has committed that state change;
+      // if the action is still running (another dialog follows), leave focus.
       requestAnimationFrame(() => {
-        if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
+        if (previous instanceof HTMLElement && previous.isConnected && !previous.matches(':disabled')) previous.focus();
       });
     };
   }, [decision]);
