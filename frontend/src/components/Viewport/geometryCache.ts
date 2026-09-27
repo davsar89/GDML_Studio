@@ -45,9 +45,29 @@ export function releaseGeometry(solidName: string): void {
   }
 }
 
+const materials = new Map<string, THREE.MeshStandardMaterial>();
+
+/**
+ * One material per look, shared by every mesh with that look. A deeper volume is offset
+ * further toward the camera, so a daughter wins the faces it shares with its mother.
+ * Ceiling: one entry per opacity step used, freed only on load; key on a quantised opacity if that grows.
+ */
+export function sharedMaterial(color: string, selected: boolean, opacity: number, depth: number): THREE.MeshStandardMaterial {
+  const key = `${color}|${selected}|${opacity}|${depth}`;
+  if (!materials.has(key)) materials.set(key, new THREE.MeshStandardMaterial({
+    color: selected ? '#ff6090' : color, emissive: selected ? '#ff2060' : color, emissiveIntensity: selected ? 0.3 : 0.12,
+    metalness: 0.15, roughness: 0.45, side: THREE.DoubleSide, transparent: opacity < 1, opacity, depthWrite: opacity >= 1,
+    polygonOffset: true, polygonOffsetFactor: -depth, polygonOffsetUnits: -depth,
+  }));
+  return materials.get(key)!;
+}
+
+/** Frees every cached geometry and material; call when the document is replaced. */
 export function clearAllGeometries(): void {
   for (const entry of cache.values()) {
     entry.geometry.dispose();
   }
   cache.clear();
+  for (const material of materials.values()) material.dispose();
+  materials.clear();
 }

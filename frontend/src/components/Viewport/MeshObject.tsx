@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { MeshData } from '../../store/types';
 import { useAppStore } from '../../store';
-import { acquireGeometry, releaseGeometry, peekGeometry } from './geometryCache';
+import { acquireGeometry, releaseGeometry, peekGeometry, sharedMaterial } from './geometryCache';
 
 interface Props {
   meshData: MeshData;
@@ -52,6 +52,8 @@ export default function MeshObject({ meshData, color, selected, name, instanceId
   return (
     <mesh
       geometry={geometry}
+      // A shared prop, not a child: R3F never disposes it on unmount.
+      material={sharedMaterial(color, selected, effectiveOpacity, depth)}
       onClick={handleClick}
       onContextMenu={(e: ThreeEvent<MouseEvent>) => {
         if (e.delta > 2) return;
@@ -73,18 +75,6 @@ export default function MeshObject({ meshData, color, selected, name, instanceId
           },
         ]);
       }}
-    >
-      <meshStandardMaterial
-        color={selected ? '#ff6090' : color}
-        side={THREE.DoubleSide}
-        emissive={selected ? '#ff2060' : color}
-        emissiveIntensity={selected ? 0.3 : 0.12}
-        metalness={0.15}
-        roughness={0.45}
-        transparent={effectiveOpacity < 1}
-        opacity={effectiveOpacity}
-        depthWrite={effectiveOpacity >= 1}
-      />
-    </mesh>
+    />
   );
 }
