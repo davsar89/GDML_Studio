@@ -1378,50 +1378,58 @@ fn with_staged_elements(
             continue;
         }
         ensure_element_name_available(&staged, &element.name, None)?;
-        if element.fractions.is_empty() && (element.z.is_none() || element.atom_value.is_none()) {
-            return Err(ApiError::bad_request(&format!(
-                "Element '{}' needs atomic number and mass, or isotope fractions",
-                element.name
-            )));
-        }
-        for (value, label, integral) in [
-            (&element.z, "atomic number", true),
-            (&element.atom_value, "atomic mass", false),
-        ] {
-            if let Some(value) = value {
-                let value = engine.eval_expr(value).map_err(|e| {
-                    ApiError::bad_request(&format!(
-                        "Element '{}': invalid {label}: {e}",
-                        element.name
-                    ))
-                })?;
-                if value <= 0.0 || (integral && value.fract() != 0.0) {
-                    return Err(ApiError::bad_request(&format!(
-                        "Element '{}': invalid {label}",
-                        element.name
-                    )));
-                }
-            }
-        }
-        for fraction in &element.fractions {
-            let weight = engine
-                .eval_expr(&fraction.n)
-                .map_err(|e| ApiError::bad_request(&format!("Invalid isotope fraction: {e}")))?;
-            if !(0.0..=1.0).contains(&weight) {
-                return Err(ApiError::bad_request(
-                    "Isotope fraction must be between 0 and 1",
-                ));
-            }
-            if !staged.isotopes.iter().any(|i| i.name == fraction.ref_name) {
-                return Err(ApiError::bad_request(&format!(
-                    "Element '{}' references unknown isotope '{}'",
-                    element.name, fraction.ref_name
-                )));
-            }
-        }
+        validate_element(&staged, element, engine)?;
         staged.elements.push(element.clone());
     }
     Ok(staged)
+}
+
+/// Geant4's requirements for an element: Z and atomic mass, or isotope
+/// fractions naming isotopes that exist.
+fn validate_element(
+    doc: &MaterialSection,
+    element: &Element,
+    engine: &EvalEngine,
+) -> Result<(), ApiError> {
+    if element.fractions.is_empty() && (element.z.is_none() || element.atom_value.is_none()) {
+        return Err(ApiError::bad_request(&format!(
+            "Element '{}' needs atomic number and mass, or isotope fractions",
+            element.name
+        )));
+    }
+    for (value, label, integral) in [
+        (&element.z, "atomic number", true),
+        (&element.atom_value, "atomic mass", false),
+    ] {
+        if let Some(value) = value {
+            let value = engine.eval_expr(value).map_err(|e| {
+                ApiError::bad_request(&format!("Element '{}': invalid {label}: {e}", element.name))
+            })?;
+            if value <= 0.0 || (integral && value.fract() != 0.0) {
+                return Err(ApiError::bad_request(&format!(
+                    "Element '{}': invalid {label}",
+                    element.name
+                )));
+            }
+        }
+    }
+    for fraction in &element.fractions {
+        let weight = engine
+            .eval_expr(&fraction.n)
+            .map_err(|e| ApiError::bad_request(&format!("Invalid isotope fraction: {e}")))?;
+        if !(0.0..=1.0).contains(&weight) {
+            return Err(ApiError::bad_request(
+                "Isotope fraction must be between 0 and 1",
+            ));
+        }
+        if !doc.isotopes.iter().any(|i| i.name == fraction.ref_name) {
+            return Err(ApiError::bad_request(&format!(
+                "Element '{}' references unknown isotope '{}'",
+                element.name, fraction.ref_name
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn validate_material_values(material: &Material, engine: &EvalEngine) -> Result<(), ApiError> {
@@ -1620,6 +1628,7 @@ pub async fn update_element(
         &new_name,
         Some(old_name.as_str()),
     )?;
+    validate_element(&loaded.document.materials, &req.element, &loaded.engine)?;
 
     let el_idx = loaded
         .document
@@ -1658,6 +1667,7 @@ pub async fn add_element(
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
     ensure_element_name_available(&loaded.document.materials, &req.element.name, None)?;
+    validate_element(&loaded.document.materials, &req.element, &loaded.engine)?;
 
     loaded.document.materials.elements.push(req.element);
     Ok(Json(json!({ "ok": true })))

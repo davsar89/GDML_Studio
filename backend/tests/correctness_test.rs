@@ -1123,3 +1123,70 @@ async fn scene_density_uses_the_evaluator() {
         "{density:?}"
     );
 }
+
+fn element(name: &str, z: Option<&str>, fractions: Vec<Fraction>) -> Element {
+    Element {
+        name: name.into(),
+        formula: None,
+        z: z.map(Into::into),
+        atom_value: z.map(|_| "1.008".into()),
+        atom_unit: None,
+        atom_type: None,
+        fractions,
+    }
+}
+
+async fn elements(state: &SharedState) -> Vec<(String, Option<String>)> {
+    let guard = state.read().await;
+    let materials = &guard.loaded.as_ref().unwrap().document.materials;
+    materials
+        .elements
+        .iter()
+        .map(|e| (e.name.clone(), e.z.clone()))
+        .collect()
+}
+
+#[tokio::test]
+async fn add_element_with_unknown_isotope_is_rejected() {
+    // GetIsotope is fatal on a name that does not exist
+    // (G4GDMLReadMaterials.cc:738, 958-963). Adding one element skipped the
+    // checks a staged NIST element goes through.
+    let state = load(&document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "")).await;
+    let fraction = Fraction {
+        n: "1".into(),
+        ref_name: "U235".into(),
+    };
+    let refused = add_element(
+        State(state.clone()),
+        Json(AddElementRequest {
+            element: element("Enriched", None, vec![fraction]),
+        }),
+    )
+    .await;
+    assert_eq!(refused.err().map(|e| e.status.as_u16()), Some(400));
+    assert!(elements(&state).await.is_empty());
+}
+
+#[tokio::test]
+async fn update_element_rejects_fractional_z() {
+    // A staged NIST element with a non-integer Z is refused; editing an
+    // element skipped that check and stored Z = 1.5.
+    let xml = document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "").replace(
+        "<materials>",
+        r#"<materials><element name="Hyd" Z="1"><atom value="1.008"/></element>"#,
+    );
+    let state = load(&xml).await;
+    let refused = update_element(
+        State(state.clone()),
+        Json(UpdateElementRequest {
+            name: "Hyd".into(),
+            element: element("Hyd", Some("1.5"), vec![]),
+        }),
+    )
+    .await;
+    assert_eq!(refused.err().map(|e| e.status.as_u16()), Some(400));
+    assert_eq!(
+        elements(&state).await,
+        [("Hyd".to_string(), Some("1".to_string()))]
+    );
+}
