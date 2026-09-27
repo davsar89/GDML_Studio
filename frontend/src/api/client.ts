@@ -38,13 +38,13 @@ function detectMainFile(files: Record<string, string>): string {
     ?? names.sort((a, b) => refs[b].length - refs[a].length)[0];
 }
 
+function send<T>(method: 'POST' | 'PUT', url: string, body: unknown): Promise<T> {
+  return fetchJson<T>(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+}
+
 /** Upload one file or a modular set; the backend keeps the result as the open document. */
 export async function uploadFiles(files: Record<string, string>) {
-  return fetchJson<DocumentSummary>('/api/files/upload-multi', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ files, main_file: detectMainFile(files) }),
-  });
+  return send<DocumentSummary>('POST', '/api/files/upload-multi', { files, main_file: detectMainFile(files) });
 }
 
 export async function getSummary() {
@@ -108,15 +108,14 @@ export async function getNistMaterial(name: string) {
 }
 
 /**
- * Flag the document as having unsaved edits.
+ * A request that edits the document. Flags unsaved edits once it succeeds.
  *
- * Wrapped around the mutating calls rather than inferred from the refresh that
- * follows them: "a mutating request succeeded" is exactly what dirty means, and
- * tying it to the endpoint means one added later cannot quietly skip it. Only
- * marks on success -- a rejected edit changed nothing.
+ * Tied to the endpoint rather than inferred from the refresh that follows:
+ * "a mutating request succeeded" is exactly what dirty means, and one added
+ * later cannot quietly skip it. A rejected edit changed nothing.
  */
-async function mutate<T>(request: Promise<T>): Promise<T> {
-  const result = await request;
+async function mutate(method: 'POST' | 'PUT', url: string, body: unknown) {
+  const result = await send<{ ok: boolean }>(method, url, body);
   useAppStore.getState().markDirty();
   return result;
 }
@@ -124,58 +123,31 @@ async function mutate<T>(request: Promise<T>): Promise<T> {
 // ─── Material CRUD ──────────────────────────────────────────────────────────
 
 export async function updateMaterial(name: string, material: MaterialInfo, elements: ElementInfo[] = []) {
-  return mutate(fetchJson<{ ok: boolean }>('/api/document/materials/update', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, material, elements }),
-  }));
+  return mutate('PUT', '/api/document/materials/update', { name, material, elements });
 }
 
 export async function addMaterial(material: MaterialInfo, elements: ElementInfo[] = []) {
-  return mutate(fetchJson<{ ok: boolean }>('/api/document/materials/add', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ material, elements }),
-  }));
+  return mutate('POST', '/api/document/materials/add', { material, elements });
 }
 
 export async function deleteMaterial(name: string) {
-  return mutate(fetchJson<{ ok: boolean }>('/api/document/materials/delete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  }));
+  return mutate('POST', '/api/document/materials/delete', { name });
 }
 
 // ─── Element CRUD ───────────────────────────────────────────────────────────
 
 export async function addElement(element: ElementInfo) {
-  return mutate(fetchJson<{ ok: boolean }>('/api/document/elements/add', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ element }),
-  }));
+  return mutate('POST', '/api/document/elements/add', { element });
 }
 
 export async function deleteElement(name: string) {
-  return mutate(fetchJson<{ ok: boolean }>('/api/document/elements/delete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  }));
+  return mutate('POST', '/api/document/elements/delete', { name });
 }
 
 // ─── Volume material ref ────────────────────────────────────────────────────
 
-export async function updateVolumeMaterialRef(
-  volumeName: string,
-  materialRef: string,
-) {
-  return mutate(fetchJson<{ ok: boolean }>('/api/document/structure/material-ref', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ volume_name: volumeName, material_ref: materialRef }),
-  }));
+export async function updateVolumeMaterialRef(volumeName: string, materialRef: string) {
+  return mutate('PUT', '/api/document/structure/material-ref', { volume_name: volumeName, material_ref: materialRef });
 }
 
 // ─── Export ─────────────────────────────────────────────────────────────────
