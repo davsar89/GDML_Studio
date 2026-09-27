@@ -159,8 +159,10 @@ impl EvalEngine {
                     0.0
                 }
             };
-            // QuantityRead applies the declared unit independently of the type hint.
-            let value = unit.map_or(value, |unit| units::apply_unit(value, unit));
+            // QuantityRead applies the declared unit independently of the type
+            // hint. G4UnitsTable lists compound symbols like g/cm3 as units of
+            // their own; evaluated, the symbol has the same value.
+            let value = unit.map_or(value, |unit| value * self.resolve_value(unit));
             self.set(name, finite_value(value)?);
         }
 

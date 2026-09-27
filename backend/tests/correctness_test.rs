@@ -1248,12 +1248,26 @@ async fn material_without_composition_is_rejected() {
 async fn quantity_is_listed_in_its_declared_unit() {
     // The Defines tab prints `evaluated` next to the declared unit, so a
     // quantity of 10 cm has to come back as 10, not the 100 mm used inside.
+    // G4UnitsTable lists g/cm3 as a unit of its own; it used to scale by 1.
     let state = load(&document(
-        r#"<quantity name="q" value="10" unit="cm"/><quantity name="qa" value="90" unit="deg"/>"#,
+        r#"<quantity name="q" value="10" unit="cm"/><quantity name="qa" value="90" unit="deg"/>
+        <quantity name="rho" value="2.7" unit="g/cm3"/>"#,
         r#"<box name="B" x="q" y="1" z="1"/>"#,
         "",
     ))
     .await;
+    let rho = state
+        .read()
+        .await
+        .loaded
+        .as_ref()
+        .unwrap()
+        .engine
+        .get("rho");
+    assert!(
+        (rho.unwrap() / 6.241509074e18 / 2.7 - 1.0).abs() < 1e-9,
+        "{rho:?}"
+    );
     let defines = get_defines(State(state)).await.unwrap().0;
     let evaluated = |name: &str| {
         defines["defines"]
@@ -1269,6 +1283,11 @@ async fn quantity_is_listed_in_its_declared_unit() {
         (evaluated("qa") - 90.0).abs() < 1e-12,
         "{}",
         evaluated("qa")
+    );
+    assert!(
+        (evaluated("rho") - 2.7).abs() < 1e-12,
+        "{}",
+        evaluated("rho")
     );
 }
 

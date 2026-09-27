@@ -196,15 +196,6 @@ pub fn angle_factor(unit: &str) -> Option<f64> {
     lookup(&[ANGLE], unit)
 }
 
-/// Multiplier for any unit symbol in the table, or `None` if unrecognised.
-///
-/// A compound `G4UnitsTable` symbol such as `g/cm3` is not in the table and
-/// counts as unrecognised, although Geant4 would scale it. Nothing here reads a
-/// quantity in such a unit as a number; parse the symbol if that changes.
-pub fn unit_factor(unit: &str) -> Option<f64> {
-    lookup(&[LENGTH, ANGLE, OTHER], unit)
-}
-
 /// Convert to millimetres. Unrecognised units pass through unchanged; callers
 /// that can surface a diagnostic should check [`length_factor`] first, since a
 /// silently unconverted value renders as wrong geometry with no other signal.
@@ -215,14 +206,6 @@ pub fn length_to_mm(value: f64, unit: &str) -> f64 {
 /// Convert to radians. Unrecognised units pass through unchanged.
 pub fn angle_to_rad(value: f64, unit: &str) -> f64 {
     value * angle_factor(unit).unwrap_or(1.0)
-}
-
-/// Apply a unit without being told which kind it is, matching
-/// `G4GDMLReadDefine::QuantityRead`, which multiplies by
-/// `G4UnitDefinition::GetValueOf(unit)` without ever consulting the `type`
-/// attribute.
-pub fn apply_unit(value: f64, unit: &str) -> f64 {
-    value * unit_factor(unit).unwrap_or(1.0)
 }
 
 #[cfg(test)]
@@ -253,17 +236,7 @@ mod tests {
         // treating them as mm would silently render wrong geometry.
         assert!(length_factor("micron").is_none());
         assert!(length_factor("dm").is_none());
-        assert!(unit_factor("furlong").is_none());
         // The lenient converters still pass the value through unchanged.
         assert_eq!(length_to_mm(5.0, "furlong"), 5.0);
-    }
-
-    #[test]
-    fn apply_unit_dispatches_without_a_type_hint() {
-        assert_eq!(apply_unit(5.0, "cm"), 50.0);
-        assert!((apply_unit(180.0, "deg") - std::f64::consts::PI).abs() < 1e-12);
-        assert_eq!(apply_unit(5.0, "ns"), 5.0);
-        // CLHEP's g/cm3 is 6.24150907e18 MeV·ns²/mm⁵.
-        assert!((apply_unit(1.0, "g") / 1.0e3 / 6.241509074e18 - 1.0).abs() < 1e-9);
     }
 }
