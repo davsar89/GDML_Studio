@@ -840,19 +840,17 @@ fn build_scene_graph(
         .map(|v| (v.name.as_str(), v))
         .collect();
 
-    // Build material name → density (g/cm³) lookup
+    // Material name → density in g/cm3. DRead evaluates `value` as an
+    // expression and defaults the unit to g/cm3 (G4GDMLReadMaterials.cc:147-150).
     let density_map: HashMap<&str, f64> = materials
         .materials
         .iter()
         .filter_map(|m| {
             let d = m.density.as_ref()?;
-            let val = d.value.parse::<f64>().ok()?;
-            // Convert to g/cm³ if unit is specified
-            let density = match d.unit.as_deref() {
-                Some("kg/m3") | Some("kg/m³") => val / 1000.0,
-                Some("mg/cm3") | Some("mg/cm³") => val / 1000.0,
-                _ => val, // default g/cm³
-            };
+            let unit = d.unit.as_deref().unwrap_or("g/cm3");
+            let density = engine
+                .eval_expr(&format!("({})*(({unit})/(g/cm3))", d.value))
+                .ok()?;
             Some((m.name.as_str(), density))
         })
         .collect();

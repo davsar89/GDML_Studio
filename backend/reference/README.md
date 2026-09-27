@@ -12,6 +12,7 @@ Taken from `source/` in the upstream tarball:
 |---|---|---|
 | `G4GDMLRead.cc` | `persistency/gdml/src/` | `<loop>` semantics (`LoopRead`) |
 | `G4GDMLReadDefine.cc` | `persistency/gdml/src/` | `<define>` reading order, `<quantity>` units |
+| `G4GDMLReadMaterials.cc` | `persistency/gdml/src/` | `<D>` default unit, component lookup (element first) |
 | `G4GDMLReadSolids.cc` | `persistency/gdml/src/` | solid attribute names and defaults |
 | `G4GDMLReadStructure.cc` | `persistency/gdml/src/` | volumes, physvols, replicas, multi-file modules |
 | `G4Polycone.cc` | `geometry/solids/specific/src/` | phi opening-angle rule, decreasing-z handling |

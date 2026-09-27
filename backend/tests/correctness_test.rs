@@ -1101,3 +1101,25 @@ async fn clhep_units_evaluate_like_geant4() {
     }
     assert_eq!(x_bounds(&loaded.meshes["E"]), (-3.0, 3.0));
 }
+
+#[tokio::test]
+async fn scene_density_uses_the_evaluator() {
+    // DRead evaluates `value` as an expression and multiplies by `unit`
+    // (G4GDMLReadMaterials.cc:147-187). The scene parsed the value as a bare
+    // number, so a density given through a define had none.
+    let xml = document(
+        r#"<constant name="rho" value="2700"/>"#,
+        r#"<box name="B" x="1" y="1" z="1"/>"#,
+        r#"<volume name="W"><materialref ref="Al"/><solidref ref="B"/></volume>"#,
+    )
+    .replace(
+        "</materials>",
+        r#"<material name="Al" Z="13"><D value="rho" unit="kg/m3"/><atom value="26.98"/></material></materials>"#,
+    );
+    let scene = get_scene(State(load(&xml).await)).await.unwrap().0;
+    let density = scene["scene_graph"]["density"].as_f64();
+    assert!(
+        density.is_some_and(|d| (d - 2.7).abs() < 1e-12),
+        "{density:?}"
+    );
+}
