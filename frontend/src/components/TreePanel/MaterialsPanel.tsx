@@ -374,7 +374,6 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
   };
 
   const handleAdd = async () => {
-    if (!newName.trim()) return;
     await runDocumentAction(async () => {
       await api.addElement({
         name: newName.trim(),
@@ -454,7 +453,7 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
               </div>
               <input value={newZ} onChange={(e) => setNewZ(e.target.value)} placeholder="Z" style={{ ...inputStyle, width: 30 }} />
               <input value={newAtom} onChange={(e) => setNewAtom(e.target.value)} placeholder="Atom" style={{ ...inputStyle, width: 50 }} />
-              <button onClick={handleAdd} style={smallBtn}>Add</button>
+              <button onClick={handleAdd} disabled={!newName.trim() || !newZ.trim() || !newAtom.trim()} style={smallBtn}>Add</button>
             </div>
           )}
           <div style={{ maxHeight: 120, overflow: 'auto' }}>
