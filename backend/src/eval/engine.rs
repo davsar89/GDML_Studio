@@ -14,11 +14,10 @@ pub struct EvalEngine {
     pub position_values: HashMap<String, [f64; 3]>,
     pub scale_values: HashMap<String, [f64; 3]>,
     pub rotation_values: HashMap<String, [f64; 3]>,
-    /// Non-fatal evaluation warnings collected during value resolution
-    /// (e.g. expressions that failed and were treated as 0). Behind a `Mutex`
-    /// rather than a `RefCell` so `EvalEngine` stays `Sync` (it lives inside
-    /// `AppState` behind a `tokio::RwLock`).
-    warnings: std::sync::Mutex<Vec<String>>,
+    /// Non-fatal evaluation warnings (e.g. an expression treated as 0), kept
+    /// per thread. A call records and drains them on one thread, so requests
+    /// building scenes from the loaded engine at once never take each other's.
+    warnings: std::sync::Mutex<HashMap<std::thread::ThreadId, Vec<String>>>,
 }
 
 /// Names seeded below that G4GDMLEvaluator does not predefine, so a file may
@@ -53,7 +52,7 @@ impl EvalEngine {
             position_values: HashMap::new(),
             rotation_values: HashMap::new(),
             scale_values: HashMap::new(),
-            warnings: std::sync::Mutex::new(Vec::new()),
+            warnings: Default::default(),
         };
         // setStdMath's constants and every CLHEP unit, so `2*cm` or
         // `1.5*g/cm3` is valid in any expression. CLHEP's twopi and halfpi are
@@ -297,18 +296,20 @@ impl EvalEngine {
     }
 
     fn record_warning(&self, msg: String) {
-        if let Ok(mut warnings) = self.warnings.lock() {
+        if let Ok(mut all) = self.warnings.lock() {
+            let warnings = all.entry(std::thread::current().id()).or_default();
             if warnings.len() < 100 && !warnings.contains(&msg) {
                 warnings.push(msg);
             }
         }
     }
 
-    /// Drain accumulated non-fatal evaluation warnings. Returns and clears the buffer.
+    /// Drain the warnings this thread recorded.
     pub fn take_warnings(&self) -> Vec<String> {
         self.warnings
             .lock()
-            .map(|mut w| std::mem::take(&mut *w))
+            .ok()
+            .and_then(|mut all| all.remove(&std::thread::current().id()))
             .unwrap_or_default()
     }
 
@@ -589,6 +590,26 @@ mod tests {
         assert!(!w.is_empty(), "expected a warning for an undefined symbol");
         // buffer should be drained
         assert!(e.take_warnings().is_empty());
+    }
+
+    #[test]
+    fn concurrent_callers_take_only_their_own_warnings() {
+        // Scene requests evaluate against the one loaded engine at the same
+        // time; each must report its own replica warnings, not another's.
+        let engine = EvalEngine::new();
+        let recorded = std::sync::Barrier::new(2);
+        let call = |expr: &str| {
+            engine.resolve_value(expr);
+            recorded.wait();
+            engine.take_warnings()
+        };
+        let (a, b) = std::thread::scope(|s| {
+            let a = s.spawn(|| call("undefined_a"));
+            let b = s.spawn(|| call("undefined_b"));
+            (a.join().unwrap(), b.join().unwrap())
+        });
+        assert!(a.len() == 1 && a[0].contains("undefined_a"), "{a:?}");
+        assert!(b.len() == 1 && b[0].contains("undefined_b"), "{b:?}");
     }
 
     #[test]
