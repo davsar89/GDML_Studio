@@ -353,9 +353,9 @@ fn resolve_opt_with_aunit(engine: &EvalEngine, expr: &Option<String>, aunit: &st
 ///
 /// The 2*pi default used to be applied only when the attribute was absent, so
 /// an explicit `deltaphi="0"` -- legal GDML, and a solid object in Geant4 --
-/// reached the meshers as a zero-width sweep. `polycone_mesh`, `polyhedra_mesh`
-/// and `generic_polycone_mesh` already normalised it themselves; tube, cone,
-/// sphere, torus, cuttube and twistedtubs did not, and tessellated to nothing.
+/// reached the meshers as a zero-width sweep. `generic_polycone_mesh`
+/// normalises it itself; torus, cuttube and twistedtubs did not, and
+/// tessellated to nothing.
 /// Doing it here covers every phi-swept solid from one place.
 ///
 /// Geant4 also forces `startPhi` to 0 inside that branch. That is deliberately
@@ -479,7 +479,7 @@ fn tessellate_sphere_solid(
 /// range to its start, then the inner arc back down. With rmin = 0 that arc
 /// is a point at the centre, so a theta cut is a cone to the origin.
 /// G4Sphere refuses rmin >= rmax.
-fn sphere(
+pub(crate) fn sphere(
     rmin: f64,
     rmax: f64,
     startphi: f64,

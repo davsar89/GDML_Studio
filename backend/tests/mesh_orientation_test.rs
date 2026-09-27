@@ -23,19 +23,9 @@ use gdml_studio_backend::eval::engine::EvalEngine;
 use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
 use gdml_studio_backend::mesh::primitives::{
     arb8_mesh::{tessellate_arb8, tessellate_box, tessellate_trap, tessellate_trd},
-    cone_mesh::tessellate_cone,
     cut_tube_mesh::tessellate_cut_tube,
-    elcone_mesh::tessellate_elcone,
-    ellipsoid_mesh::tessellate_ellipsoid,
-    eltube_mesh::tessellate_eltube,
     generic_polycone_mesh::tessellate_generic_polycone,
-    hype_mesh::tessellate_hype,
-    paraboloid_mesh::tessellate_paraboloid,
-    polycone_mesh::tessellate_polycone,
-    polyhedra_mesh::tessellate_polyhedra,
-    sphere_mesh::tessellate_sphere,
     torus_mesh::tessellate_torus,
-    tube_mesh::tessellate_tube,
     twisted_trap_mesh::tessellate_twisted_trap,
     twisted_tubs_mesh::tessellate_twisted_tubs,
     xtru_mesh::tessellate_xtru,
@@ -304,9 +294,9 @@ fn revolved_and_elliptical_solids_match_geant4() {
             45.0 * d * (frustum(16.0, 6.8, 10.0) - frustum(16.0, 6.8, 2.0)),
         ),
         (
-            "cone, apex",
-            r#"<cone name="S" rmax1="10" rmax2="0" z="20"/>"#,
-            PI * frustum(20.0, 10.0, 0.0),
+            "cone, apex, quarter",
+            r#"<cone name="S" rmax1="10" rmax2="0" z="20" deltaphi="90" aunit="deg"/>"#,
+            45.0 * d * frustum(20.0, 10.0, 0.0),
         ),
         (
             "sphere, shell cut in phi and theta",
@@ -321,9 +311,9 @@ fn revolved_and_elliptical_solids_match_geant4() {
             2.0 * PI * sector(50.0, 0.0, 45.0 * d),
         ),
         (
-            "sphere, wide theta cut",
-            r#"<sphere name="S" rmax="50" deltatheta="120" aunit="deg"/>"#,
-            2.0 * PI * sector(50.0, 0.0, 120.0 * d),
+            "sphere, wide theta cut, 270 deg",
+            r#"<sphere name="S" rmax="50" deltaphi="270" deltatheta="120" aunit="deg"/>"#,
+            270.0 * d * sector(50.0, 0.0, 120.0 * d),
         ),
         (
             "sphere, theta and phi cut",
@@ -460,158 +450,6 @@ fn box_volume_sanity() {
 }
 
 #[test]
-fn tube_full_circle() {
-    let m = tessellate_tube(0.0, 10.0, 20.0, 0.0, 2.0 * PI, SEG);
-    assert_volume(&m, PI * 100.0 * 20.0, 0.01, "tube full");
-    assert_normals_match_winding(&m, "tube full");
-}
-
-#[test]
-fn tube_quarter_solid() {
-    let m = tessellate_tube(0.0, 10.0, 20.0, 0.0, PI / 2.0, SEG);
-    assert_volume(&m, 0.5 * (PI / 2.0) * 100.0 * 20.0, 0.01, "tube quarter");
-    assert_normals_match_winding(&m, "tube quarter");
-}
-
-#[test]
-fn tube_quarter_hollow_offset_start() {
-    // Non-zero startphi exercises wedge faces away from the coordinate axes.
-    let m = tessellate_tube(5.0, 10.0, 20.0, 0.7, PI / 2.0, SEG);
-    let expected = 0.5 * (PI / 2.0) * (100.0 - 25.0) * 20.0;
-    assert_volume(&m, expected, 0.01, "tube quarter hollow");
-    assert_normals_match_winding(&m, "tube quarter hollow");
-}
-
-#[test]
-fn cone_quarter() {
-    // Frustum sector: V = (h * dphi / 6) * (R1^2 + R1*R2 + R2^2)
-    let m = tessellate_cone(0.0, 10.0, 0.0, 5.0, 20.0, 0.0, PI / 2.0, SEG);
-    let expected = (20.0 * (PI / 2.0) / 6.0) * (100.0 + 50.0 + 25.0);
-    assert_volume(&m, expected, 0.01, "cone quarter");
-    assert_normals_match_winding(&m, "cone quarter");
-}
-
-#[test]
-fn cone_quarter_hollow() {
-    let m = tessellate_cone(2.0, 10.0, 2.0, 5.0, 20.0, 0.3, PI / 2.0, SEG);
-    let outer = (20.0 * (PI / 2.0) / 6.0) * (100.0 + 50.0 + 25.0);
-    let inner = (20.0 * (PI / 2.0) / 6.0) * (4.0 + 4.0 + 4.0);
-    assert_volume(&m, outer - inner, 0.01, "cone quarter hollow");
-    assert_normals_match_winding(&m, "cone quarter hollow");
-}
-
-#[test]
-fn sphere_quarter_phi() {
-    let m = tessellate_sphere(0.0, 10.0, 0.0, PI / 2.0, 0.0, PI, SEG);
-    let expected = (4.0 / 3.0) * PI * 1000.0 / 4.0;
-    assert_volume(&m, expected, 0.02, "sphere quarter");
-    assert_normals_match_winding(&m, "sphere quarter");
-}
-
-#[test]
-fn sphere_shell_segment() {
-    // Hollow shell, partial phi AND partial theta.
-    let m = tessellate_sphere(5.0, 10.0, 0.5, PI / 2.0, 0.4, PI / 3.0, SEG);
-    // V = (dphi) * (r2^3 - r1^3)/3 * (cos(t0) - cos(t0+dt))
-    let expected =
-        (PI / 2.0) * (1000.0 - 125.0) / 3.0 * ((0.4f64).cos() - (0.4f64 + PI / 3.0).cos());
-    assert_volume(&m, expected, 0.02, "sphere shell segment");
-    assert_normals_match_winding(&m, "sphere shell segment");
-}
-
-/// Volume of a solid spherical sector: dphi * r^3/3 * (cos(t0) - cos(t0+dt)).
-fn solid_sector_volume(r: f64, dphi: f64, t0: f64, dt: f64) -> f64 {
-    dphi * r.powi(3) / 3.0 * (t0.cos() - (t0 + dt).cos())
-}
-
-// The theta cap of a solid sphere is a CONE with its apex at the origin. It was
-// previously meshed as a flat disk at z = rmax*cos(theta), making the solid a
-// spherical zone rather than a sector. The resulting mesh stays closed and
-// consistently wound, so assert_closed_outward passes on it — only a volume
-// check catches this. The error vanishes at exactly theta = PI/2 (the cut plane
-// passes through the origin) and flips sign above it, so both a narrow and a
-// wide cut are pinned here. rmin = 0 is essential: the hollow branch was always
-// correct.
-
-#[test]
-fn sphere_solid_narrow_theta_cut() {
-    // Previously -60% (the disk sat above the missing cone).
-    let m = tessellate_sphere(0.0, 50.0, 0.0, 2.0 * PI, 0.0, PI / 4.0, SEG);
-    let expected = solid_sector_volume(50.0, 2.0 * PI, 0.0, PI / 4.0);
-    assert_volume(&m, expected, 0.02, "sphere solid narrow theta cut");
-    assert_normals_match_winding(&m, "sphere solid narrow theta cut");
-}
-
-#[test]
-fn sphere_solid_wide_theta_cut() {
-    // Past PI/2 the sign flips: previously +12.5%.
-    let m = tessellate_sphere(0.0, 50.0, 0.0, 2.0 * PI, 0.0, 2.0 * PI / 3.0, SEG);
-    let expected = solid_sector_volume(50.0, 2.0 * PI, 0.0, 2.0 * PI / 3.0);
-    assert_volume(&m, expected, 0.02, "sphere solid wide theta cut");
-    assert_normals_match_winding(&m, "sphere solid wide theta cut");
-}
-
-#[test]
-fn sphere_solid_theta_and_phi_cut() {
-    // Exercises the phi wedge face too: with rmin = 0 the wedge is a sector with
-    // its apex at the origin, not a strip against the z-axis. The two coincide
-    // only when theta spans the full 0..PI, which every prior test did.
-    let (t0, dt, dphi) = (PI / 6.0, PI / 2.0, PI / 2.0);
-    let m = tessellate_sphere(0.0, 50.0, 0.0, dphi, t0, dt, SEG);
-    let expected = solid_sector_volume(50.0, dphi, t0, dt);
-    assert_volume(&m, expected, 0.02, "sphere solid theta+phi cut");
-    assert_normals_match_winding(&m, "sphere solid theta+phi cut");
-}
-
-#[test]
-fn polycone_quarter() {
-    // Two z-planes forming a quarter tube.
-    let planes = [(-10.0, 0.0, 10.0), (10.0, 0.0, 10.0)];
-    let m = tessellate_polycone(&planes, 0.0, PI / 2.0, SEG);
-    assert_volume(
-        &m,
-        0.5 * (PI / 2.0) * 100.0 * 20.0,
-        0.01,
-        "polycone quarter",
-    );
-    assert_normals_match_winding(&m, "polycone quarter");
-}
-
-#[test]
-fn polycone_decreasing_z_is_not_inside_out() {
-    // Decreasing-z plane lists are legal GDML -- G4Polycone::Create reverses the
-    // (r,z) polygon when its signed area is negative. The mesher assumed
-    // planes[0] was the bottom, so every triangle came out inverted (measured
-    // -94238 against +94238). Double-sided rendering hides it, but any boolean
-    // using the solid as an operand is then wrong.
-    let up = [(-50.0, 10.0, 20.0), (50.0, 10.0, 20.0)];
-    let down = [(50.0, 10.0, 20.0), (-50.0, 10.0, 20.0)];
-    let expected = PI * (400.0 - 100.0) * 100.0;
-
-    let m_up = tessellate_polycone(&up, 0.0, 2.0 * PI, SEG);
-    let m_down = tessellate_polycone(&down, 0.0, 2.0 * PI, SEG);
-
-    assert_volume(&m_up, expected, 0.01, "polycone increasing z");
-    assert_volume(&m_down, expected, 0.01, "polycone decreasing z");
-    assert_normals_match_winding(&m_down, "polycone decreasing z");
-}
-
-#[test]
-fn zero_deltaphi_means_full_circle() {
-    // G4Polycone::Create: `if ((phiTotal <= 0) || (phiTotal > twopi*(...)))`
-    // means a complete revolution. A zero sweep previously gave a zero-volume
-    // mesh instead of a full solid.
-    let planes = [(-50.0, 0.0, 20.0), (50.0, 0.0, 20.0)];
-    let expected = PI * 400.0 * 100.0;
-
-    let m = tessellate_polycone(&planes, 0.0, 0.0, SEG);
-    assert_volume(&m, expected, 0.01, "polycone deltaphi=0");
-
-    let p = tessellate_polyhedra(&planes, 0.0, 0.0, 64);
-    assert_volume(&p, expected, 0.02, "polyhedra deltaphi=0");
-}
-
-#[test]
 fn generic_polycone_revolves_the_closing_edge() {
     // A hollow tube written as a closed (r,z) contour. Treating the rzpoints as
     // z-planes never revolves the last-to-first edge, so the bore is lost and
@@ -649,20 +487,6 @@ fn generic_polycone_partial_sweep_is_closed() {
     let m = tessellate_generic_polycone(corners(&hollow), 0.3, PI / 2.0, SEG, None);
     assert_volume(&m, expected, 0.01, "generic polycone quarter sweep");
     assert_closed_outward(&m, "generic polycone quarter sweep");
-}
-
-#[test]
-fn polyhedra_quarter() {
-    // 4 flat sides over a quarter turn; rmax is the apothem.
-    let planes = [(-10.0, 0.0, 10.0), (10.0, 0.0, 10.0)];
-    let numsides = 4u32;
-    let deltaphi = PI / 2.0;
-    let m = tessellate_polyhedra(&planes, 0.0, deltaphi, numsides);
-    let alpha = deltaphi / numsides as f64; // angle per side
-    let r_vertex = 10.0 / (alpha / 2.0).cos();
-    let area = numsides as f64 * 0.5 * r_vertex * r_vertex * alpha.sin();
-    assert_volume(&m, area * 20.0, 0.01, "polyhedra quarter");
-    assert_normals_match_winding(&m, "polyhedra quarter");
 }
 
 #[test]
@@ -711,33 +535,6 @@ fn twisted_tubs_quarter_no_twist() {
 }
 
 #[test]
-fn ellipsoid_full_and_cut() {
-    let m = tessellate_ellipsoid(5.0, 8.0, 10.0, -10.0, 10.0, SEG);
-    assert_volume(
-        &m,
-        (4.0 / 3.0) * PI * 5.0 * 8.0 * 10.0,
-        0.02,
-        "ellipsoid full",
-    );
-    assert_normals_match_winding(&m, "ellipsoid full");
-
-    // Cut ellipsoid: V = pi*a*b * [(z2 - z1) - (z2^3 - z1^3)/(3 c^2)]
-    let (z1, z2) = (-5.0_f64, 7.0_f64);
-    let m = tessellate_ellipsoid(5.0, 8.0, 10.0, z1, z2, SEG);
-    let expected = PI * 5.0 * 8.0 * ((z2 - z1) - (z2.powi(3) - z1.powi(3)) / (3.0 * 100.0));
-    assert_volume(&m, expected, 0.02, "ellipsoid cut");
-    assert_normals_match_winding(&m, "ellipsoid cut");
-}
-
-#[test]
-fn eltube_volume() {
-    // dx, dy are semi-axes; dz is the half-length.
-    let m = tessellate_eltube(5.0, 8.0, 10.0, SEG);
-    assert_volume(&m, PI * 5.0 * 8.0 * 20.0, 0.01, "eltube");
-    assert_normals_match_winding(&m, "eltube");
-}
-
-#[test]
 fn trd_volume() {
     // Full widths; prismatoid: V = h/6 * (A1 + 4*Am + A2)
     let m = tessellate_trd(10.0, 12.0, 6.0, 4.0, 20.0);
@@ -759,16 +556,6 @@ fn twisted_box_volume() {
 
 #[test]
 fn remaining_primitives_closed_and_outward() {
-    assert_closed_outward(
-        &tessellate_hype(3.0, 6.0, 0.2, 0.3, 20.0, SEG),
-        "hype hollow",
-    );
-    assert_closed_outward(
-        &tessellate_hype(0.0, 6.0, 0.0, 0.3, 20.0, SEG),
-        "hype solid",
-    );
-    assert_closed_outward(&tessellate_paraboloid(2.0, 5.0, 10.0, SEG), "paraboloid");
-    assert_closed_outward(&tessellate_elcone(0.5, 0.8, 10.0, 5.0, SEG), "elcone");
     assert_closed_outward(
         &tessellate_trap(20.0, 0.1, 0.2, 12.0, 10.0, 8.0, 0.05, 10.0, 9.0, 7.0, 0.05),
         "trap",
@@ -855,20 +642,6 @@ fn generic_polyhedra_radii_are_corner_radii_not_apothems() {
 }
 
 #[test]
-fn polyhedra_radii_are_still_apothems() {
-    // The sibling convention, asserted here so the two cannot be conflated
-    // again: <polyhedra> really does take inscribed-circle radii.
-    let n = 6u32;
-    let apothem = 10.0;
-    let planes = [(-5.0, 0.0, apothem), (5.0, 0.0, apothem)];
-    let m = tessellate_polyhedra(&planes, 0.0, 2.0 * PI, n);
-
-    let r_vertex = apothem / (PI / n as f64).cos();
-    let area = 0.5 * n as f64 * r_vertex * r_vertex * (2.0 * PI / n as f64).sin();
-    assert_volume(&m, area * 10.0, 0.01, "polyhedra hexagonal prism");
-}
-
-#[test]
 fn twisted_tubs_is_a_hyperboloid_not_a_cylinder() {
     // G4TwistedTubs::SetFields (inline in G4TwistedTubs.hh):
     //   tanStereo    = |r_mid * tan(twist/2)| / zHalfLength
@@ -916,18 +689,10 @@ fn twisted_tubs_is_a_hyperboloid_not_a_cylinder() {
 
 #[test]
 fn all_primitive_normals_are_unit_length() {
-    // Every stored normal must be a unit vector within 60 deg of its facet's
-    // winding normal, also where a wall collapses: a polycone/polyhedra step
-    // at one z (a flat annulus), a polyhedra closing on the axis, an arb8
-    // wedge with coincident corners, an xtru with a repeated vertex.
-    let step = [
-        (-15.0, 0.0, 0.0),
-        (-10.0, 5.0, 10.0),
-        (0.0, 5.0, 10.0),
-        (0.0, 2.0, 20.0),
-        (10.0, 2.0, 20.0),
-        (15.0, 0.0, 0.0),
-    ];
+    // Unit normals facing out of their facets, also where a wall collapses:
+    // an arb8 wedge with coincident corners, an xtru with a repeated vertex.
+    // The revolved solids, steps and apexes included, are checked in
+    // revolved_and_elliptical_solids_match_geant4.
     let wedge = [
         [-5.0, -5.0],
         [-5.0, 5.0],
@@ -940,11 +705,6 @@ fn all_primitive_normals_are_unit_length() {
     ];
     let meshes = [
         ("box", tessellate_box(10.0, 20.0, 30.0)),
-        ("tube", tessellate_tube(3.0, 6.0, 20.0, 0.3, 2.0, SEG)),
-        (
-            "cone",
-            tessellate_cone(2.0, 6.0, 0.0, 3.0, 20.0, 0.0, 2.0, SEG),
-        ),
         (
             "cut tube",
             tessellate_cut_tube(
@@ -958,13 +718,7 @@ fn all_primitive_normals_are_unit_length() {
                 SEG,
             ),
         ),
-        (
-            "sphere",
-            tessellate_sphere(3.0, 6.0, 0.0, 2.0, 0.3, 2.0, SEG),
-        ),
         ("torus", tessellate_torus(1.0, 3.0, 10.0, 0.0, 2.0, SEG)),
-        ("polycone step", tessellate_polycone(&step, 0.0, 2.0, SEG)),
-        ("polyhedra step", tessellate_polyhedra(&step, 0.0, 2.0, 5)),
         (
             "generic polycone",
             tessellate_generic_polycone(
@@ -975,14 +729,6 @@ fn all_primitive_normals_are_unit_length() {
                 Some(5),
             ),
         ),
-        (
-            "ellipsoid",
-            tessellate_ellipsoid(4.0, 6.0, 8.0, -3.0, 5.0, SEG),
-        ),
-        ("eltube", tessellate_eltube(4.0, 6.0, 8.0, SEG)),
-        ("elcone", tessellate_elcone(0.5, 0.8, 10.0, 5.0, SEG)),
-        ("paraboloid", tessellate_paraboloid(2.0, 5.0, 10.0, SEG)),
-        ("hype", tessellate_hype(3.0, 6.0, 0.2, 0.3, 20.0, SEG)),
         ("trd", tessellate_trd(10.0, 12.0, 6.0, 0.0, 20.0)),
         (
             "trap",
@@ -1013,33 +759,8 @@ fn all_primitive_normals_are_unit_length() {
             ),
         ),
     ];
-    // The first bad normal of each solid, so one run lists every offender.
-    let bad: Vec<String> = meshes
-        .iter()
-        .filter_map(|(name, m)| {
-            let p = |i: u32| [0, 1, 2].map(|k| m.positions[i as usize * 3 + k] as f64);
-            let n = |i: u32| [0, 1, 2].map(|k| m.normals[i as usize * 3 + k] as f64);
-            m.indices.chunks_exact(3).find_map(|tri| {
-                let (a, b, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
-                let (u, v) = (
-                    [0, 1, 2].map(|k| b[k] - a[k]),
-                    [0, 1, 2].map(|k| c[k] - a[k]),
-                );
-                let geo = [
-                    u[1] * v[2] - u[2] * v[1],
-                    u[2] * v[0] - u[0] * v[2],
-                    u[0] * v[1] - u[1] * v[0],
-                ];
-                let area2 = geo.iter().map(|g| g * g).sum::<f64>().sqrt();
-                tri.iter().map(|&i| n(i)).find_map(|ni| {
-                    let len = ni.iter().map(|c| c * c).sum::<f64>().sqrt();
-                    let cos = (0..3).map(|k| geo[k] * ni[k]).sum::<f64>() / area2;
-                    ((len - 1.0).abs() > 1e-3 || (area2 > 1e-6 && cos < 0.5))
-                        .then(|| format!("{name}: normal {ni:?} on facet {geo:?}"))
-                })
-            })
-        })
-        .collect();
-    assert!(meshes.iter().all(|(_, m)| m.triangle_count() > 0));
-    assert!(bad.is_empty(), "{bad:#?}");
+    for (name, m) in &meshes {
+        assert!(m.triangle_count() > 0, "{name}");
+        assert_unit_normals(m, name);
+    }
 }

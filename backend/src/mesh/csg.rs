@@ -730,7 +730,8 @@ fn lerp3_normalize(a: [f64; 3], b: [f64; 3], t: f64) -> [f64; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::primitives::{arb8_mesh::tessellate_box, sphere_mesh};
+    use crate::mesh::primitives::arb8_mesh::tessellate_box;
+    use crate::mesh::tessellator::sphere;
 
     fn mesh_is_finite(mesh: &TriangleMesh) -> bool {
         mesh.positions.iter().all(|v| v.is_finite()) && mesh.normals.iter().all(|v| v.is_finite())
@@ -863,7 +864,7 @@ mod tests {
         // pair, so these pin all three ops on curved, rotated operands that
         // have no closed-form overlap volume.
         let pi = std::f64::consts::PI;
-        let a = sphere_mesh::tessellate_sphere(0.0, 40.0, 0.0, 2.0 * pi, 0.0, pi, 24);
+        let a = sphere(0.0, 40.0, 0.0, 2.0 * pi, 0.0, pi, 24);
         let b = transform_mesh(
             &tessellate_box(50.0, 60.0, 70.0),
             [30.0, 10.0, -5.0],
@@ -950,7 +951,7 @@ mod tests {
         let handle = std::thread::Builder::new()
             .stack_size(256 << 10)
             .spawn(|| {
-                let sphere = sphere_mesh::tessellate_sphere(
+                let sphere = sphere(
                     0.0,
                     50.0,
                     0.0,
