@@ -384,6 +384,19 @@ fn revolved_and_elliptical_solids_match_geant4() {
             PI * hype(6.0, 0.5),
         ),
         (
+            // With rmin = 0 but inst != 0 Geant4 keeps the inner surface, a
+            // double cone (G4Hype::InnerSurfaceExists). Was 14% too large.
+            "hype, inner stereo without inner radius",
+            r#"<hype name="S" rmax="6" inst="0.3" outst="0.6" z="40"/>"#,
+            PI * (hype(6.0, 0.6) - hype(0.0, 0.3)),
+        ),
+        (
+            // The apex band's normals pointed inward.
+            "paraboloid, apex",
+            r#"<paraboloid name="S" rlo="0" rhi="5" dz="10"/>"#,
+            PI * 25.0 * 10.0,
+        ),
+        (
             "paraboloid",
             r#"<paraboloid name="S" rlo="2" rhi="5" dz="10"/>"#,
             PI * (4.0 + 25.0) * 10.0,
@@ -427,6 +440,9 @@ fn parameters_geant4_rejects_are_reported() {
         r#"<tube name="S" rmin="10" rmax="5" z="20"/>"#,
         // G4Sphere: rmin >= rmax.
         r#"<sphere name="S" rmin="10" rmax="5"/>"#,
+        // G4Hype: rmin >= rmax. G4Paraboloid: rhi <= rlo.
+        r#"<hype name="S" rmin="6" rmax="3" z="20"/>"#,
+        r#"<paraboloid name="S" rlo="5" rhi="2" dz="10"/>"#,
         // G4Polycone.cc:80: rInner > rOuter at a plane.
         r#"<polycone name="S"><zplane z="-5" rmin="12" rmax="10"/><zplane z="5" rmax="10"/></polycone>"#,
     ] {

@@ -5,8 +5,7 @@ use std::f64::consts::PI;
 use super::csg;
 use super::primitives::{
     arb8_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, face_normal,
-    generic_polycone_mesh, hype_mesh, paraboloid_mesh, torus_mesh, twisted_trap_mesh,
-    twisted_tubs_mesh, xtru_mesh,
+    generic_polycone_mesh, torus_mesh, twisted_trap_mesh, twisted_tubs_mesh, xtru_mesh,
 };
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
@@ -991,11 +990,21 @@ fn tessellate_hype_solid(
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let inst = resolve_opt_with_aunit(engine, &s.inst, aunit);
     let outst = resolve_opt_with_aunit(engine, &s.outst, aunit);
-    let z = resolve_with_lunit(engine, &s.z, lunit);
-    let hz = z * 0.5; // Geant4 convention: z is full length, halved for constructor
-    Ok(hype_mesh::tessellate_hype(
-        rmin, rmax, inst, outst, hz, segments,
-    ))
+    let h = resolve_with_lunit(engine, &s.z, lunit) / 2.0; // G4GDMLReadSolids.cc:778
+                                                           // G4Hype refuses a length that is not positive and rmin >= rmax. Each wall
+                                                           // is r^2 = r0^2 + z^2 tan^2(stereo); the inner one exists whenever rmin > 0
+                                                           // or inst != 0 (G4Hype::InnerSurfaceExists), a double cone when rmin = 0.
+    if h <= 0.0 || rmin < 0.0 || rmin >= rmax {
+        return Ok(TriangleMesh::default());
+    }
+    let wall = |r0: f64, stereo: f64, from: f64, to: f64| {
+        curve((segments / 2).max(2), move |t| {
+            let z = from + (to - from) * t;
+            (r0.hypot(z * stereo.tan()), z)
+        })
+    };
+    let outline = wall(rmax, outst, -h, h).chain(wall(rmin, inst, h, -h));
+    Ok(revolve(outline, 0.0, 2.0 * PI, segments, None))
 }
 
 fn tessellate_elcone_solid(
@@ -1021,9 +1030,23 @@ fn tessellate_paraboloid_solid(
     let rlo = resolve_with_lunit(engine, &s.rlo, lunit);
     let rhi = resolve_with_lunit(engine, &s.rhi, lunit);
     let dz = resolve_with_lunit(engine, &s.dz, lunit);
-    Ok(paraboloid_mesh::tessellate_paraboloid(
-        rlo, rhi, dz, segments,
-    ))
+    // G4Paraboloid refuses dz <= 0, rlo < 0 and rhi <= rlo. The wall is
+    // r^2 = k1 z + k2 through rlo at -dz and rhi at +dz.
+    if dz <= 0.0 || rlo < 0.0 || rhi <= rlo {
+        return Ok(TriangleMesh::default());
+    }
+    let (k1, k2) = (
+        (rhi * rhi - rlo * rlo) / (2.0 * dz),
+        (rhi * rhi + rlo * rlo) / 2.0,
+    );
+    let wall = curve((segments / 2).max(2), |t| {
+        let z = dz * (2.0 * t - 1.0);
+        ((k1 * z + k2).max(0.0).sqrt(), z)
+    });
+    let outline = std::iter::once(corner((0.0, -dz)))
+        .chain(wall)
+        .chain([corner((0.0, dz))]);
+    Ok(revolve(outline, 0.0, 2.0 * PI, segments, None))
 }
 
 fn tessellate_generic_polyhedra_solid(
