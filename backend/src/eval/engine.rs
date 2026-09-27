@@ -465,6 +465,23 @@ mod tests {
     }
 
     #[test]
+    fn geant4_11_time_and_millielectronvolt_units_resolve() {
+        // Geant4 11's setSystemOfUnits: minute = 60*s, hour = 60*minute,
+        // day = 24*hour, year = 365*day, millielectronvolt = 1e-3*eV.
+        let engine = EvalEngine::new();
+        for (expr, expected) in [
+            ("minute/s", 60.0),
+            ("hour/minute", 60.0),
+            ("day/hour", 24.0),
+            ("year/day", 365.0),
+            ("millielectronvolt/eV", 1.0e-3),
+        ] {
+            let value = engine.eval_expr(expr).unwrap();
+            assert!((value / expected - 1.0).abs() < 1e-12, "{expr} = {value}");
+        }
+    }
+
+    #[test]
     fn untyped_quantity_still_applies_its_unit() {
         // G4GDMLReadDefine::QuantityRead never reads `type`; it multiplies by
         // the unit unconditionally. Gating on type left this at 5 instead of 50.
