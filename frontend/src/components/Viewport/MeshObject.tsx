@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import * as THREE from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { MeshData } from '../../store/types';
@@ -17,7 +17,6 @@ interface Props {
 }
 
 export default function MeshObject({ meshData, color, selected, name, instanceId, solidName, depth, maxDepth }: Props) {
-  const meshRef = useRef<THREE.Mesh>(null);
   const meshOpacity = useAppStore((s) => s.meshOpacity);
 
   // Acquire the shared geometry exactly once per (solidName, meshData) lifetime
@@ -38,10 +37,11 @@ export default function MeshObject({ meshData, color, selected, name, instanceId
   const depthFactor = maxDepth > 0 ? depth / maxDepth : 0;
   const effectiveOpacity = Math.pow(meshOpacity, 3 - 2 * depthFactor);
 
-  const handleClick = (e: THREE.Event) => {
-    if (useAppStore.getState().measureMode) return;
-    // @ts-expect-error: ThreeEvent stopPropagation
-    e.stopPropagation?.();
+  // R3F gates only onPointerMissed by drag distance: an orbit or pan drag that
+  // ends over a mesh still fires click and contextmenu.
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    if (e.delta > 2 || useAppStore.getState().measureMode) return;
+    e.stopPropagation();
     useAppStore.getState().setSelectedVolume(name);
   };
 
@@ -51,10 +51,10 @@ export default function MeshObject({ meshData, color, selected, name, instanceId
 
   return (
     <mesh
-      ref={meshRef}
       geometry={geometry}
       onClick={handleClick}
-      onContextMenu={(e: ThreeEvent<PointerEvent>) => {
+      onContextMenu={(e: ThreeEvent<MouseEvent>) => {
+        if (e.delta > 2) return;
         e.stopPropagation();
         e.nativeEvent.preventDefault();
         e.nativeEvent.stopImmediatePropagation?.();
