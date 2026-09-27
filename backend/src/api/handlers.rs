@@ -552,11 +552,13 @@ fn placed_meshes(loaded: &LoadedDocument) -> HashMap<&str, &TriangleMesh> {
 
 pub async fn get_summary(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
-    let loaded = state_r
-        .loaded
-        .as_ref()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_r.loaded.as_ref())?;
     Ok(Json(summary_json(loaded)))
+}
+
+/// The loaded document, or 404 when there is none.
+fn loaded<T>(doc: Option<T>) -> Result<T, ApiError> {
+    doc.ok_or_else(|| ApiError::not_found("No document loaded"))
 }
 
 /// Run `f` on the loaded document on a blocking thread. Building a large scene
@@ -566,15 +568,9 @@ async fn with_loaded<T: Send + 'static>(
     f: impl FnOnce(&LoadedDocument) -> T + Send + 'static,
 ) -> Result<T, ApiError> {
     let state_r = state.read_owned().await;
-    tokio::task::spawn_blocking(move || {
-        let loaded = state_r
-            .loaded
-            .as_ref()
-            .ok_or_else(|| ApiError::not_found("No document loaded"))?;
-        Ok(f(loaded))
-    })
-    .await
-    .map_err(|e| ApiError::internal(&format!("Request failed: {e}")))?
+    tokio::task::spawn_blocking(move || Ok(f(loaded(state_r.loaded.as_ref())?)))
+        .await
+        .map_err(|e| ApiError::internal(&format!("Request failed: {e}")))?
 }
 
 /// Scene graph without the mesh buffers.
@@ -634,10 +630,7 @@ pub async fn get_meshes(State(state): State<SharedState>) -> Result<Response, Ap
 
 pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
-    let loaded = state_r
-        .loaded
-        .as_ref()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_r.loaded.as_ref())?;
 
     let doc = &loaded.document;
     let engine = &loaded.engine;
@@ -697,10 +690,7 @@ pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>
 
 pub async fn get_materials(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
-    let loaded = state_r
-        .loaded
-        .as_ref()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_r.loaded.as_ref())?;
 
     Ok(Json(json!({
         "elements": loaded.document.materials.elements,
@@ -710,10 +700,7 @@ pub async fn get_materials(State(state): State<SharedState>) -> Result<Json<Valu
 
 pub async fn get_structure(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
-    let loaded = state_r
-        .loaded
-        .as_ref()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_r.loaded.as_ref())?;
 
     Ok(Json(json!({
         "volumes": loaded.document.structure.volumes,
@@ -1417,10 +1404,7 @@ pub async fn update_material(
     Json(req): Json<UpdateMaterialRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let mut state_w = state.write().await;
-    let loaded = state_w
-        .loaded
-        .as_mut()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_w.loaded.as_mut())?;
 
     let old_name = req.name.clone();
     let new_name = req.material.name.clone();
@@ -1462,10 +1446,7 @@ pub async fn add_material(
     Json(req): Json<AddMaterialRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let mut state_w = state.write().await;
-    let loaded = state_w
-        .loaded
-        .as_mut()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_w.loaded.as_mut())?;
 
     let mut staged =
         with_staged_elements(&loaded.document.materials, &req.elements, &loaded.engine)?;
@@ -1488,10 +1469,7 @@ pub async fn delete_material(
     Json(req): Json<DeleteMaterialRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let mut state_w = state.write().await;
-    let loaded = state_w
-        .loaded
-        .as_mut()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_w.loaded.as_mut())?;
 
     // Check if material is in use by any volume.
     let in_use_by_volume = loaded
@@ -1555,10 +1533,7 @@ pub async fn add_element(
     Json(req): Json<AddElementRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let mut state_w = state.write().await;
-    let loaded = state_w
-        .loaded
-        .as_mut()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_w.loaded.as_mut())?;
 
     ensure_element_name_available(&loaded.document.materials, &req.element.name)?;
     validate_element(&loaded.document.materials, &req.element, &loaded.engine)?;
@@ -1577,10 +1552,7 @@ pub async fn delete_element(
     Json(req): Json<DeleteElementRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let mut state_w = state.write().await;
-    let loaded = state_w
-        .loaded
-        .as_mut()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_w.loaded.as_mut())?;
 
     // Check if element is referenced by any material component
     let in_use = loaded.document.materials.materials.iter().any(|m| {
@@ -1625,10 +1597,7 @@ pub async fn update_volume_material_ref(
     Json(req): Json<UpdateMaterialRefRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let mut state_w = state.write().await;
-    let loaded = state_w
-        .loaded
-        .as_mut()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_w.loaded.as_mut())?;
 
     ensure_material_ref_exists(&loaded.document, &req.material_ref)?;
 
@@ -1651,10 +1620,7 @@ pub async fn update_volume_material_ref(
 
 pub async fn export_gdml(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
     let state_r = state.read().await;
-    let loaded = state_r
-        .loaded
-        .as_ref()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    let loaded = loaded(state_r.loaded.as_ref())?;
 
     let xml = nist::serialize_gdml(&loaded.document)
         .map_err(|e| ApiError::internal(&format!("Serialization error: {}", e)))?;
