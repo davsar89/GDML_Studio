@@ -1593,3 +1593,36 @@ async fn foreign_host_header_is_forbidden() {
         assert_eq!(&response[9..12], status, "{host}: {response}");
     }
 }
+
+#[tokio::test]
+async fn composite_must_name_an_element() {
+    // MixtureRead resolves a <fraction> as an element or a material, but a
+    // <composite> through GetElement alone, which is fatal on a miss.
+    let state = load(&document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "")).await;
+    let m = state
+        .read()
+        .await
+        .loaded
+        .as_ref()
+        .unwrap()
+        .document
+        .materials
+        .materials[0]
+        .clone();
+    let mut material = mixture_of(m, "N");
+    material.components = vec![MaterialComponent::Composite {
+        n: "1".into(),
+        ref_name: "N".into(),
+    }];
+    let updated = update_material(
+        State(state.clone()),
+        Json(UpdateMaterialRequest {
+            name: "M".into(),
+            material,
+            elements: vec![],
+        }),
+    )
+    .await;
+    assert_eq!(updated.err().map(|e| e.status.as_u16()), Some(400));
+    assert!(edit_material(&state, "M", "N").await, "a fraction may");
+}

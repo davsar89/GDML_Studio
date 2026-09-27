@@ -333,9 +333,9 @@ fn validate_material_components(
         )));
     }
     for component in &material.components {
-        let ref_name = match component {
-            MaterialComponent::Fraction { ref_name, .. }
-            | MaterialComponent::Composite { ref_name, .. } => ref_name,
+        let (ref_name, composite) = match component {
+            MaterialComponent::Fraction { ref_name, .. } => (ref_name, false),
+            MaterialComponent::Composite { ref_name, .. } => (ref_name, true),
         };
 
         // MixtureRead looks a name up as an element first, so naming an
@@ -345,6 +345,14 @@ fn validate_material_components(
             return Err(ApiError::bad_request(&format!(
                 "Material '{}' cannot reference itself in components",
                 material.name
+            )));
+        }
+        // A <fraction> may name a material, but MixtureRead resolves a
+        // <composite> with GetElement alone, and a miss there is fatal.
+        if composite && !element_exists {
+            return Err(ApiError::bad_request(&format!(
+                "Material '{}': a composite must name an element, and '{}' is not one",
+                material.name, ref_name
             )));
         }
 
