@@ -50,6 +50,9 @@ function MaterialsList({
   selectedMaterial: string | null;
   onSelect: (name: string | null) => void;
 }) {
+  // A material added with "+" is listed, as unapplied, until Apply or Cancel.
+  const draft = useAppStore((s) => s.materialDraft);
+  const newDraft = draft && !materials.some((m) => m.name === draft.original.name) ? draft.material : null;
   // Only a local draft: the material reaches the document on Apply.
   const handleAdd = () => runDocumentAction(async () => {
     if (!await resolveMaterialDraft()) return;
@@ -121,6 +124,11 @@ function MaterialsList({
             </button>
           </div>
         ))}
+        {newDraft && (
+          <div style={{ padding: '2px 4px', fontSize: 11, fontFamily: 'monospace', fontStyle: 'italic', color: '#e94560', background: '#0f3460', borderRadius: 2 }}>
+            {newDraft.name} <span style={{ color: '#8899aa' }}>unapplied</span>
+          </div>
+        )}
       </div>
     </div>
   );

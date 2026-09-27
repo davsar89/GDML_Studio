@@ -124,7 +124,9 @@ describe('material drafts and document actions', () => {
     const user = mount();
     await user.click(screen.getByRole('button', { name: 'Add material' }));
     expect(screen.getByRole('textbox', { name: 'Material name' })).toHaveValue('Material_3');
+    expect(screen.getByText('Material_3')).toHaveTextContent('Material_3 unapplied');
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('Material_3')).toBeNull();
     expect(useAppStore.getState().selectedMaterial).toBeNull();
     expect(mocked.addMaterial).not.toHaveBeenCalled();
     expect(serverMaterials.map((m) => m.name)).toEqual(['Material_1']);
