@@ -449,9 +449,15 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
     let main_content = files
         .get(&main_file)
         .ok_or_else(|| ApiError::bad_request("Main file not found in uploaded files"))?;
+    // The client's message names the upload; of several files, say which.
     let parse = |name: &String, content: &String| {
-        parser::parse_gdml_from_bytes(content.as_bytes(), name.clone())
-            .map_err(|e| ApiError::bad_request(&format!("Parse error in {name}: {e}")))
+        parser::parse_gdml_from_bytes(content.as_bytes(), name.clone()).map_err(|e| {
+            let which = match files.len() {
+                1 => String::new(),
+                _ => format!(" in {name}"),
+            };
+            ApiError::bad_request(&format!("Parse error{which}: {e}"))
+        })
     };
     let mut doc = parse(&main_file, main_content)?;
     let child_docs = files
