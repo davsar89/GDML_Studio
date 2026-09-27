@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import * as THREE from 'three';
 import MeshObject from './MeshObject';
 import { useAppStore } from '../../store';
@@ -86,13 +86,11 @@ export default function Scene({ node }: { node: SceneNode }) {
   return <SceneNodeGroup node={node} depth={0} maxDepth={maxDepth} />;
 }
 
-function SceneNodeGroup({ node, depth, maxDepth }: { node: SceneNode; depth: number; maxDepth: number }) {
-  const meshes = useAppStore((s) => s.meshes);
-  const selectedVolume = useAppStore((s) => s.selectedVolume);
-  const hiddenInstances = useAppStore((s) => s.hiddenInstances);
-  const meshData = meshes[node.solid_name];
-  const isSelected = selectedVolume === node.volume_name;
-  const isHidden = hiddenInstances.has(node.instance_id);
+// Memoised with per-node selectors: a selection or visibility change re-renders only the nodes it affects.
+const SceneNodeGroup = memo(({ node, depth, maxDepth }: { node: SceneNode; depth: number; maxDepth: number }) => {
+  const meshData = useAppStore((s) => s.meshes[node.solid_name]);
+  const isSelected = useAppStore((s) => s.selectedVolume === node.volume_name);
+  const isHidden = useAppStore((s) => s.hiddenInstances.has(node.instance_id));
 
   // GDML physvol rotations are applied INVERTED by Geant4: the reader builds
   // R = Rz·Ry·Rx from the angles, then places the daughter with R⁻¹ =
@@ -133,4 +131,4 @@ function SceneNodeGroup({ node, depth, maxDepth }: { node: SceneNode; depth: num
       ))}
     </group>
   );
-}
+});
