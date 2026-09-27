@@ -1370,3 +1370,22 @@ async fn loop_inside_materials_survives_export() {
     };
     assert!(at(r#"<element name="H""#) < at("<loop") && at("<loop") < at(r#"<material name="M""#));
 }
+
+#[tokio::test]
+async fn comment_before_a_preserved_element_survives_export() {
+    // A comment anchors to the next named element, and the writer only
+    // replays anchors for the elements it models, so one before an
+    // <opticalsurface> was lost on save. It now travels with the element.
+    let xml = document(
+        "",
+        r#"<box name="B" x="1" y="1" z="1"/><!-- polished foil -->
+        <opticalsurface name="S" model="glisur" finish="polished" type="dielectric_metal" value="1"/>"#,
+        "",
+    );
+    let saved = export(&load(&xml).await).await;
+    let comment = saved.find("<!-- polished foil -->");
+    assert!(
+        comment.is_some_and(|at| at < saved.find("<opticalsurface").unwrap()),
+        "{saved}"
+    );
+}

@@ -51,7 +51,21 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
             Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
                 let local = e.local_name();
                 let tag = local.as_ref();
-                anchor_pending_comments(&mut pending_comments, &mut order, section, e, tag);
+                // Recognized-but-uninterpreted constructs: preserve verbatim so
+                // they survive a load -> save round-trip (and warn the user).
+                let preserved = matches!(
+                    tag,
+                    b"opticalsurface"
+                        | b"skinsurface"
+                        | b"bordersurface"
+                        | b"userinfo"
+                        | b"loop"
+                        | b"assembly"
+                        | b"matrix"
+                );
+                if !preserved {
+                    anchor_pending_comments(&mut pending_comments, &mut order, section, e, tag);
+                }
                 note_define(section, &mut order, &mut materials_define, e, tag);
                 let in_define = matches!(section, Section::Define | Section::MaterialsDefine);
                 let in_materials = section == Section::Materials;
@@ -187,10 +201,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                             read_volume_body(&mut reader, e, open, &mut skipped_unsupported)?;
                         structure.volumes.push(volume);
                     }
-                    // Recognized-but-uninterpreted constructs: preserve verbatim so
-                    // they survive a load -> save round-trip (and warn the user).
-                    b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
-                    | b"loop" | b"assembly" | b"matrix" => {
+                    _ if preserved => {
                         let after = match section {
                             Section::Define | Section::MaterialsDefine => {
                                 order.define_slots.last().map(|s| s.name.clone())
@@ -207,7 +218,12 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                             Section::Structure => structure.volumes.last().map(|v| v.name.clone()),
                             _ => None,
                         };
-                        let xml = capture_raw(&mut reader, e, open)?;
+                        // The comments just before it are written back with it.
+                        let mut xml: String = pending_comments
+                            .drain(..)
+                            .map(|text| format!("<!--{text}-->\n    "))
+                            .collect();
+                        xml += &capture_raw(&mut reader, e, open)?;
                         raw_unknown.push(RawElement {
                             tag: String::from_utf8_lossy(tag).to_string(),
                             section: Some(section_key(section)),
