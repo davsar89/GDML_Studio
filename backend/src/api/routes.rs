@@ -33,14 +33,12 @@ async fn require_local_host(req: Request, next: Next) -> Response {
 
 pub fn create_router(state: SharedState) -> Router {
     Router::new()
-        .route("/api/files/upload", post(handlers::upload_file))
         .route("/api/files/upload-multi", post(handlers::upload_files))
         .route("/api/document/summary", get(handlers::get_summary))
         .route("/api/document/meshes", get(handlers::get_meshes))
         .route("/api/document/scene", get(handlers::get_scene))
         .route("/api/document/defines", get(handlers::get_defines))
         .route("/api/document/materials", get(handlers::get_materials))
-        .route("/api/document/solids", get(handlers::get_solids))
         .route("/api/document/structure", get(handlers::get_structure))
         // NIST database
         .route("/api/nist/materials", get(handlers::get_nist_materials))
@@ -56,10 +54,6 @@ pub fn create_router(state: SharedState) -> Router {
             post(handlers::delete_material),
         )
         // Element CRUD
-        .route(
-            "/api/document/elements/update",
-            put(handlers::update_element),
-        )
         .route("/api/document/elements/add", post(handlers::add_element))
         .route(
             "/api/document/elements/delete",

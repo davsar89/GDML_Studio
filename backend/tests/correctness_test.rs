@@ -44,15 +44,20 @@ fn document(defines: &str, solids: &str, structure: &str) -> String {
     )
 }
 
+/// A one-file upload, as the client sends it.
+fn one_file(name: &str, content: String, segments: Option<u32>) -> Json<UploadFilesRequest> {
+    Json(UploadFilesRequest {
+        files: HashMap::from([(name.to_string(), content)]),
+        main_file: name.to_string(),
+        segments,
+    })
+}
+
 async fn load(xml: &str) -> SharedState {
     let state = create_shared_state();
-    let _ = upload_file(
+    let _ = upload_files(
         State(state.clone()),
-        Json(UploadFileRequest {
-            filename: "check.gdml".into(),
-            content: xml.into(),
-            segments: Some(32),
-        }),
+        one_file("check.gdml", xml.into(), Some(32)),
     )
     .await
     .unwrap();
@@ -1176,19 +1181,18 @@ async fn add_element_with_unknown_isotope_is_rejected() {
 }
 
 #[tokio::test]
-async fn update_element_rejects_fractional_z() {
-    // A staged NIST element with a non-integer Z is refused; editing an
-    // element skipped that check and stored Z = 1.5.
+async fn element_with_fractional_z_is_rejected() {
+    // A staged NIST element with a non-integer Z is refused; adding or
+    // editing an element skipped that check and stored Z = 1.5.
     let xml = document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "").replace(
         "<materials>",
         r#"<materials><element name="Hyd" Z="1"><atom value="1.008"/></element>"#,
     );
     let state = load(&xml).await;
-    let refused = update_element(
+    let refused = add_element(
         State(state.clone()),
-        Json(UpdateElementRequest {
-            name: "Hyd".into(),
-            element: element("Hyd", Some("1.5"), vec![]),
+        Json(AddElementRequest {
+            element: element("Deut", Some("1.5"), vec![]),
         }),
     )
     .await;
@@ -1296,7 +1300,7 @@ async fn material_named_like_an_element_can_be_edited() {
     // Elements and materials are separate tables, and MixtureRead resolves a
     // component name as an element first (G4GDMLReadMaterials.cc:770-779); a
     // <composite> can only name an element (795). Both large samples name
-    // materials like elements. Editing either one was refused, making the
+    // materials like elements. Editing the material was refused, making the
     // material a mixture of its element was a "self-reference", and renaming
     // it rewrote every <composite ref> to the element into a name Geant4
     // cannot find.
@@ -1308,25 +1312,6 @@ async fn material_named_like_an_element_can_be_edited() {
         <material name="Oxide"><D value="3.9"/><composite n="2" ref="Al"/><composite n="3" ref="O"/></material>"#,
     );
     let state = load(&xml).await;
-    let element = state
-        .read()
-        .await
-        .loaded
-        .as_ref()
-        .unwrap()
-        .document
-        .materials
-        .elements[0]
-        .clone();
-    let edited = update_element(
-        State(state.clone()),
-        Json(UpdateElementRequest {
-            name: "Al".into(),
-            element,
-        }),
-    )
-    .await;
-    assert!(edited.is_ok(), "{:?}", edited.err());
     let aluminium = state
         .read()
         .await
@@ -1429,13 +1414,9 @@ async fn truncated_file_is_a_parse_error() {
     );
     for cut in ["</volume>", "</structure>", "</gdml>"] {
         let truncated = &xml[..xml.find(cut).unwrap()];
-        let refused = upload_file(
+        let refused = upload_files(
             State(create_shared_state()),
-            Json(UploadFileRequest {
-                filename: "cut.gdml".into(),
-                content: truncated.into(),
-                segments: None,
-            }),
+            one_file("cut.gdml", truncated.into(), None),
         )
         .await;
         assert_eq!(refused.err().map(|e| e.status.as_u16()), Some(400), "{cut}");
@@ -1521,18 +1502,18 @@ async fn nested_loops_share_one_expansion_budget() {
         |body, v| format!(r#"<loop for="{v}" from="1" to="100" step="1">{body}</loop>"#),
     );
     let state = create_shared_state();
-    let summary = upload_file(
+    let summary = upload_files(
         State(state),
-        Json(UploadFileRequest {
-            filename: "loops.gdml".into(),
-            content: document(
+        one_file(
+            "loops.gdml",
+            document(
                 r#"<variable name="i" value="0"/><variable name="j" value="0"/>
                 <variable name="k" value="0"/><variable name="l" value="0"/>"#,
                 &format!(r#"<box name="B" x="1" y="1" z="1"/>{nested}"#),
                 r#"<volume name="W"><materialref ref="M"/><solidref ref="B"/></volume>"#,
             ),
-            segments: None,
-        }),
+            None,
+        ),
     )
     .await
     .unwrap()
@@ -1655,18 +1636,18 @@ async fn composite_must_name_an_element() {
 async fn define_named_like_a_unit_is_reported() {
     // DefineConstant and DefineVariable are fatal on a name the evaluator
     // already holds, and it holds every CLHEP unit; twopi is not among them.
-    let summary = upload_file(
+    let summary = upload_files(
         State(create_shared_state()),
-        Json(UploadFileRequest {
-            filename: "units.gdml".into(),
-            content: document(
+        one_file(
+            "units.gdml",
+            document(
                 r#"<constant name="deg" value="2"/><variable name="L" value="1"/>
                 <quantity name="g" value="1" unit="mm"/><constant name="twopi" value="6"/>"#,
                 r#"<box name="B" x="deg" y="1" z="1"/>"#,
                 r#"<volume name="W"><materialref ref="M"/><solidref ref="B"/></volume>"#,
             ),
-            segments: None,
-        }),
+            None,
+        ),
     )
     .await
     .unwrap()

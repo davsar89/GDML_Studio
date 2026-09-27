@@ -14,13 +14,6 @@ use crate::mesh::{tessellator, types::TriangleMesh};
 use crate::state::app_state::{LoadedDocument, SharedState};
 
 #[derive(Deserialize)]
-pub struct UploadFileRequest {
-    pub filename: String,
-    pub content: String,
-    pub segments: Option<u32>,
-}
-
-#[derive(Deserialize)]
 pub struct UploadFilesRequest {
     pub files: HashMap<String, String>,
     pub main_file: String,
@@ -408,19 +401,6 @@ fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
     warnings
 }
 
-pub async fn upload_file(
-    state: State<SharedState>,
-    Json(req): Json<UploadFileRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let files = HashMap::from([(req.filename.clone(), req.content)]);
-    let req = UploadFilesRequest {
-        files,
-        main_file: req.filename,
-        segments: req.segments,
-    };
-    upload_files(state, Json(req)).await
-}
-
 pub async fn upload_files(
     State(state): State<SharedState>,
     Json(req): Json<UploadFilesRequest>,
@@ -725,18 +705,6 @@ pub async fn get_materials(State(state): State<SharedState>) -> Result<Json<Valu
     Ok(Json(json!({
         "elements": loaded.document.materials.elements,
         "materials": loaded.document.materials.materials,
-    })))
-}
-
-pub async fn get_solids(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
-    let state_r = state.read().await;
-    let loaded = state_r
-        .loaded
-        .as_ref()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
-
-    Ok(Json(json!({
-        "solids": loaded.document.solids.solids,
     })))
 }
 
@@ -1281,28 +1249,18 @@ fn ensure_material_name_available(
     Ok(())
 }
 
-fn ensure_element_name_available(
-    doc: &MaterialSection,
-    candidate: &str,
-    excluding_element: Option<&str>,
-) -> Result<(), ApiError> {
+fn ensure_element_name_available(doc: &MaterialSection, candidate: &str) -> Result<(), ApiError> {
     if candidate.trim().is_empty() {
         return Err(ApiError::bad_request("A name is required"));
     }
-    let element_conflict = doc
-        .elements
-        .iter()
-        .any(|e| e.name == candidate && Some(e.name.as_str()) != excluding_element);
-    if element_conflict {
+    if doc.elements.iter().any(|e| e.name == candidate) {
         return Err(ApiError::bad_request(&format!(
             "Element '{}' already exists",
             candidate
         )));
     }
 
-    let material_conflict =
-        Some(candidate) != excluding_element && doc.materials.iter().any(|m| m.name == candidate);
-    if material_conflict {
+    if doc.materials.iter().any(|m| m.name == candidate) {
         return Err(ApiError::bad_request(&format!(
             "Name '{}' is already used by a material",
             candidate
@@ -1356,7 +1314,7 @@ fn with_staged_elements(
             }
             continue;
         }
-        ensure_element_name_available(&staged, &element.name, None)?;
+        ensure_element_name_available(&staged, &element.name)?;
         validate_element(&staged, element, engine)?;
         staged.elements.push(element.clone());
     }
@@ -1588,52 +1546,6 @@ pub async fn delete_material(
 // ─── Element CRUD ───────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
-pub struct UpdateElementRequest {
-    pub name: String,
-    pub element: Element,
-}
-
-pub async fn update_element(
-    State(state): State<SharedState>,
-    Json(req): Json<UpdateElementRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let mut state_w = state.write().await;
-    let loaded = state_w
-        .loaded
-        .as_mut()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
-
-    let old_name = req.name.clone();
-    let new_name = req.element.name.clone();
-    ensure_element_name_available(
-        &loaded.document.materials,
-        &new_name,
-        Some(old_name.as_str()),
-    )?;
-    validate_element(&loaded.document.materials, &req.element, &loaded.engine)?;
-
-    let el_idx = loaded
-        .document
-        .materials
-        .elements
-        .iter()
-        .position(|e| e.name == old_name)
-        .ok_or_else(|| ApiError::not_found(&format!("Element '{}' not found", req.name)))?;
-
-    loaded.document.materials.elements[el_idx] = req.element;
-
-    if old_name != new_name {
-        cascade_component_ref_rename(
-            &mut loaded.document.materials.materials,
-            old_name.as_str(),
-            new_name.as_str(),
-        );
-    }
-
-    Ok(Json(json!({ "ok": true })))
-}
-
-#[derive(Deserialize)]
 pub struct AddElementRequest {
     pub element: Element,
 }
@@ -1648,7 +1560,7 @@ pub async fn add_element(
         .as_mut()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
 
-    ensure_element_name_available(&loaded.document.materials, &req.element.name, None)?;
+    ensure_element_name_available(&loaded.document.materials, &req.element.name)?;
     validate_element(&loaded.document.materials, &req.element, &loaded.engine)?;
 
     loaded.document.materials.elements.push(req.element);
