@@ -1141,11 +1141,8 @@ fn tessellate_generic_polyhedra_solid(
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
     let numsides = polyhedra_sides(engine, &s.numsides)?;
 
-    // As with genericPolycone, the rzpoints are a closed contour, not z-planes.
-    // The apothem -> corner radius conversion is kept: whether the generic form
-    // should skip it (its Geant4 constructor takes different arguments) could
-    // not be established from the vendored sources, so the existing behaviour
-    // stands until it can be.
+    // As with genericPolycone, the rzpoints are a closed contour, not z-planes,
+    // and their radii are corner radii, used as given (no apothem conversion).
     let contour: Vec<(f64, f64)> = s
         .rzpoints
         .iter()
