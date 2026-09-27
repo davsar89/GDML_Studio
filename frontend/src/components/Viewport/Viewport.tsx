@@ -7,23 +7,33 @@ import MeasureInteraction from './MeasureInteraction';
 import MeasureOverlay from './MeasureOverlay';
 import { useAppStore } from '../../store';
 
-/** Computes the bounding sphere of all scene meshes and adjusts camera + controls. */
-function AutoFitCamera({ sceneGraph }: { sceneGraph: unknown }) {
-  const { camera, scene } = useThree();
+/**
+ * Fits camera and controls to the scene meshes once per loaded document.
+ * `meshes` is replaced only by a load, so edits, hiding and selection keep the view.
+ */
+function AutoFitCamera() {
+  const { camera, scene, invalidate } = useThree();
+  const meshes = useAppStore((s) => s.meshes);
   const controlsRef = useRef<{ target: THREE.Vector3; update: () => void } | null>(null);
 
   useEffect(() => {
-    if (!sceneGraph) return;
+    if (Object.keys(meshes).length === 0) return;
 
-    // Wait a frame for meshes to be added to the scene
-    const id = requestAnimationFrame(() => {
+    // Mesh objects mount over the next frames (each acquires its geometry in an
+    // effect), so retry each frame until they are in the scene.
+    let frames = 0;
+    let id = requestAnimationFrame(function fit() {
+      scene.updateMatrixWorld();
       const box = new THREE.Box3();
       scene.traverse((obj) => {
-        if ((obj as THREE.Mesh).isMesh) {
+        if ((obj as THREE.Mesh).isMesh && !obj.userData.isMeasureTool) {
           box.expandByObject(obj);
         }
       });
-      if (box.isEmpty()) return;
+      if (box.isEmpty()) {
+        if (++frames < 60) id = requestAnimationFrame(fit);
+        return;
+      }
 
       const center = new THREE.Vector3();
       const size = new THREE.Vector3();
@@ -53,10 +63,11 @@ function AutoFitCamera({ sceneGraph }: { sceneGraph: unknown }) {
         controls.target.copy(center);
         controls.update();
       }
+      invalidate();
     });
 
     return () => cancelAnimationFrame(id);
-  }, [sceneGraph, camera, scene]);
+  }, [meshes, camera, scene, invalidate]);
 
   const measureMode = useAppStore((s) => s.measureMode);
 
@@ -136,7 +147,7 @@ export default function Viewport() {
         <directionalLight position={[500, 0, -500]} intensity={0.4} />
         {sceneGraph && <Scene node={sceneGraph} />}
         <DynamicGrid />
-        <AutoFitCamera sceneGraph={sceneGraph} />
+        <AutoFitCamera />
         <MeasureInteraction />
         <MeasureOverlay />
         <GizmoHelper alignment="bottom-right" margin={[60, 60]}>
