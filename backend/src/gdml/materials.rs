@@ -629,45 +629,21 @@ fn write_materials(
         if let Some(ref dr) = mat.density_ref {
             write_ref(writer, "Dref", dr)?;
         }
-        if let Some(ref t) = mat.temperature {
-            let mut te = BytesStart::new("T");
-            te.push_attribute(("value", t.value.as_str()));
-            if let Some(ref u) = t.unit {
-                te.push_attribute(("unit", u.as_str()));
+        for (tag, property) in [
+            ("T", &mat.temperature),
+            ("P", &mat.pressure),
+            ("MEE", &mat.mee),
+            ("RL", &mat.rl),
+            ("AL", &mat.al),
+        ] {
+            if let Some(property) = property {
+                let mut e = BytesStart::new(tag);
+                e.push_attribute(("value", property.value.as_str()));
+                if let Some(ref u) = property.unit {
+                    e.push_attribute(("unit", u.as_str()));
+                }
+                writer.write_event(Event::Empty(e))?;
             }
-            writer.write_event(Event::Empty(te))?;
-        }
-        if let Some(ref p) = mat.pressure {
-            let mut pe = BytesStart::new("P");
-            pe.push_attribute(("value", p.value.as_str()));
-            if let Some(ref u) = p.unit {
-                pe.push_attribute(("unit", u.as_str()));
-            }
-            writer.write_event(Event::Empty(pe))?;
-        }
-        if let Some(ref m) = mat.mee {
-            let mut me = BytesStart::new("MEE");
-            me.push_attribute(("value", m.value.as_str()));
-            if let Some(ref u) = m.unit {
-                me.push_attribute(("unit", u.as_str()));
-            }
-            writer.write_event(Event::Empty(me))?;
-        }
-        if let Some(ref r) = mat.rl {
-            let mut e = BytesStart::new("RL");
-            e.push_attribute(("value", r.value.as_str()));
-            if let Some(ref u) = r.unit {
-                e.push_attribute(("unit", u.as_str()));
-            }
-            writer.write_event(Event::Empty(e))?;
-        }
-        if let Some(ref a) = mat.al {
-            let mut e = BytesStart::new("AL");
-            e.push_attribute(("value", a.value.as_str()));
-            if let Some(ref u) = a.unit {
-                e.push_attribute(("unit", u.as_str()));
-            }
-            writer.write_event(Event::Empty(e))?;
         }
         for prop in &mat.properties {
             let mut e = BytesStart::new("property");
