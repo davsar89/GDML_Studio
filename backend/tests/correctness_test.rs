@@ -1559,3 +1559,34 @@ async fn replica_width_errors_reach_the_scene_warnings() {
         scene["warnings"]
     );
 }
+
+#[tokio::test]
+async fn foreign_host_header_is_forbidden() {
+    // DNS rebinding: a page on attacker.example re-resolves its name to
+    // 127.0.0.1 and calls the API as its own origin, so CORS never applies.
+    // Only the Host header still names the site the request was meant for.
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let app = gdml_studio_backend::api::routes::create_router(create_shared_state());
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    for (host, status) in [
+        ("attacker.example".to_string(), "403"),
+        (format!("attacker.example:{port}"), "403"),
+        (format!("127.0.0.1.attacker.example:{port}"), "403"),
+        (format!("127.0.0.1:{port}"), "404"), // allowed; nothing loaded yet
+        (format!("localhost:{port}"), "404"),
+        ("[::1]".to_string(), "404"),
+    ] {
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap();
+        let request = format!(
+            "GET /api/document/summary HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n"
+        );
+        stream.write_all(request.as_bytes()).await.unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).await.unwrap();
+        assert_eq!(&response[9..12], status, "{host}: {response}");
+    }
+}
