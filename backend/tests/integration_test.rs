@@ -525,64 +525,11 @@ fn mesh_from_solids(solids: &str, name: &str) -> TriangleMesh {
 }
 
 #[test]
-fn explicit_zero_deltaphi_sweeps_a_full_circle() {
-    // G4Polycone.cc:232 reads a non-positive or >= 2*pi opening angle as
-    // "nonsense value as representing no phi opening" -- a complete revolution.
-    // The preview applies that rule to these four too, although G4Tubs, G4Cons,
-    // G4Sphere and G4Torus refuse deltaphi <= 0 (see `resolve_delta_phi`).
-    let pi = std::f64::consts::PI;
-    let cases: Vec<(&str, String, f64)> = vec![
-        (
-            "T",
-            r#"    <tube name="T" rmin="0" rmax="10" z="20" deltaphi="0" aunit="rad" lunit="mm"/>"#
-                .to_string(),
-            pi * 100.0 * 20.0,
-        ),
-        (
-            "C",
-            r#"    <cone name="C" rmin1="0" rmax1="10" rmin2="0" rmax2="5" z="20" deltaphi="0" aunit="rad" lunit="mm"/>"#
-                .to_string(),
-            (20.0 * 2.0 * pi / 6.0) * (100.0 + 50.0 + 25.0),
-        ),
-        (
-            "S",
-            r#"    <sphere name="S" rmin="0" rmax="10" deltaphi="0" deltatheta="180" aunit="deg" lunit="mm"/>"#
-                .to_string(),
-            (4.0 / 3.0) * pi * 1000.0,
-        ),
-        (
-            "TO",
-            r#"    <torus name="TO" rmin="0" rmax="3" rtor="10" deltaphi="0" aunit="rad" lunit="mm"/>"#
-                .to_string(),
-            pi * 9.0 * 10.0 * 2.0 * pi,
-        ),
-    ];
-
-    for (name, xml, expected) in cases {
-        let mesh = mesh_from_solids(&xml, name);
-        assert!(
-            mesh.triangle_count() > 0,
-            "{name}: deltaphi=0 produced an empty mesh"
-        );
-        // Two reference points: a face with inverted winding whose plane passes
-        // through the first would otherwise cancel out.
-        for o in [[0.0, 0.0, 0.0], [137.0, -89.0, 53.0]] {
-            let vol = signed_volume_about(&mesh, o);
-            let rel = (vol - expected).abs() / expected.abs();
-            assert!(
-                rel < 0.02,
-                "{name}: volume about {o:?} = {vol:.3}, expected {expected:.3} (rel {rel:.4})"
-            );
-        }
-    }
-}
-
-#[test]
-fn negative_and_oversized_deltaphi_also_sweep_a_full_circle() {
-    // The same G4Polycone branch covers phiTotal < 0 and phiTotal >= 2*pi;
-    // G4Tubs agrees on the second only.
+fn oversized_deltaphi_sweeps_a_full_circle() {
+    // G4Tubs takes a deltaphi of a full turn or more as the full turn; one
+    // that is not positive it refuses (parameters_geant4_rejects_are_reported).
     let expected = std::f64::consts::PI * 100.0 * 20.0;
-    for delta in ["-1.5", "7.0", "6.283185307179586"] {
+    for delta in ["7.0", "6.283185307179586"] {
         let xml = format!(
             r#"    <tube name="T" rmin="0" rmax="10" z="20" deltaphi="{delta}" aunit="rad" lunit="mm"/>"#
         );

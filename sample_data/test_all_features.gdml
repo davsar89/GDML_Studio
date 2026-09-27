@@ -74,7 +74,7 @@
     <box name="MyBox" x="thickness*5" y="50" z="50" lunit="mm" />
 
     <!-- Tube with a hole (rmin > 0) -->
-    <tube name="MyTube" rmin="10" rmax="25" z="100" startphi="0" deltaphi="TWOPI" aunit="rad" lunit="mm" />
+    <tube name="MyTube" rmin="10" rmax="25" z="100" startphi="0" deltaphi="2*pi" aunit="rad" lunit="mm" />
 
     <!-- Solid Partial Tube (rmin = 0, partial phi) -->
     <tube name="MyPartialTube" rmin="0" rmax="20" z="50" startphi="0" deltaphi="pi" aunit="rad" lunit="mm" />

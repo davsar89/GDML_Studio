@@ -333,11 +333,7 @@ fn resolve_opt_with_aunit(engine: &EvalEngine, expr: &Option<String>, aunit: &st
 /// { phiIsOpen = false; startPhi = 0.; endPhi = twopi; }
 /// ```
 ///
-/// `G4Polyhedra.cc:248` has the same test. Applied here to every solid with a
-/// `deltaphi`, it agrees with Geant4 at or above a full turn only: G4Tubs,
-/// G4Cons, G4Sphere, G4Torus and G4CutTubs (not vendored) reject
-/// `deltaphi <= 0` with a FatalException ("Invalid dphi"), so the preview
-/// draws a full turn where Geant4 refuses the solid.
+/// `G4Polyhedra.cc:248` has the same test; this is for those two families.
 ///
 /// G4Polycone also forces `startPhi` to 0 inside that branch; G4Polyhedra
 /// keeps it (`endPhi = startPhi + twopi`). Not reproducing the reset is right
@@ -355,6 +351,23 @@ fn resolve_delta_phi(engine: &EvalEngine, expr: &Option<String>, aunit: &str) ->
     } else {
         raw
     }
+}
+
+/// `deltaphi` of G4Tubs, G4Cons, G4Sphere, G4Torus and G4CutTubs (not
+/// vendored). Their CheckDPhiAngle takes a full turn or more as the full turn
+/// but stops with a FatalException ("Invalid dphi") on one that is not
+/// positive, and the GDML reader starts `deltaphi` at 0
+/// (`G4GDMLReadSolids.cc:2701`), so a missing one is refused too.
+fn csg_delta_phi(engine: &EvalEngine, expr: &Option<String>, aunit: &str) -> Result<f64> {
+    let dphi = expr
+        .as_deref()
+        .map_or(0.0, |e| resolve_with_aunit(engine, e, aunit));
+    anyhow::ensure!(
+        dphi > 0.0,
+        "deltaphi is {dphi} rad (a missing one reads as 0); Geant4 refuses a \
+         deltaphi that is not positive (\"Invalid dphi\")"
+    );
+    Ok(dphi.min(2.0 * PI))
 }
 
 fn tessellate_box_solid(s: &BoxSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
@@ -376,7 +389,7 @@ fn tessellate_tube_solid(
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let h = resolve_with_lunit(engine, &s.z, lunit) / 2.0;
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
+    let deltaphi = csg_delta_phi(engine, &s.deltaphi, aunit)?;
     // G4Tubs refuses rmin >= rmax and a length that is not positive.
     if rmin >= rmax || h <= 0.0 {
         return Ok(TriangleMesh::default());
@@ -403,7 +416,7 @@ fn tessellate_cone_solid(
     let rmax2 = resolve_with_lunit(engine, &s.rmax2, lunit);
     let h = resolve_with_lunit(engine, &s.z, lunit) / 2.0;
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
+    let deltaphi = csg_delta_phi(engine, &s.deltaphi, aunit)?;
     // G4Cons::Inside keeps rmin(z) <= r <= rmax(z). G4Cons accepts walls that
     // cross (rmin > rmax at one end); only the part where rmin < rmax is
     // solid, so the outline starts at the crossing.
@@ -437,7 +450,7 @@ fn tessellate_sphere_solid(
     let rmin = resolve_opt_with_lunit(engine, &s.rmin, lunit);
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
+    let deltaphi = csg_delta_phi(engine, &s.deltaphi, aunit)?;
     let starttheta = resolve_opt_with_aunit(engine, &s.starttheta, aunit);
     // The polar range stops at the -z pole (G4Sphere::CheckThetaAngles).
     let deltatheta = match &s.deltatheta {
@@ -739,7 +752,7 @@ fn tessellate_cut_tube_solid(
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let z = resolve_with_lunit(engine, &s.z, lunit);
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
+    let deltaphi = csg_delta_phi(engine, &s.deltaphi, aunit)?;
     let low_norm = [
         resolve_opt(engine, &s.low_x),
         resolve_opt(engine, &s.low_y),
@@ -800,7 +813,7 @@ fn tessellate_torus_solid(
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let rtor = resolve_with_lunit(engine, &s.rtor, lunit);
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
-    let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
+    let deltaphi = csg_delta_phi(engine, &s.deltaphi, aunit)?;
     Ok(torus_mesh::tessellate_torus(
         rmin, rmax, rtor, startphi, deltaphi, segments,
     ))

@@ -248,13 +248,6 @@ fn revolved_and_elliptical_solids_match_geant4() {
             135.0 * d * 75.0 * 20.0,
         ),
         (
-            // G4Polycone.cc:232's rule, a zero opening angle is a full turn;
-            // G4Tubs itself refuses it (see `resolve_delta_phi`).
-            "tube, deltaphi 0",
-            r#"<tube name="S" rmax="10" z="20" deltaphi="0"/>"#,
-            PI * 100.0 * 20.0,
-        ),
-        (
             "cone, hollow quarter",
             r#"<cone name="S" rmin1="2" rmax1="10" rmin2="2" rmax2="5" z="20" startphi="17" deltaphi="90" aunit="deg"/>"#,
             45.0 * d * (frustum(20.0, 10.0, 5.0) - frustum(20.0, 2.0, 2.0)),
@@ -281,7 +274,7 @@ fn revolved_and_elliptical_solids_match_geant4() {
             // A solid sphere's theta cut is a cone to the origin: a flat disk
             // made it a zone, -60% here and +12.5% at 120 deg.
             "sphere, narrow theta cut",
-            r#"<sphere name="S" rmax="50" deltatheta="45" aunit="deg"/>"#,
+            r#"<sphere name="S" rmax="50" deltaphi="360" deltatheta="45" aunit="deg"/>"#,
             2.0 * PI * sector(50.0, 0.0, 45.0 * d),
         ),
         (
@@ -417,17 +410,17 @@ fn a_curve_ending_on_the_axis_shades_smooth_there() {
             true,
         ),
         (
-            r#"<sphere name="S" rmax="50" deltatheta="45" aunit="deg"/>"#,
+            r#"<sphere name="S" rmax="50" deltaphi="360" deltatheta="45" aunit="deg"/>"#,
             50.0,
             true,
         ),
         (
-            r#"<sphere name="S" rmax="50" deltatheta="45" aunit="deg"/>"#,
+            r#"<sphere name="S" rmax="50" deltaphi="360" deltatheta="45" aunit="deg"/>"#,
             0.0,
             false,
         ),
         (
-            r#"<cone name="S" rmax1="10" rmax2="0" z="20"/>"#,
+            r#"<cone name="S" rmax1="10" rmax2="0" z="20" deltaphi="360" aunit="deg"/>"#,
             10.0,
             false,
         ),
@@ -454,19 +447,48 @@ fn a_curve_ending_on_the_axis_shades_smooth_there() {
 
 #[test]
 fn parameters_geant4_rejects_are_reported() {
-    for xml in [
+    let (no_volume, dphi) = ("describe no volume", "Invalid dphi");
+    for (xml, reason) in [
         // G4Tubs: rmin >= rmax.
-        r#"<tube name="S" rmin="10" rmax="5" z="20"/>"#,
+        (
+            r#"<tube name="S" rmin="10" rmax="5" z="20" deltaphi="360" aunit="deg"/>"#,
+            no_volume,
+        ),
         // G4Sphere: rmin >= rmax.
-        r#"<sphere name="S" rmin="10" rmax="5"/>"#,
+        (
+            r#"<sphere name="S" rmin="10" rmax="5" deltaphi="360" aunit="deg"/>"#,
+            no_volume,
+        ),
         // G4Hype: rmin >= rmax. G4Paraboloid: rhi <= rlo.
-        r#"<hype name="S" rmin="6" rmax="3" z="20"/>"#,
-        r#"<paraboloid name="S" rlo="5" rhi="2" dz="10"/>"#,
+        (r#"<hype name="S" rmin="6" rmax="3" z="20"/>"#, no_volume),
+        (
+            r#"<paraboloid name="S" rlo="5" rhi="2" dz="10"/>"#,
+            no_volume,
+        ),
         // G4Polycone.cc:81: rInner > rOuter at a plane.
-        r#"<polycone name="S"><zplane z="-5" rmin="12" rmax="10"/><zplane z="5" rmax="10"/></polycone>"#,
+        (
+            r#"<polycone name="S"><zplane z="-5" rmin="12" rmax="10"/><zplane z="5" rmax="10"/></polycone>"#,
+            no_volume,
+        ),
+        // deltaphi <= 0, and a missing one, which the GDML reader starts at 0
+        // (G4GDMLReadSolids.cc:2701).
+        (r#"<tube name="S" rmax="10" z="20" deltaphi="0"/>"#, dphi),
+        (
+            r#"<cone name="S" rmax1="10" rmax2="5" z="20" deltaphi="-1"/>"#,
+            dphi,
+        ),
+        (r#"<sphere name="S" rmax="10"/>"#, dphi),
+        (r#"<torus name="S" rmax="3" rtor="10"/>"#, dphi),
+        (
+            r#"<cutTube name="S" rmax="10" z="20" deltaphi="0" lowZ="-1" highZ="1"/>"#,
+            dphi,
+        ),
     ] {
         let (m, warnings) = solid(xml);
-        assert!(m.is_none() && warnings.len() == 1, "{xml}: {warnings:?}");
+        assert!(
+            m.is_none() && warnings.len() == 1 && warnings[0].contains(reason),
+            "{xml}: {warnings:?}"
+        );
     }
 }
 

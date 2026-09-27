@@ -41,9 +41,8 @@ pub fn tessellate_generic_polycone(
 ) -> TriangleMesh {
     let mut m = TriangleMesh::default();
 
-    // G4Polycone::Create's rule, for every revolved solid: a non-positive or
-    // over-full sweep is a complete revolution (see `resolve_delta_phi` for
-    // the solids where Geant4 refuses a non-positive one).
+    // Matches G4Polycone::Create — a non-positive or over-full sweep is a
+    // complete revolution. Tubes, cones and spheres arrive already checked.
     let full_circle = deltaphi <= 0.0 || deltaphi >= 2.0 * PI - 1e-6;
     let deltaphi = if full_circle { 2.0 * PI } else { deltaphi };
     let steps = sides.unwrap_or(segments).max(3);

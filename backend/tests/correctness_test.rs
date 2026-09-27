@@ -743,7 +743,7 @@ async fn sphere_deltatheta_stops_at_the_pole() {
         (r#"starttheta="90" deltatheta="180""#, 0.5, -10.0),
     ] {
         let s = solid_mesh(
-            &format!(r#"<sphere name="S" rmax="10" {angles} aunit="deg"/>"#),
+            &format!(r#"<sphere name="S" rmax="10" deltaphi="360" {angles} aunit="deg"/>"#),
             "S",
         )
         .await;
