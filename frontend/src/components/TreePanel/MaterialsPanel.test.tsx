@@ -188,9 +188,9 @@ describe('material drafts and document actions', () => {
   });
 
   it('blocks conflicting controls until an Apply request finishes', async () => {
-    useAppStore.getState().setMaterials([
+    useAppStore.setState({ materials: [
       { ...makeMaterial(), components: [{ Fraction: { n: '1', ref_name: 'N' } }] }, makeMaterial('N'),
-    ]);
+    ] });
     const user = mount(); await edit(user);
     let finish!: (value: { ok: boolean }) => void;
     mocked.updateMaterial.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));

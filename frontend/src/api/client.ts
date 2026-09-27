@@ -62,7 +62,7 @@ export async function getMeshes() {
 /**
  * Scene graph only. Editing a material never re-tessellates, so use this rather
  * than `getMeshes` after an edit: it avoids re-downloading every vertex in the
- * document and, because `setMeshes` is not called, avoids rebuilding every
+ * document and, because `meshes` is not replaced, avoids rebuilding every
  * BufferGeometry and re-uploading the scene to the GPU.
  */
 export async function getScene() {

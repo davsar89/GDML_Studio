@@ -42,8 +42,7 @@ export default function MeasureInteraction() {
           ? prev.type === snap.type && Math.hypot(...prev.position.map((v, i) => v - snap.position[i])) < 0.01
           : prev === snap;
         if (same) return;
-        state.setHoverSnap(snap);
-        state.setHoverCandidates(result?.candidates ?? []);
+        useAppStore.setState({ hoverSnap: snap, hoverCandidates: result?.candidates ?? [] });
       });
     };
 
@@ -55,7 +54,7 @@ export default function MeasureInteraction() {
       if (!result) return;
       const placingA = !state.pendingPoint;
       state.placeMeasurePoint(result.best);
-      if (placingA) state.setSurfaceCandidates(allMeshCandidates(result.mesh));
+      if (placingA) useAppStore.setState({ surfaceCandidates: allMeshCandidates(result.mesh) });
     };
 
     const onKeyDown = (e: KeyboardEvent) => {

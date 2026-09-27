@@ -44,11 +44,7 @@ export async function restoreOpenDocument(): Promise<void> {
 
 /** Refresh just the materials + elements lists from the backend. */
 export function refreshMaterials(): Promise<void> {
-  return api.getMaterials().then((data) => {
-    const store = useAppStore.getState();
-    store.setMaterials(data.materials);
-    store.setElements(data.elements);
-  });
+  return api.getMaterials().then((data) => useAppStore.setState({ materials: data.materials, elements: data.elements }));
 }
 
 /** Refresh material data, placement references and colours; retain unchanged mesh buffers. */
@@ -59,9 +55,7 @@ export async function refreshMaterialsAndScene(): Promise<void> {
       api.getScene(),
       api.getStructure(),
     ]);
-    const store = useAppStore.getState();
-    store.setSceneGraph(sceneData.scene_graph);
-    store.setVolumes(structData.volumes);
+    useAppStore.setState({ sceneGraph: sceneData.scene_graph, volumes: structData.volumes });
   } catch (e: unknown) {
     // Surfaced rather than logged: a silent failure here leaves the materials
     // list updated while the 3D view still shows pre-edit colours.

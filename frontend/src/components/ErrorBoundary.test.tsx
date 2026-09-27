@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe('ErrorBoundary', () => {
   it('shows the fallback instead of unmounting the tree', () => {
-    useAppStore.getState().setMaterials([{ name: 'G4_AIR' } as never]);
+    useAppStore.setState({ materials: [{ name: 'G4_AIR' } as never] });
 
     render(
       <ErrorBoundary>
@@ -42,7 +42,7 @@ describe('ErrorBoundary', () => {
 
   it('recovers when "Try again" is clicked', async () => {
     const user = userEvent.setup();
-    useAppStore.getState().setMaterials([{ name: 'G4_AIR' } as never]);
+    useAppStore.setState({ materials: [{ name: 'G4_AIR' } as never] });
 
     render(
       <ErrorBoundary>

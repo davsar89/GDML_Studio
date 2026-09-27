@@ -33,7 +33,7 @@ afterEach(() => {
 
 describe('DefinesTree', () => {
   it('mounts a window of rows, not the whole list', () => {
-    useAppStore.getState().setDefines(makeDefines(HUGE));
+    useAppStore.setState({ defines: makeDefines(HUGE) });
     const { container } = render(<DefinesTree />);
 
     const rows = container.querySelectorAll('[title]');
@@ -46,7 +46,7 @@ describe('DefinesTree', () => {
   });
 
   it('reaches the middle and final entries using the declared scroll extent', () => {
-    useAppStore.getState().setDefines(makeDefines(HUGE));
+    useAppStore.setState({ defines: makeDefines(HUGE) });
     const { container } = render(<DefinesTree />);
     const scroller = screen.getByTestId('defines-scroll');
     const spacer = container.querySelector('[data-testid="defines-scroll"] > div') as HTMLElement;
@@ -60,18 +60,18 @@ describe('DefinesTree', () => {
   });
 
   it('renders every row when the list is small', () => {
-    useAppStore.getState().setDefines(makeDefines(5));
+    useAppStore.setState({ defines: makeDefines(5) });
     const { container } = render(<DefinesTree />);
     expect(container.querySelectorAll('[title]').length).toBe(5);
     expect(screen.getByText('d4')).toBeInTheDocument();
   });
 
   it('does not round tiny values to zero', () => {
-    useAppStore.getState().setDefines([
+    useAppStore.setState({ defines: [
       { name: 'tiny', expression: '1e-9', evaluated: 1e-9, unit: null, kind: 'constant' },
       { name: 'q', expression: '10', evaluated: 10, unit: 'cm', kind: 'quantity' },
       { name: 'third', expression: '1/3', evaluated: 1 / 3, unit: null, kind: 'constant' },
-    ]);
+    ] });
     render(<DefinesTree />);
     expect(screen.getByText('1e-9')).toBeInTheDocument();
     expect(screen.getByText('10')).toBeInTheDocument();
@@ -82,7 +82,7 @@ describe('DefinesTree', () => {
   it('measures once rows arrive after mount', () => {
     vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(2000);
     render(<DefinesTree />);
-    act(() => useAppStore.getState().setDefines(makeDefines(HUGE)));
+    act(() => useAppStore.setState({ defines: makeDefines(HUGE) }));
     // 2000 px shows 125 rows; the unmeasured fallback of 600 px would stop near d53.
     expect(screen.getByText('d130')).toBeInTheDocument();
   });

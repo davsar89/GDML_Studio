@@ -35,7 +35,7 @@ beforeEach(() => {
 describe('refreshMaterialsAndScene', () => {
   it('updates visible data while retaining the existing mesh buffers', async () => {
     const mesh = { positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], normals: [0, 0, 1, 0, 0, 1, 0, 0, 1], indices: [0, 1, 2] };
-    useAppStore.getState().setMeshes({ B: mesh });
+    useAppStore.setState({ meshes: { B: mesh } });
     await refreshMaterialsAndScene();
     expect(useAppStore.getState().elements).toEqual(elements);
     expect(useAppStore.getState().sceneGraph).toEqual(scene);

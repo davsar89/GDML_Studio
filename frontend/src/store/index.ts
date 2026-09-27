@@ -55,15 +55,7 @@ interface AppState {
   setError: (error: string | null) => void;
   markDirty: () => void;
   markSaved: (revision?: number) => void;
-  setWarnings: (warnings: string[]) => void;
   clearWarnings: () => void;
-  setSummary: (summary: DocumentSummary) => void;
-  setMeshes: (meshes: Record<string, MeshData>) => void;
-  setSceneGraph: (graph: SceneNode) => void;
-  setDefines: (defines: DefineValue[]) => void;
-  setVolumes: (volumes: VolumeInfo[]) => void;
-  setMaterials: (materials: MaterialInfo[]) => void;
-  setElements: (elements: ElementInfo[]) => void;
   setSelectedVolume: (name: string | null) => void;
   setSelectedMaterial: (name: string | null) => void;
   setActiveTreeTab: (tab: 'structure' | 'defines' | 'materials') => void;
@@ -74,9 +66,6 @@ interface AppState {
 
   // Measurement actions
   setMeasureMode: (on: boolean) => void;
-  setHoverSnap: (snap: SnapPoint | null) => void;
-  setHoverCandidates: (candidates: SnapPoint[]) => void;
-  setSurfaceCandidates: (candidates: SnapPoint[]) => void;
   placeMeasurePoint: (snap: SnapPoint) => void;
   cancelMeasure: () => void;
   clearMeasurements: () => void;
@@ -120,15 +109,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Cancelling a material that was never applied leaves nothing to select.
     selectedMaterial: state.materials.some((m) => m.name === state.selectedMaterial) ? state.selectedMaterial : null,
   })),
-  setWarnings: (warnings) => set({ warnings }),
   clearWarnings: () => set({ warnings: [] }),
-  setSummary: (summary) => set({ summary }),
-  setMeshes: (meshes) => set({ meshes }),
-  setSceneGraph: (graph) => set({ sceneGraph: graph }),
-  setDefines: (defines) => set({ defines }),
-  setVolumes: (volumes) => set({ volumes }),
-  setMaterials: (materials) => set({ materials }),
-  setElements: (elements) => set({ elements }),
   setSelectedVolume: (name) => {
     const state = get();
     if (state.documentBusy || state.loading) return;
@@ -168,9 +149,6 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Measurement actions
   setMeasureMode: (on) =>
     set(on ? { measureMode: true } : { measureMode: false, pendingPoint: null, hoverSnap: null, hoverCandidates: [], surfaceCandidates: [] }),
-  setHoverSnap: (snap) => set({ hoverSnap: snap }),
-  setHoverCandidates: (candidates) => set({ hoverCandidates: candidates }),
-  setSurfaceCandidates: (candidates) => set({ surfaceCandidates: candidates }),
   placeMeasurePoint: (snap) =>
     set((state) => {
       if (!state.pendingPoint) {

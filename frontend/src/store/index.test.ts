@@ -33,10 +33,9 @@ describe('store.reset', () => {
   });
 
   it('returns every slice to its empty state and disposes geometries', () => {
+    useAppStore.setState({ materials: [material('G4_AIR')], warnings: ['something'] });
     const store = useAppStore.getState();
-    store.setMaterials([material('G4_AIR')]);
     store.setSelectedMaterial('G4_AIR');
-    store.setWarnings(['something']);
     store.setError('boom');
     store.setMeasureMode(true);
 
