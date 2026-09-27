@@ -233,9 +233,19 @@ describe('material drafts and document actions', () => {
     await user.click(await screen.findByText('CatalogMaterial', { exact: true }));
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Material name' })).toHaveValue('CatalogMaterial'));
     expect(useAppStore.getState().materialDraft?.elements[0].name).toBe('H');
+    expect(screen.getByText('mass 1')).toBeInTheDocument();
     expect(mocked.addElement).not.toHaveBeenCalled(); expect(mocked.updateMaterial).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(useAppStore.getState().materialDraft).toBeNull(); expect(useAppStore.getState().elements).toEqual([]);
+  });
+
+  it('starts a fresh NIST search per material', async () => {
+    const user = mount();
+    await user.click(screen.getByRole('button', { name: 'NIST Material Lookup' }));
+    await user.type(screen.getByPlaceholderText('Search...'), 'water');
+    await user.click(screen.getByText('N', { exact: true }));
+    await user.click(screen.getByRole('button', { name: 'NIST Material Lookup' }));
+    expect(screen.getByPlaceholderText('Search...')).toHaveValue('');
   });
 
   it.each(['Save', 'Discard', 'Cancel'])('protects applied unsaved changes on file replacement: %s', async (choice) => {

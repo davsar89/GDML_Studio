@@ -26,7 +26,8 @@ export default function MaterialsPanel() {
         onSelect={setSelectedMaterial}
       />
       {selectedMaterial && (
-      <MaterialEditor
+        // Keyed so the NIST lookup and pickers start fresh for each material.
+        <MaterialEditor key={selectedMaterial}
           materialName={selectedMaterial}
           materials={materials}
           elements={elements}
@@ -227,16 +228,11 @@ function ComponentsList({
         <button onClick={() => setAddingComp(!addingComp)} style={smallBtn}>+</button>
       </div>
       {material.components.map((c, i) => {
-        const f = c.Fraction;
-        const co = c.Composite;
-        const type = f ? 'frac' : 'comp';
-        const n = f ? f.n : co!.n;
-        const ref = f ? f.ref_name : co!.ref_name;
+        const { n, ref_name: ref } = (c.Fraction ?? c.Composite)!;
         return (
           <div key={i} style={{ fontSize: 10, fontFamily: 'monospace', color: '#b0b8c0', display: 'flex', gap: 4, alignItems: 'center' }}>
-            <span style={{ color: '#8899aa' }}>{type}</span>
             <span style={{ color: '#56d6c8' }}>{ref}</span>
-            <span style={{ color: '#666' }}>n={n}</span>
+            <span style={{ color: '#666' }}>{c.Fraction ? `mass ${n}` : `${n} atom${n === '1' ? '' : 's'}`}</span>
             <button aria-label={`Remove component ${ref}`}
               onClick={() => onChange({ components: material.components.filter((_, index) => index !== i) })}
               style={{ background: 'none', border: 0, cursor: 'pointer', color: '#e94560', fontSize: 9, opacity: 0.6 }}
