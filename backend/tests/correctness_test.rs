@@ -861,3 +861,99 @@ async fn invalid_ellipsoid_and_its_boolean_are_reported() {
         assert!(!loaded.meshes.contains_key(name), "{name}");
     }
 }
+
+async fn export(state: &SharedState) -> String {
+    export_gdml(State(state.clone())).await.unwrap().0["gdml"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+#[tokio::test]
+async fn structure_loop_stays_before_the_volume_that_uses_it() {
+    // Geant4 reads <structure> in one pass and GetVolume is fatal on a name it
+    // has not built yet (G4GDMLReadStructure.cc 1084-1096). The loop defining
+    // the slabs was written after W, which places one of them.
+    let xml = document(
+        r#"<variable name="i" value="0"/>"#,
+        r#"<box name="B" x="1" y="1" z="1"/><box name="Big" x="100" y="100" z="100"/>"#,
+        r#"<loop for="i" from="1" to="2" step="1"><volume name="Slab[i]"><materialref ref="M"/><solidref ref="B"/></volume></loop>
+      <volume name="W"><materialref ref="M"/><solidref ref="Big"/><physvol><volumeref ref="Slab_0"/></physvol></volume>"#,
+    );
+    let saved = export(&load(&xml).await).await;
+    assert!(
+        saved.find("<loop").unwrap() < saved.find(r#"<volume name="W""#).unwrap(),
+        "the loop moved after the volume that uses it:\n{saved}"
+    );
+    let scene = get_scene(State(load(&saved).await)).await.unwrap().0;
+    assert_eq!(
+        scene["scene_graph"]["children"][0]["volume_name"], "Slab_0",
+        "the reloaded export lost the placement"
+    );
+    assert!(
+        !scene["warnings"].to_string().contains("undefined volume"),
+        "{}",
+        scene["warnings"]
+    );
+}
+
+fn mixture_of(mut material: Material, component: &str) -> Material {
+    material.z = None;
+    material.atom_value = None;
+    material.components = vec![MaterialComponent::Fraction {
+        n: "1".into(),
+        ref_name: component.into(),
+    }];
+    material
+}
+
+async fn edit_material(state: &SharedState, name: &str, component: &str) -> bool {
+    let guard = state.read().await;
+    let materials = &guard.loaded.as_ref().unwrap().document.materials.materials;
+    let material = mixture_of(
+        materials.iter().find(|m| m.name == name).unwrap().clone(),
+        component,
+    );
+    drop(guard);
+    update_material(
+        State(state.clone()),
+        Json(UpdateMaterialRequest {
+            name: name.into(),
+            material,
+            elements: vec![],
+        }),
+    )
+    .await
+    .is_ok()
+}
+
+fn material_names(xml: &str) -> Vec<String> {
+    let doc = parse_gdml_from_bytes(xml.as_bytes(), "saved.gdml".into()).unwrap();
+    doc.materials
+        .materials
+        .into_iter()
+        .map(|m| m.name)
+        .collect()
+}
+
+#[tokio::test]
+async fn edited_forward_material_reference_is_reordered() {
+    // G4GDMLReadMaterials resolves a <fraction ref> while reading the material,
+    // so a mixture must follow what it is made of. M is declared before N;
+    // making M a mixture of N used to export M first, which Geant4 rejects.
+    let state = load(&document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "")).await;
+    assert!(edit_material(&state, "M", "N").await);
+    assert_eq!(material_names(&export(&state).await), ["N", "M"]);
+}
+
+#[tokio::test]
+async fn material_component_cycle_is_rejected() {
+    // No order satisfies Geant4's single pass once N is made of M and M of N.
+    let state = load(&document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "")).await;
+    assert!(edit_material(&state, "M", "N").await);
+    assert!(
+        !edit_material(&state, "N", "M").await,
+        "a component cycle was accepted"
+    );
+    assert_eq!(material_names(&export(&state).await), ["N", "M"]);
+}

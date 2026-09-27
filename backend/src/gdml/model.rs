@@ -133,6 +133,13 @@ pub struct RawElement {
     /// removes the whole class of bug.
     #[serde(default)]
     pub section: Option<String>,
+    /// The define, solid or volume this element followed in its section
+    /// (`None`: it opened the section), so the writer can put it back there.
+    /// Geant4 reads each section in one pass, so a `<loop>` or `<assembly>`
+    /// moved to the end of `<structure>` lands after the volume that places
+    /// it, and the file no longer loads.
+    #[serde(default)]
+    pub after: Option<String>,
     pub tag: String,
     pub xml: String,
 }

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
 use quick_xml::Writer;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::io::{Cursor, Write};
 use std::sync::LazyLock;
 
@@ -110,6 +110,23 @@ fn write_raw(writer: &mut Writer<Cursor<Vec<u8>>>, raw: &RawElement) -> Result<(
     Ok(())
 }
 
+/// Write, and take out of `raws`, the preserved elements `at` selects by the
+/// element each followed (`None`: the section start). Sections call this at
+/// their start, after each named element, and at their end for any left over,
+/// so every element goes back where it was declared ([`RawElement::after`]).
+fn write_raws(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    raws: &mut Vec<&RawElement>,
+    at: impl Fn(Option<&str>) -> bool,
+) -> Result<()> {
+    let (now, later) = raws.drain(..).partition(|r| at(r.after.as_deref()));
+    *raws = later;
+    for raw in now {
+        write_raw(writer, raw)?;
+    }
+    Ok(())
+}
+
 pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     let mut writer = Writer::new_with_indent(Cursor::new(Vec::new()), b' ', 2);
 
@@ -157,7 +174,7 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     write_defines(
         &mut writer,
         &doc.defines,
-        &raw_in("define"),
+        &mut raw_in("define"),
         &doc.order,
         &nested_defines,
     )?;
@@ -170,12 +187,12 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
         doc.materials_define.as_ref(),
     )?;
     write_comments(&mut writer, &doc.order, "root", Some("solids"))?;
-    write_solids(&mut writer, &doc.solids, &raw_in("solids"), &doc.order)?;
+    write_solids(&mut writer, &doc.solids, &mut raw_in("solids"), &doc.order)?;
     write_comments(&mut writer, &doc.order, "root", Some("structure"))?;
     write_structure(
         &mut writer,
         &doc.structure,
-        &raw_in("structure"),
+        &mut raw_in("structure"),
         &doc.order,
     )?;
     write_comments(&mut writer, &doc.order, "root", Some("setup"))?;
@@ -214,21 +231,20 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
 fn write_defines(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     defines: &DefineSection,
-    raws: &[&RawElement],
+    raws: &mut Vec<&RawElement>,
     order: &DocumentOrder,
     nested: &[String],
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("define")))?;
-    write_define_items(writer, defines, order, &|name| {
-        !nested.iter().any(|n| n == name)
-    })?;
-
-    // Preserved-verbatim define-section elements (<matrix>, <loop>) go last so
-    // anything they reference is already defined.
-    for raw in raws {
-        write_raw(writer, raw)?;
-    }
-
+    write_raws(writer, raws, |after| after.is_none())?;
+    write_define_items(
+        writer,
+        defines,
+        order,
+        &|name| !nested.iter().any(|n| n == name),
+        raws,
+    )?;
+    write_raws(writer, raws, |_| true)?;
     write_comments(writer, order, "define", None)?;
     writer.write_event(Event::End(BytesEnd::new("define")))?;
     Ok(())
@@ -248,9 +264,13 @@ fn write_materials_define(
         return Ok(());
     }
     writer.write_event(Event::Start(BytesStart::new("define")))?;
-    write_define_items(writer, defines, order, &|name| {
-        nested.iter().any(|n| n == name)
-    })?;
+    write_define_items(
+        writer,
+        defines,
+        order,
+        &|name| nested.iter().any(|n| n == name),
+        &mut Vec::new(),
+    )?;
     writer.write_event(Event::End(BytesEnd::new("define")))?;
     Ok(())
 }
@@ -267,14 +287,16 @@ fn write_materials_define(
 /// and never notices.
 ///
 /// A document built programmatically carries no manifest; those fall back to
-/// the grouped order, which is what the rest of the suite expects.
+/// the grouped order, which is what the rest of the suite expects, and leave
+/// `raws` to the caller.
 fn write_define_items(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     defines: &DefineSection,
     order: &DocumentOrder,
     include: &dyn Fn(&str) -> bool,
+    raws: &mut Vec<&RawElement>,
 ) -> Result<()> {
-    if write_defines_in_source_order(writer, defines, order, include)? {
+    if write_defines_in_source_order(writer, defines, order, include, raws)? {
         return Ok(());
     }
     for c in &defines.constants {
@@ -322,6 +344,7 @@ fn write_defines_in_source_order(
     defines: &DefineSection,
     order: &DocumentOrder,
     include: &dyn Fn(&str) -> bool,
+    raws: &mut Vec<&RawElement>,
 ) -> Result<bool> {
     let total = defines.constants.len()
         + defines.quantities.len()
@@ -374,6 +397,7 @@ fn write_defines_in_source_order(
             DefineKind::Rotation => write_rotation(writer, order, include, &defines.rotations[n])?,
             DefineKind::Scale => write_scale(writer, order, include, &defines.scales[n])?,
         }
+        write_raws(writer, raws, |after| after == Some(slot.name.as_str()))?;
     }
     Ok(true)
 }
@@ -612,7 +636,10 @@ fn write_materials(
         }
     }
 
-    for mat in &materials.materials {
+    for mat in material_order(materials)?
+        .into_iter()
+        .map(|i| &materials.materials[i])
+    {
         write_comments(writer, order, "materials", Some(&mat.name))?;
         let mut elem = BytesStart::new("material");
         elem.push_attribute(("name", mat.name.as_str()));
@@ -800,10 +827,11 @@ fn write_placement_rot(
 fn write_solids(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     solids: &SolidSection,
-    raws: &[&RawElement],
+    raws: &mut Vec<&RawElement>,
     order: &DocumentOrder,
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("solids")))?;
+    write_raws(writer, raws, |after| after.is_none())?;
 
     for solid in &solids.solids {
         write_comments(writer, order, "solids", Some(solid.name()))?;
@@ -1498,12 +1526,9 @@ fn write_solids(
                 writer.write_event(Event::End(BytesEnd::new(tag_name)))?;
             }
         }
+        write_raws(writer, raws, |after| after == Some(solid.name()))?;
     }
-
-    // Preserved-verbatim solids-section elements (<opticalsurface>).
-    for raw in raws {
-        write_raw(writer, raw)?;
-    }
+    write_raws(writer, raws, |_| true)?;
 
     write_comments(writer, order, "solids", None)?;
     writer.write_event(Event::End(BytesEnd::new("solids")))?;
@@ -1554,8 +1579,80 @@ fn write_auxiliary(writer: &mut Writer<Cursor<Vec<u8>>>, aux: &Auxiliary) -> Res
     Ok(())
 }
 
+/// Kahn's algorithm: an order in which every item comes after the items it
+/// depends on (`deps[i]`). The lowest ready index goes first, so an order that
+/// is already valid comes back unchanged. A cycle is an error naming the items
+/// on or behind it.
+fn dependency_order<'a>(
+    deps: &[Vec<usize>],
+    what: &str,
+    name: impl Fn(usize) -> &'a str,
+) -> Result<Vec<usize>> {
+    let mut dependents = vec![Vec::new(); deps.len()];
+    let mut remaining = vec![0usize; deps.len()];
+    for (i, d) in deps.iter().enumerate() {
+        let unique: BTreeSet<usize> = d.iter().copied().collect();
+        remaining[i] = unique.len();
+        for j in unique {
+            dependents[j].push(i);
+        }
+    }
+    let mut ready: BTreeSet<usize> = (0..deps.len()).filter(|&i| remaining[i] == 0).collect();
+    let mut order = Vec::with_capacity(deps.len());
+    while let Some(i) = ready.pop_first() {
+        order.push(i);
+        for &p in &dependents[i] {
+            remaining[p] -= 1;
+            if remaining[p] == 0 {
+                ready.insert(p);
+            }
+        }
+    }
+    let stuck: Vec<&str> = (0..deps.len())
+        .filter(|&i| remaining[i] > 0)
+        .map(name)
+        .collect();
+    anyhow::ensure!(
+        stuck.is_empty(),
+        "Cyclic {what} references: {}",
+        stuck.join(", ")
+    );
+    Ok(order)
+}
+
+/// Export order for materials: each after the materials its components name.
+/// `G4GDMLReadMaterials` resolves a component while reading its material, and
+/// a name that is also an element means the element, so only the others
+/// constrain the order.
+pub fn material_order(materials: &MaterialSection) -> Result<Vec<usize>> {
+    let index: HashMap<&str, usize> = materials
+        .materials
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (m.name.as_str(), i))
+        .collect();
+    let deps: Vec<Vec<usize>> = materials
+        .materials
+        .iter()
+        .map(|m| {
+            m.components
+                .iter()
+                .filter_map(|c| {
+                    let (MaterialComponent::Fraction { ref_name, .. }
+                    | MaterialComponent::Composite { ref_name, .. }) = c;
+                    if materials.elements.iter().any(|e| &e.name == ref_name) {
+                        return None;
+                    }
+                    index.get(ref_name.as_str()).copied()
+                })
+                .collect()
+        })
+        .collect();
+    dependency_order(&deps, "material", |i| &materials.materials[i].name)
+}
+
 /// Stable dependency order: Geant4 resolves a volumeref while reading its parent.
-/// Uninterpreted references (e.g. assemblies) remain in the preserved XML path.
+/// Assemblies are not volumes here; they are written where they were declared.
 fn ordered_volumes(structure: &StructureSection) -> Result<Vec<&Volume>> {
     let volumes = &structure.volumes;
     let index: HashMap<&str, usize> = volumes
@@ -1563,9 +1660,8 @@ fn ordered_volumes(structure: &StructureSection) -> Result<Vec<&Volume>> {
         .enumerate()
         .map(|(i, v)| (v.name.as_str(), i))
         .collect();
-    let mut parents = vec![Vec::new(); volumes.len()];
-    let mut remaining = vec![0usize; volumes.len()];
-    for (parent, volume) in volumes.iter().enumerate() {
+    let mut deps = Vec::with_capacity(volumes.len());
+    for volume in volumes {
         let mut refs: Vec<String> = volume
             .physvols
             .iter()
@@ -1599,51 +1695,24 @@ fn ordered_volumes(structure: &StructureSection) -> Result<Vec<&Volume>> {
                 }
             }
         }
-        let children: HashSet<usize> = refs
-            .iter()
-            .filter_map(|name| index.get(name.as_str()).copied())
-            .collect();
-        remaining[parent] = children.len();
-        for child in children {
-            parents[child].push(parent);
-        }
+        deps.push(
+            refs.iter()
+                .filter_map(|name| index.get(name.as_str()).copied())
+                .collect(),
+        );
     }
-    let mut ready: BTreeSet<usize> = remaining
-        .iter()
-        .enumerate()
-        .filter_map(|(i, n)| (*n == 0).then_some(i))
-        .collect();
-    let mut ordered = Vec::with_capacity(volumes.len());
-    while let Some(child) = ready.pop_first() {
-        ordered.push(&volumes[child]);
-        for &parent in &parents[child] {
-            remaining[parent] -= 1;
-            if remaining[parent] == 0 {
-                ready.insert(parent);
-            }
-        }
-    }
-    anyhow::ensure!(
-        ordered.len() == volumes.len(),
-        "Cyclic volume dependencies prevent export: {}",
-        remaining
-            .iter()
-            .enumerate()
-            .filter(|(_, n)| **n > 0)
-            .map(|(i, _)| volumes[i].name.as_str())
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    Ok(ordered)
+    let order = dependency_order(&deps, "volume", |i| &volumes[i].name)?;
+    Ok(order.into_iter().map(|i| &volumes[i]).collect())
 }
 
 fn write_structure(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     structure: &StructureSection,
-    raws: &[&RawElement],
+    raws: &mut Vec<&RawElement>,
     order: &DocumentOrder,
 ) -> Result<()> {
     writer.write_event(Event::Start(BytesStart::new("structure")))?;
+    write_raws(writer, raws, |after| after.is_none())?;
 
     for vol in ordered_volumes(structure)? {
         write_comments(writer, order, "structure", Some(&vol.name))?;
@@ -1799,13 +1868,9 @@ fn write_structure(
         }
 
         writer.write_event(Event::End(BytesEnd::new("volume")))?;
+        write_raws(writer, raws, |after| after == Some(vol.name.as_str()))?;
     }
-
-    // Preserved-verbatim structure-section elements (<assembly>, <skinsurface>,
-    // <bordersurface>). Surfaces reference volumes, so they go last.
-    for raw in raws {
-        write_raw(writer, raw)?;
-    }
+    write_raws(writer, raws, |_| true)?;
 
     write_comments(writer, order, "structure", None)?;
     writer.write_event(Event::End(BytesEnd::new("structure")))?;

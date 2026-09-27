@@ -1013,3 +1013,58 @@ fn malformed_scaled_solid_is_a_parse_error() {
         "error does not locate the problem: {err}"
     );
 }
+
+/// Byte offset of `needle` in `out`, failing the test with the export if absent.
+fn offset(out: &str, needle: &str) -> usize {
+    out.find(needle)
+        .unwrap_or_else(|| panic!("{needle} missing from the export:\n{out}"))
+}
+
+#[test]
+fn define_loop_is_exported_where_it_was_declared() {
+    // G4GDMLReadDefine reads <define> in one forward pass, so a loop must stay
+    // after the defines it uses and before those that use what it declares.
+    // Preserved define elements were all appended at the end of the block,
+    // after `total`, which then referenced constants that did not exist yet.
+    let src = r#"<?xml version="1.0" encoding="UTF-8"?>
+<gdml>
+  <define>
+    <variable name="i" value="0"/>
+    <constant name="step" value="10"/>
+    <loop for="i" from="1" to="3" step="1"><constant name="c[i]" value="i*step"/></loop>
+    <constant name="total" value="c_0+c_1+c_2"/>
+  </define>
+  <materials/>
+  <solids><box name="B" x="total" y="1" z="1"/></solids>
+  <structure><volume name="W"><materialref ref="G4_Galactic"/><solidref ref="B"/></volume></structure>
+  <setup name="Default" version="1.0"><world ref="W"/></setup>
+</gdml>"#;
+    let out = round_trip(src.as_bytes(), "defloop.gdml");
+    let loop_at = offset(&out, "<loop");
+    assert!(
+        offset(&out, r#"name="step""#) < loop_at && loop_at < offset(&out, r#"name="total""#),
+        "the loop left its place between `step` and `total`:\n{out}"
+    );
+    assert_eq!(out, round_trip(out.as_bytes(), "defloop2.gdml"));
+}
+
+#[test]
+fn assembly_is_exported_before_the_volume_that_places_it() {
+    // G4GDMLReadStructure::PhysvolRead looks a volumeref up as an assembly,
+    // then as a volume, at the moment it reads it (G4GDMLReadStructure.cc
+    // 430-437). The assembly was written after every volume, so the volume
+    // placing it referenced nothing and Geant4 aborted the load.
+    let src = doc_with(
+        "",
+        r#"    <volume name="Part"><materialref ref="Vacuum"/><solidref ref="WorldBox"/></volume>
+    <assembly name="Asm"><physvol><volumeref ref="Part"/></physvol></assembly>
+    <volume name="Holder"><materialref ref="Vacuum"/><solidref ref="WorldBox"/><physvol><volumeref ref="Asm"/></physvol></volume>"#,
+    );
+    let out = round_trip(src.as_bytes(), "asm.gdml");
+    let assembly_at = offset(&out, "<assembly");
+    assert!(
+        offset(&out, r#"<volume name="Part""#) < assembly_at
+            && assembly_at < offset(&out, r#"<volume name="Holder""#),
+        "the assembly is not between the volume it places and the one placing it:\n{out}"
+    );
+}

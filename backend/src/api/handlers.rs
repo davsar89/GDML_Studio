@@ -371,6 +371,14 @@ fn validate_material_components(
     Ok(())
 }
 
+/// Reject an edit after which no material order works: Geant4 resolves each
+/// component while reading its material, so a component cycle cannot load.
+fn ensure_material_order(materials: &MaterialSection) -> Result<(), ApiError> {
+    nist::material_order(materials)
+        .map(|_| ())
+        .map_err(|e| ApiError::bad_request(&e.to_string()))
+}
+
 /// Warn about elements that are preserved verbatim on save but not interpreted
 /// or rendered (e.g. optical surfaces, `<userinfo>`, `<loop>`).
 fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
@@ -1502,11 +1510,12 @@ pub async fn update_material(
         .position(|m| m.name == old_name)
         .ok_or_else(|| ApiError::not_found(&format!("Material '{}' not found", req.name)))?;
     staged.materials[index] = req.material;
+    cascade_component_ref_rename(&mut staged.materials, &old_name, &new_name);
+    ensure_material_order(&staged)?;
     if old_name != new_name {
         loaded
             .change_material_refs(None, &old_name, &new_name)
             .map_err(|e| ApiError::bad_request(&format!("Cannot rename material: {e}")))?;
-        cascade_component_ref_rename(&mut staged.materials, &old_name, &new_name);
     }
     loaded.document.materials = staged;
 
@@ -1536,6 +1545,7 @@ pub async fn add_material(
     validate_material_components(&staged, &req.material, None)?;
     validate_material_values(&req.material, &loaded.engine)?;
     staged.materials.push(req.material);
+    ensure_material_order(&staged)?;
     loaded.document.materials = staged;
     Ok(Json(json!({ "ok": true })))
 }

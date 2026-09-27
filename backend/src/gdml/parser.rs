@@ -191,10 +191,19 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     // they survive a load -> save round-trip (and warn the user).
                     b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
                     | b"loop" | b"assembly" | b"matrix" => {
+                        let after = match section {
+                            Section::Define | Section::MaterialsDefine => {
+                                order.define_slots.last().map(|s| s.name.clone())
+                            }
+                            Section::Solids => solids.solids.last().map(|s| s.name().to_string()),
+                            Section::Structure => structure.volumes.last().map(|v| v.name.clone()),
+                            _ => None,
+                        };
                         let xml = capture_raw(&mut reader, e, open)?;
                         raw_unknown.push(RawElement {
                             tag: String::from_utf8_lossy(tag).to_string(),
                             section: Some(section_key(section)),
+                            after,
                             xml,
                         });
                     }
@@ -1264,6 +1273,7 @@ fn read_volume_body(
                     vol.loops.push(RawElement {
                         tag: "loop".to_string(),
                         section: Some("structure".to_string()),
+                        after: None,
                         xml,
                     });
                 }
