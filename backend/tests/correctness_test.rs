@@ -1480,3 +1480,57 @@ async fn huge_replica_count_stops_at_the_node_budget() {
         scene["warnings"]
     );
 }
+
+#[tokio::test]
+async fn nested_loops_share_one_expansion_budget() {
+    // Each loop stayed under the per-loop cap while the nesting multiplied:
+    // four loops of 100 asked for 10^8 copies of the body. The comment pads
+    // the body so the budget runs out in 2k copies rather than 700k.
+    let nested = ["i", "j", "k", "l"].iter().fold(
+        format!(
+            r#"<box name="b[i,j,k,l]" x="1" y="1" z="1"/><!--{}-->"#,
+            "x".repeat(16 << 10)
+        ),
+        |body, v| format!(r#"<loop for="{v}" from="1" to="100" step="1">{body}</loop>"#),
+    );
+    let state = create_shared_state();
+    let summary = upload_file(
+        State(state),
+        Json(UploadFileRequest {
+            filename: "loops.gdml".into(),
+            content: document(
+                r#"<variable name="i" value="0"/><variable name="j" value="0"/>
+                <variable name="k" value="0"/><variable name="l" value="0"/>"#,
+                &format!(r#"<box name="B" x="1" y="1" z="1"/>{nested}"#),
+                r#"<volume name="W"><materialref ref="M"/><solidref ref="B"/></volume>"#,
+            ),
+            segments: None,
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+    assert!(
+        summary["warnings"].to_string().contains("32 MiB budget"),
+        "{}",
+        summary["warnings"]
+    );
+}
+
+#[tokio::test]
+async fn loop_bounds_near_i64_max_do_not_overflow() {
+    // `v += step` past i64::MAX and a bracket index minus one below i64::MIN
+    // panicked in a debug build. Stepping past the end now ends the loop.
+    let state = load(&document(
+        r#"<variable name="i" value="0"/>"#,
+        r#"<box name="B" x="1" y="1" z="1"/>"#,
+        r#"<volume name="A"><materialref ref="M"/><solidref ref="B"/></volume>
+        <volume name="W"><materialref ref="M"/><solidref ref="B"/>
+        <loop for="i" from="9223372036854775807" to="9223372036854775807" step="1">
+        <physvol name="p[-1e300]"><volumeref ref="A"/></physvol></loop></volume>"#,
+    ))
+    .await;
+    let scene = get_scene(State(state)).await.unwrap().0;
+    let children = scene["scene_graph"]["children"].as_array().unwrap();
+    assert_eq!(children.len(), 1, "{scene}");
+}

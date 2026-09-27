@@ -35,9 +35,11 @@ use std::io::Cursor;
 
 use crate::eval::engine::EvalEngine;
 
-/// Guard against a pathological `from`/`to`/`step`. Geant4 has no cap; this is
-/// a service that parses untrusted uploads.
-const MAX_ITERATIONS: i64 = 100_000;
+/// Bytes all iterations together may expand to, each costing its body plus
+/// one. Shared by the whole document because nesting multiplies: four nested
+/// loops of 100 are 10^8 copies of the innermost body. Geant4 has no cap; this
+/// is a service that parses untrusted uploads.
+const MAX_EXPANSION: usize = 32 << 20;
 /// Bound on how deep loops may nest, so a crafted file cannot recurse forever.
 const MAX_LOOP_DEPTH: u32 = 16;
 
@@ -96,7 +98,7 @@ fn solve_brackets(name: &str, engine: &EvalEngine) -> Result<String> {
         let close = open + 1 + close_rel;
         out.push_str(&rest[..open]);
         for part in rest[open + 1..close].split(',') {
-            let idx = engine.eval_expr(part.trim())?.round() as i64 - 1;
+            let idx = (engine.eval_expr(part.trim())?.round() as i64).saturating_sub(1);
             out.push('_');
             out.push_str(&idx.to_string());
         }
@@ -106,8 +108,9 @@ fn solve_brackets(name: &str, engine: &EvalEngine) -> Result<String> {
     Ok(out)
 }
 
-/// The values a loop's variable takes, in order.
-fn iterations(from: i64, to: i64, step: i64) -> Result<Vec<i64>> {
+/// The values a loop's variable takes, in order. A step past `i64::MAX` ends
+/// the loop; the expansion budget bounds how many are used.
+fn iterations(from: i64, to: i64, step: i64) -> Result<impl Iterator<Item = i64>> {
     // Both guards are Geant4's (G4GDMLRead.cc:257-267). The second is
     // unreachable in practice -- with from > to the `while (_var <= _to)` never
     // runs -- but it is what the reference rejects, so it is rejected here.
@@ -120,16 +123,10 @@ fn iterations(from: i64, to: i64, step: i64) -> Result<Vec<i64>> {
     if step == 0 {
         bail!("<loop> step is 0");
     }
-    let mut vals = Vec::new();
-    let mut v = from;
-    while v <= to {
-        vals.push(v);
-        if vals.len() as i64 > MAX_ITERATIONS {
-            bail!("<loop> exceeds the {MAX_ITERATIONS} iteration cap");
-        }
-        v += step;
-    }
-    Ok(vals)
+    Ok(
+        std::iter::successors(Some(from), move |v| v.checked_add(step))
+            .take_while(move |v| *v <= to),
+    )
 }
 
 /// Apply every enclosing loop's binding, outermost first.
@@ -171,7 +168,8 @@ fn rewrite_element(
 /// `engine` is used only to evaluate `from`/`to`/`step` and bracket indices, so
 /// it must already hold the document's defines.
 pub fn expand_loops(xml: &str, engine: &EvalEngine) -> Result<String> {
-    expand_fragment(xml, engine, &[], 0)
+    let mut budget = MAX_EXPANSION;
+    expand_fragment(xml, engine, &[], 0, &mut budget)
 }
 
 /// One pass over a fragment, expanding any loops it contains.
@@ -185,6 +183,7 @@ fn expand_fragment(
     engine: &EvalEngine,
     bindings: &[(String, i64)],
     depth: u32,
+    budget: &mut usize,
 ) -> Result<String> {
     if depth > MAX_LOOP_DEPTH {
         bail!("<loop> nesting deeper than {MAX_LOOP_DEPTH}");
@@ -223,9 +222,13 @@ fn expand_fragment(
                 let step = resolve(attrs("step"), 1.0)?.round() as i64;
 
                 for value in iterations(from, to, step)? {
+                    let Some(left) = budget.checked_sub(1 + body.len()) else {
+                        bail!("<loop> expands past the {} MiB budget", MAX_EXPANSION >> 20);
+                    };
+                    *budget = left;
                     let mut inner: Vec<(String, i64)> = bindings.to_vec();
                     inner.push((loop_var.clone(), value));
-                    let once = expand_fragment(&body, engine, &inner, depth + 1)?;
+                    let once = expand_fragment(&body, engine, &inner, depth + 1, budget)?;
                     writer.get_mut().write_all(once.as_bytes())?;
                 }
             }
@@ -307,10 +310,11 @@ mod tests {
 
     #[test]
     fn iteration_ranges_follow_the_reference() {
-        assert_eq!(iterations(1, 4, 1).unwrap(), vec![1, 2, 3, 4]); // `to` inclusive
-        assert_eq!(iterations(0, 6, 2).unwrap(), vec![0, 2, 4, 6]);
-        assert_eq!(iterations(0, 5, 2).unwrap(), vec![0, 2, 4]);
-        assert_eq!(iterations(3, 3, 1).unwrap(), vec![3]);
+        let vals = |from, to, step| iterations(from, to, step).unwrap().collect::<Vec<_>>();
+        assert_eq!(vals(1, 4, 1), vec![1, 2, 3, 4]); // `to` inclusive
+        assert_eq!(vals(0, 6, 2), vec![0, 2, 4, 6]);
+        assert_eq!(vals(0, 5, 2), vec![0, 2, 4]);
+        assert_eq!(vals(3, 3, 1), vec![3]);
         // Both of Geant4's "Infinite loop!" guards.
         assert!(iterations(1, 4, 0).is_err());
         assert!(iterations(1, 4, -1).is_err());
