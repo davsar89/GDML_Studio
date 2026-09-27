@@ -601,6 +601,9 @@ async fn get_meshes_sends_only_placed_solids() {
         <volume name="W"><materialref ref="M"/><solidref ref="S"/><physvol><volumeref ref="V"/></physvol></volume>"#,
     ))
     .await;
+    // The toolbar's count is of the same meshes: it said 6 for 4 volumes.
+    let summary = get_summary(State(state.clone())).await.unwrap().0;
+    assert_eq!(summary["meshes_count"], 2);
     let response = get_meshes(State(state)).await.unwrap();
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await

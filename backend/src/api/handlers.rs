@@ -285,7 +285,8 @@ fn resolve_all_file_refs(
             merge_child_into_main(main_doc, child_doc, &ref_name, &volname, &mut warnings);
         } else {
             warnings.push(format!(
-                "Referenced file '{}' was not provided in the upload",
+                "Referenced file '{}' was not provided in the upload; select all GDML \
+                 files together to resolve it.",
                 ref_name
             ));
         }
@@ -400,48 +401,99 @@ fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
 }
 
 pub async fn upload_file(
-    State(state): State<SharedState>,
+    state: State<SharedState>,
     Json(req): Json<UploadFileRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    if !req.filename.ends_with(".gdml") {
+    let files = HashMap::from([(req.filename.clone(), req.content)]);
+    let req = UploadFilesRequest {
+        files,
+        main_file: req.filename,
+        segments: req.segments,
+    };
+    upload_files(state, Json(req)).await
+}
+
+pub async fn upload_files(
+    State(state): State<SharedState>,
+    Json(req): Json<UploadFilesRequest>,
+) -> Result<Json<Value>, ApiError> {
+    // A large file takes seconds to parse and tessellate: do it off the async
+    // workers and before taking the lock, so other requests are still served.
+    let loaded = tokio::task::spawn_blocking(move || load_document(req))
+        .await
+        .map_err(|e| ApiError::internal(&format!("Upload failed: {e}")))??;
+    let summary = summary_json(&loaded);
+    state.write().await.loaded = Some(loaded);
+    Ok(Json(summary))
+}
+
+/// Parse an upload, merge its modules, expand its loops and tessellate. A
+/// single-file upload is an upload of one file.
+fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
+    let UploadFilesRequest {
+        files,
+        main_file,
+        segments,
+    } = req;
+    if !main_file.ends_with(".gdml") {
         return Err(ApiError::bad_request("Only .gdml files are supported"));
     }
+    let main_content = files
+        .get(&main_file)
+        .ok_or_else(|| ApiError::bad_request("Main file not found in uploaded files"))?;
+    let parse = |name: &String, content: &String| {
+        parser::parse_gdml_from_bytes(content.as_bytes(), name.clone())
+            .map_err(|e| ApiError::bad_request(&format!("Parse error in {name}: {e}")))
+    };
+    let mut doc = parse(&main_file, main_content)?;
+    let child_docs = files
+        .iter()
+        .filter(|(name, _)| **name != main_file)
+        .map(|(name, content)| Ok((name.clone(), parse(name, content)?)))
+        .collect::<Result<HashMap<_, _>, ApiError>>()?;
 
-    // Parse GDML from uploaded content
-    let doc = parser::parse_gdml_from_bytes(req.content.as_bytes(), req.filename.clone())
-        .map_err(|e| ApiError::bad_request(&format!("Parse error: {}", e)))?;
+    // Resolve file references: merge child documents into main (including nested refs)
+    let merge_warnings = resolve_all_file_refs(&mut doc, &child_docs);
 
-    // Check for unresolved file references
-    let file_refs = collect_file_refs(&doc);
-    let mut extra_warnings = Vec::new();
-    if !file_refs.is_empty() {
-        let names: Vec<_> = file_refs.iter().map(|(n, _)| n.as_str()).collect();
-        extra_warnings.push(format!(
-            "File contains references to external files that were not provided: {}. \
-             Select all GDML files together to resolve these references.",
-            names.join(", ")
-        ));
-    }
-
-    // Bootstrap loop bounds without evaluating vectors that may use generated defines.
     let mut engine = EvalEngine::new();
-    if req.content.contains("<loop") {
-        let bootstrap_defines = DefineSection {
-            constants: doc.defines.constants.clone(),
-            quantities: doc.defines.quantities.clone(),
-            variables: doc.defines.variables.clone(),
-            expressions: doc.defines.expressions.clone(),
-            ..DefineSection::default()
-        };
-        engine
-            .evaluate_all(&bootstrap_defines)
-            .map_err(|e| ApiError::bad_request(&format!("Expression evaluation error: {e}")))?;
-    }
-
-    // Expand <loop> for the preview. The parsed `doc` keeps its loops verbatim
-    // so the export stays faithful; geometry is built from the twin.
     let mut loop_warnings = Vec::new();
-    let render = build_render_document(&req.content, &req.filename, &engine, &mut loop_warnings);
+    let render = if child_docs.is_empty() {
+        // Bootstrap loop bounds without evaluating vectors that may use generated defines.
+        if main_content.contains("<loop") {
+            let bootstrap_defines = DefineSection {
+                constants: doc.defines.constants.clone(),
+                quantities: doc.defines.quantities.clone(),
+                variables: doc.defines.variables.clone(),
+                expressions: doc.defines.expressions.clone(),
+                ..DefineSection::default()
+            };
+            engine
+                .evaluate_all(&bootstrap_defines)
+                .map_err(|e| ApiError::bad_request(&format!("Expression evaluation error: {e}")))?;
+        }
+        // Expand <loop> for the preview. The parsed `doc` keeps its loops
+        // verbatim so the export stays faithful; geometry is built from the twin.
+        build_render_document(main_content, &main_file, &engine, &mut loop_warnings)
+    } else {
+        // Loops are not expanded for a multi-file load. Each file is parsed
+        // separately and then merged, so there is no single XML document to
+        // expand, and a loop's bounds may reference defines that only exist
+        // after the merge. Rather than expand each file against a partial
+        // symbol table and be wrong in the cross-file case, say so and render
+        // unexpanded.
+        let loop_files: Vec<&str> = files
+            .iter()
+            .filter(|(_, c)| c.contains("<loop"))
+            .map(|(n, _)| n.as_str())
+            .collect();
+        if !loop_files.is_empty() {
+            loop_warnings.push(format!(
+                "<loop> is not expanded for multi-file loads ({}); those placements are              missing from the preview. The saved file is unaffected.",
+                loop_files.join(", ")
+            ));
+        }
+        None
+    };
     let geometry = render.as_ref().unwrap_or(&doc);
     // Rebuild the final context from the document actually used for geometry.
     engine
@@ -449,7 +501,7 @@ pub async fn upload_file(
         .map_err(|e| ApiError::bad_request(&format!("Expression evaluation error: {e}")))?;
 
     // Tessellate solids
-    let segments = req.segments.unwrap_or_else(config::mesh_segments);
+    let segments = segments.unwrap_or_else(config::mesh_segments);
     let (meshes, mut warnings) =
         tessellator::tessellate_all_solids(&geometry.solids, &engine, segments)
             .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
@@ -460,9 +512,22 @@ pub async fn upload_file(
     if doc.setup.world_ref.is_empty() {
         warnings.push("No world volume reference found (<setup>/<world> missing or empty); the geometry may not display.".to_string());
     }
-    warnings.extend(extra_warnings);
+    warnings.extend(merge_warnings);
 
-    let summary = json!({
+    Ok(LoadedDocument {
+        document: doc,
+        render,
+        engine,
+        meshes,
+        warnings,
+        file_path: main_file,
+    })
+}
+
+/// The counts the toolbar shows, and the load warnings.
+fn summary_json(loaded: &LoadedDocument) -> Value {
+    let doc = &loaded.document;
+    json!({
         "filename": doc.filename,
         "defines_count": doc.defines.constants.len() + doc.defines.quantities.len()
             + doc.defines.variables.len() + doc.defines.expressions.len(),
@@ -472,129 +537,23 @@ pub async fn upload_file(
         "elements_count": doc.materials.elements.len(),
         "solids_count": doc.solids.solids.len(),
         "volumes_count": doc.structure.volumes.len(),
-        "meshes_count": meshes.len(),
+        "meshes_count": placed_meshes(loaded).len(),
         "world_ref": doc.setup.world_ref,
-        "warnings": warnings,
-    });
-
-    let mut state_w = state.write().await;
-    state_w.loaded = Some(LoadedDocument {
-        document: doc,
-        render,
-        engine,
-        meshes,
-        warnings,
-        file_path: req.filename,
-    });
-
-    Ok(Json(summary))
+        "warnings": loaded.warnings,
+    })
 }
 
-pub async fn upload_files(
-    State(state): State<SharedState>,
-    Json(req): Json<UploadFilesRequest>,
-) -> Result<Json<Value>, ApiError> {
-    if !req.main_file.ends_with(".gdml") {
-        return Err(ApiError::bad_request("Only .gdml files are supported"));
-    }
-
-    let main_content = req
-        .files
-        .get(&req.main_file)
-        .ok_or_else(|| ApiError::bad_request("Main file not found in uploaded files"))?;
-
-    // Parse the main file
-    let mut main_doc =
-        parser::parse_gdml_from_bytes(main_content.as_bytes(), req.main_file.clone()).map_err(
-            |e| ApiError::bad_request(&format!("Parse error in {}: {}", req.main_file, e)),
-        )?;
-
-    // Parse all other files into a lookup map
-    let mut child_docs: HashMap<String, GdmlDocument> = HashMap::new();
-    for (name, content) in &req.files {
-        if name != &req.main_file {
-            match parser::parse_gdml_from_bytes(content.as_bytes(), name.clone()) {
-                Ok(doc) => {
-                    child_docs.insert(name.clone(), doc);
-                }
-                Err(e) => {
-                    return Err(ApiError::bad_request(&format!(
-                        "Parse error in {}: {}",
-                        name, e
-                    )));
-                }
-            }
-        }
-    }
-
-    // Resolve file references: merge child documents into main (including nested refs)
-    let merge_warnings = resolve_all_file_refs(&mut main_doc, &child_docs);
-
-    // Evaluate expressions on the merged document
-    let mut engine = EvalEngine::new();
-    engine
-        .evaluate_all(&main_doc.defines)
-        .map_err(|e| ApiError::internal(&format!("Expression evaluation error: {}", e)))?;
-
-    // Loops are not expanded for a multi-file load. Each file is parsed
-    // separately and then merged, so there is no single XML document to expand,
-    // and a loop's bounds may reference defines that only exist after the
-    // merge. Rather than expand each file against a partial symbol table and be
-    // wrong in the cross-file case, say so and render unexpanded.
-    let loop_files: Vec<&str> = req
-        .files
+/// The meshes volumes draw. The client looks up `meshes[node.solid_name]`
+/// only, so boolean operands and unplaced solids are neither sent nor counted.
+fn placed_meshes(loaded: &LoadedDocument) -> HashMap<&str, &TriangleMesh> {
+    loaded
+        .geometry()
+        .structure
+        .volumes
         .iter()
-        .filter(|(_, c)| c.contains("<loop"))
-        .map(|(n, _)| n.as_str())
-        .collect();
-    let mut loop_warnings = Vec::new();
-    if !loop_files.is_empty() {
-        loop_warnings.push(format!(
-            "<loop> is not expanded for multi-file loads ({}); those placements are              missing from the preview. The saved file is unaffected.",
-            loop_files.join(", ")
-        ));
-    }
-
-    // Tessellate solids
-    let segments = req.segments.unwrap_or_else(config::mesh_segments);
-    let (meshes, mut warnings) =
-        tessellator::tessellate_all_solids(&main_doc.solids, &engine, segments)
-            .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
-    warnings.append(&mut loop_warnings);
-    // Surface non-fatal expression-evaluation failures (treated as 0) to the user.
-    warnings.extend(engine.take_warnings());
-    warnings.extend(raw_unknown_warnings(&main_doc));
-    if main_doc.setup.world_ref.is_empty() {
-        warnings.push("No world volume reference found (<setup>/<world> missing or empty); the geometry may not display.".to_string());
-    }
-    warnings.extend(merge_warnings);
-
-    let summary = json!({
-        "filename": main_doc.filename,
-        "defines_count": main_doc.defines.constants.len() + main_doc.defines.quantities.len()
-            + main_doc.defines.variables.len() + main_doc.defines.expressions.len(),
-        "positions_count": main_doc.defines.positions.len(),
-        "rotations_count": main_doc.defines.rotations.len(),
-        "materials_count": main_doc.materials.materials.len(),
-        "elements_count": main_doc.materials.elements.len(),
-        "solids_count": main_doc.solids.solids.len(),
-        "volumes_count": main_doc.structure.volumes.len(),
-        "meshes_count": meshes.len(),
-        "world_ref": main_doc.setup.world_ref,
-        "warnings": warnings,
-    });
-
-    let mut state_w = state.write().await;
-    state_w.loaded = Some(LoadedDocument {
-        document: main_doc,
-        render: None,
-        engine,
-        meshes,
-        warnings,
-        file_path: req.main_file,
-    });
-
-    Ok(Json(summary))
+        .filter_map(|v| loaded.meshes.get_key_value(&v.solid_ref))
+        .map(|(name, mesh)| (name.as_str(), mesh))
+        .collect()
 }
 
 pub async fn get_summary(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
@@ -603,22 +562,25 @@ pub async fn get_summary(State(state): State<SharedState>) -> Result<Json<Value>
         .loaded
         .as_ref()
         .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    Ok(Json(summary_json(loaded)))
+}
 
-    let doc = &loaded.document;
-    Ok(Json(json!({
-        "filename": doc.filename,
-        "defines_count": doc.defines.constants.len() + doc.defines.quantities.len()
-            + doc.defines.variables.len() + doc.defines.expressions.len(),
-        "positions_count": doc.defines.positions.len(),
-        "rotations_count": doc.defines.rotations.len(),
-        "materials_count": doc.materials.materials.len(),
-        "elements_count": doc.materials.elements.len(),
-        "solids_count": doc.solids.solids.len(),
-        "volumes_count": doc.structure.volumes.len(),
-        "meshes_count": loaded.meshes.len(),
-        "world_ref": doc.setup.world_ref,
-        "warnings": loaded.warnings,
-    })))
+/// Run `f` on the loaded document on a blocking thread. Building a large scene
+/// and serialising megabytes of vertices would otherwise stall an async worker.
+async fn with_loaded<T: Send + 'static>(
+    state: SharedState,
+    f: impl FnOnce(&LoadedDocument) -> T + Send + 'static,
+) -> Result<T, ApiError> {
+    let state_r = state.read_owned().await;
+    tokio::task::spawn_blocking(move || {
+        let loaded = state_r
+            .loaded
+            .as_ref()
+            .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+        Ok(f(loaded))
+    })
+    .await
+    .map_err(|e| ApiError::internal(&format!("Request failed: {e}")))?
 }
 
 /// Scene graph without the mesh buffers.
@@ -630,67 +592,50 @@ pub async fn get_summary(State(state): State<SharedState>) -> Result<Json<Value>
 /// sample) and, on the client, from rebuilding every BufferGeometry and
 /// re-uploading the whole scene to the GPU.
 pub async fn get_scene(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
-    let state_r = state.read().await;
-    let loaded = state_r
-        .loaded
-        .as_ref()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
-
-    let mut scene_warnings = Vec::new();
-    let scene_graph = build_scene_graph(
-        loaded.geometry(),
-        &loaded.document.materials,
-        &loaded.engine,
-        &mut scene_warnings,
-    );
-
-    Ok(Json(json!({
-        "scene_graph": scene_graph,
-        "warnings": scene_warnings,
-    })))
+    with_loaded(state, |loaded| {
+        let mut scene_warnings = Vec::new();
+        let scene_graph = build_scene_graph(
+            loaded.geometry(),
+            &loaded.document.materials,
+            &loaded.engine,
+            &mut scene_warnings,
+        );
+        Json(json!({
+            "scene_graph": scene_graph,
+            "warnings": scene_warnings,
+        }))
+    })
+    .await
 }
 
 pub async fn get_meshes(State(state): State<SharedState>) -> Result<Response, ApiError> {
-    let state_r = state.read().await;
-    let loaded = state_r
-        .loaded
-        .as_ref()
-        .ok_or_else(|| ApiError::not_found("No document loaded"))?;
+    with_loaded(state, |loaded| {
+        let mut scene_warnings = Vec::new();
+        let scene_graph = build_scene_graph(
+            loaded.geometry(),
+            &loaded.document.materials,
+            &loaded.engine,
+            &mut scene_warnings,
+        );
 
-    let doc = &loaded.document;
-    let geometry = loaded.geometry();
-    let engine = &loaded.engine;
-
-    // Build scene graph from the world volume
-    let mut scene_warnings = Vec::new();
-    let scene_graph = build_scene_graph(geometry, &doc.materials, engine, &mut scene_warnings);
-
-    // The client draws `meshes[node.solid_name]` only, so boolean operands and
-    // unplaced solids stay here. The buffers are serialised by reference straight
-    // into the response: a serde_json::Value tree cost one 32-byte Value per
-    // number and widened every f32 to f64 (12.34f32 came out as
-    // 12.340000152587891). Peak on the largest sample was ~50 MB for 3.7 MB of
-    // vertex data.
-    #[derive(Serialize)]
-    struct MeshesResponse<'a> {
-        meshes: HashMap<&'a str, &'a TriangleMesh>,
-        scene_graph: SceneNode,
-        warnings: Vec<String>,
-    }
-    let meshes = geometry
-        .structure
-        .volumes
-        .iter()
-        .filter_map(|v| loaded.meshes.get_key_value(&v.solid_ref))
-        .map(|(name, mesh)| (name.as_str(), mesh))
-        .collect();
-
-    Ok(Json(MeshesResponse {
-        meshes,
-        scene_graph,
-        warnings: scene_warnings,
+        // The buffers are serialised by reference straight into the response:
+        // a serde_json::Value tree cost one 32-byte Value per number and widened
+        // every f32 to f64 (12.34f32 came out as 12.340000152587891). Peak on
+        // the largest sample was ~50 MB for 3.7 MB of vertex data.
+        #[derive(Serialize)]
+        struct MeshesResponse<'a> {
+            meshes: HashMap<&'a str, &'a TriangleMesh>,
+            scene_graph: SceneNode,
+            warnings: Vec<String>,
+        }
+        Json(MeshesResponse {
+            meshes: placed_meshes(loaded),
+            scene_graph,
+            warnings: scene_warnings,
+        })
+        .into_response()
     })
-    .into_response())
+    .await
 }
 
 pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
