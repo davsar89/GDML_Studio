@@ -722,10 +722,12 @@ pub async fn get_defines(State(state): State<SharedState>) -> Result<Json<Value>
         });
     }
     for q in &doc.defines.quantities {
+        // Shown next to its unit, so in that unit rather than in mm or rad.
+        let factor = q.unit.as_deref().and_then(crate::gdml::units::unit_factor);
         defines.push(DefineValue {
             name: q.name.clone(),
             expression: q.value.clone(),
-            evaluated: engine.get(&q.name),
+            evaluated: engine.get(&q.name).map(|v| v / factor.unwrap_or(1.0)),
             unit: q.unit.clone(),
             kind: "quantity".to_string(),
         });

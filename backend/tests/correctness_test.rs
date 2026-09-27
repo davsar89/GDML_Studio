@@ -1235,3 +1235,31 @@ async fn material_without_composition_is_rejected() {
     assert_eq!(material_names(&saved), ["M", "N"]);
     assert!(saved.contains(r#"<material name="M" Z="1">"#), "{saved}");
 }
+
+#[tokio::test]
+async fn quantity_is_listed_in_its_declared_unit() {
+    // The Defines tab prints `evaluated` next to the declared unit, so a
+    // quantity of 10 cm has to come back as 10, not the 100 mm used inside.
+    let state = load(&document(
+        r#"<quantity name="q" value="10" unit="cm"/><quantity name="qa" value="90" unit="deg"/>"#,
+        r#"<box name="B" x="q" y="1" z="1"/>"#,
+        "",
+    ))
+    .await;
+    let defines = get_defines(State(state)).await.unwrap().0;
+    let evaluated = |name: &str| {
+        defines["defines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["name"] == name)
+            .and_then(|d| d["evaluated"].as_f64())
+            .unwrap()
+    };
+    assert_eq!(evaluated("q"), 10.0);
+    assert!(
+        (evaluated("qa") - 90.0).abs() < 1e-12,
+        "{}",
+        evaluated("qa")
+    );
+}
