@@ -29,31 +29,19 @@ pub fn tessellate_all_solids(
     // Build a name -> Solid lookup for boolean solid resolution
     let solid_map: HashMap<&str, &Solid> = solids.solids.iter().map(|s| (s.name(), s)).collect();
 
-    // Phase 1: Tessellate all primitive solids
-    for solid in &solids.solids {
-        let name = solid.name().to_string();
-        match solid {
-            Solid::Boolean(_) | Solid::Scaled(_) | Solid::Reflected(_) | Solid::MultiUnion(_) => {} // skip for phase 2
-            _ => match tessellate_primitive(solid, engine, segments) {
-                Ok(mesh) => {
-                    meshes.insert(name, mesh);
-                }
-                Err(e) => {
-                    let msg = format!("Failed to tessellate solid '{}': {}", name, e);
-                    tracing::warn!("{}", msg);
-                    warnings.push(msg);
-                }
-            },
-        }
-    }
-
-    // Composite roots and nested operands use the same dispatch. Keep the
-    // primitive pass so large standalone meshes enter the cache without a copy.
-    for solid in &solids.solids {
-        if !matches!(
-            solid,
+    // Primitives first, so large standalone meshes enter the cache without a
+    // copy; composites then resolve their operands through that same cache.
+    let composite = |s: &Solid| {
+        matches!(
+            s,
             Solid::Boolean(_) | Solid::Scaled(_) | Solid::Reflected(_) | Solid::MultiUnion(_)
-        ) {
+        )
+    };
+    let (composites, primitives): (Vec<&Solid>, Vec<&Solid>) =
+        solids.solids.iter().partition(|s| composite(s));
+    for solid in primitives.into_iter().chain(composites) {
+        // Already built as an earlier composite's operand.
+        if composite(solid) && meshes.contains_key(solid.name()) {
             continue;
         }
         match tessellate_solid(
@@ -107,10 +95,9 @@ fn tessellate_primitive(solid: &Solid, engine: &EvalEngine, segments: u32) -> Re
         Solid::TwistedBox(s) => tessellate_twisted_box_solid(s, engine, segments),
         Solid::TwistedTrap(s) => tessellate_twisted_trap_solid(s, engine, segments),
         Solid::TwistedTrd(s) => tessellate_twisted_trd_solid(s, engine, segments),
-        Solid::Scaled(_) => Err(anyhow::anyhow!("Scaled solids resolved in phase 2")),
-        Solid::Reflected(_) => Err(anyhow::anyhow!("Reflected solids resolved in phase 2")),
-        Solid::MultiUnion(_) => Err(anyhow::anyhow!("MultiUnion solids resolved in phase 2")),
-        Solid::Boolean(_) => Err(anyhow::anyhow!("Boolean solids resolved in phase 2")),
+        Solid::Boolean(_) | Solid::Scaled(_) | Solid::Reflected(_) | Solid::MultiUnion(_) => {
+            unreachable!("tessellate_solid builds composites")
+        }
     }?;
     // The meshers return nothing for parameters Geant4 rejects (zero or
     // inverted extents, crossed cuts). Report it here, once, instead of
@@ -120,57 +107,6 @@ fn tessellate_primitive(solid: &Solid, engine: &EvalEngine, segments: u32) -> Re
         "its parameters describe no volume, which Geant4 rejects"
     );
     Ok(mesh)
-}
-
-fn tessellate_scaled_solid(
-    ss: &ScaledSolidDef,
-    solid_map: &HashMap<&str, &Solid>,
-    meshes: &mut HashMap<String, TriangleMesh>,
-    engine: &EvalEngine,
-    segments: u32,
-    resolving: &mut HashSet<String>,
-) -> Result<TriangleMesh> {
-    if let Some(mesh) = meshes.get(&ss.name) {
-        return Ok(mesh.clone());
-    }
-
-    if !resolving.insert(ss.name.clone()) {
-        return Err(anyhow::anyhow!(
-            "Cyclic scaled solid dependency detected at '{}'",
-            ss.name
-        ));
-    }
-
-    let result = (|| -> Result<TriangleMesh> {
-        let inner_mesh = resolve_operand(
-            &ss.solid_ref,
-            solid_map,
-            meshes,
-            engine,
-            segments,
-            resolving,
-        )?;
-
-        // A <scaleref> resolves against the named <scale> defines. Without this
-        // the reference fell through to the (1,1,1) defaults and the solid
-        // rendered unscaled, with nothing to indicate it.
-        let [sx, sy, sz] = match &ss.scale_ref {
-            Some(name) => *engine
-                .scale_values
-                .get(name)
-                .ok_or_else(|| anyhow::anyhow!("Undefined scale '{name}'"))?,
-            None => [
-                resolve(engine, &ss.scale_x),
-                resolve(engine, &ss.scale_y),
-                resolve(engine, &ss.scale_z),
-            ],
-        };
-
-        Ok(scale_mesh(&inner_mesh, sx, sy, sz))
-    })();
-
-    resolving.remove(&ss.name);
-    result
 }
 
 fn scale_mesh(mesh: &TriangleMesh, sx: f64, sy: f64, sz: f64) -> TriangleMesh {
@@ -225,181 +161,13 @@ fn scale_mesh(mesh: &TriangleMesh, sx: f64, sy: f64, sz: f64) -> TriangleMesh {
     }
 }
 
-fn tessellate_multiunion_solid(
-    mu: &MultiUnionSolid,
-    solid_map: &HashMap<&str, &Solid>,
-    meshes: &mut HashMap<String, TriangleMesh>,
-    engine: &EvalEngine,
-    segments: u32,
-    resolving: &mut HashSet<String>,
-) -> Result<TriangleMesh> {
-    if let Some(mesh) = meshes.get(&mu.name) {
-        return Ok(mesh.clone());
-    }
-
-    if !resolving.insert(mu.name.clone()) {
-        return Err(anyhow::anyhow!(
-            "Cyclic multiUnion dependency detected at '{}'",
-            mu.name
-        ));
-    }
-
-    let result = (|| -> Result<TriangleMesh> {
-        if mu.nodes.is_empty() {
-            return Err(anyhow::anyhow!("MultiUnion '{}' has no nodes", mu.name));
-        }
-
-        // Resolve and transform first node
-        let first = &mu.nodes[0];
-        let mut result_mesh = resolve_operand(
-            &first.solid_ref,
-            solid_map,
-            meshes,
-            engine,
-            segments,
-            resolving,
-        )?;
-        result_mesh =
-            apply_placement_transform(&result_mesh, &first.position, &first.rotation, engine)?;
-
-        // Iteratively union remaining nodes
-        for node in &mu.nodes[1..] {
-            let node_mesh = resolve_operand(
-                &node.solid_ref,
-                solid_map,
-                meshes,
-                engine,
-                segments,
-                resolving,
-            )?;
-            let node_mesh =
-                apply_placement_transform(&node_mesh, &node.position, &node.rotation, engine)?;
-            result_mesh = csg::boolean(&result_mesh, &node_mesh, &BooleanOp::Union);
-        }
-
-        Ok(result_mesh)
-    })();
-
-    resolving.remove(&mu.name);
-    result
-}
-
-fn tessellate_reflected_solid(
-    rs: &ReflectedSolidDef,
-    solid_map: &HashMap<&str, &Solid>,
-    meshes: &mut HashMap<String, TriangleMesh>,
-    engine: &EvalEngine,
-    segments: u32,
-    resolving: &mut HashSet<String>,
-) -> Result<TriangleMesh> {
-    if let Some(mesh) = meshes.get(&rs.name) {
-        return Ok(mesh.clone());
-    }
-
-    if !resolving.insert(rs.name.clone()) {
-        return Err(anyhow::anyhow!(
-            "Cyclic reflected solid dependency detected at '{}'",
-            rs.name
-        ));
-    }
-
-    let result = (|| -> Result<TriangleMesh> {
-        let inner_mesh = resolve_operand(
-            &rs.solid_ref,
-            solid_map,
-            meshes,
-            engine,
-            segments,
-            resolving,
-        )?;
-
-        let sx = resolve(engine, &rs.sx);
-        let sy = resolve(engine, &rs.sy);
-        let sz = resolve(engine, &rs.sz);
-
-        let lunit = rs.lunit.as_deref().unwrap_or("mm");
-        let aunit = rs.aunit.as_deref().unwrap_or("rad");
-
-        let dx = resolve_with_lunit(engine, &rs.dx, lunit);
-        let dy = resolve_with_lunit(engine, &rs.dy, lunit);
-        let dz = resolve_with_lunit(engine, &rs.dz, lunit);
-
-        let rx = resolve_with_aunit(engine, &rs.rx, aunit);
-        let ry = resolve_with_aunit(engine, &rs.ry, aunit);
-        let rz = resolve_with_aunit(engine, &rs.rz, aunit);
-
-        // Apply scale (with reflection via negative values)
-        let scaled = scale_mesh(&inner_mesh, sx, sy, sz);
-        // Apply rotation + translation
-        Ok(csg::transform_mesh(&scaled, [dx, dy, dz], [rx, ry, rz]))
-    })();
-
-    resolving.remove(&rs.name);
-    result
-}
-
-fn tessellate_boolean_solid(
-    bs: &BooleanSolid,
-    solid_map: &HashMap<&str, &Solid>,
-    meshes: &mut HashMap<String, TriangleMesh>,
-    engine: &EvalEngine,
-    segments: u32,
-    resolving: &mut HashSet<String>,
-) -> Result<TriangleMesh> {
-    if let Some(mesh) = meshes.get(&bs.name) {
-        return Ok(mesh.clone());
-    }
-
-    if !resolving.insert(bs.name.clone()) {
-        return Err(anyhow::anyhow!(
-            "Cyclic boolean solid dependency detected at '{}'",
-            bs.name
-        ));
-    }
-
-    let result = (|| -> Result<TriangleMesh> {
-        // Resolve first operand (may itself be a boolean)
-        let first_mesh = resolve_operand(
-            &bs.first_ref,
-            solid_map,
-            meshes,
-            engine,
-            segments,
-            resolving,
-        )?;
-
-        // Resolve second operand
-        let second_mesh = resolve_operand(
-            &bs.second_ref,
-            solid_map,
-            meshes,
-            engine,
-            segments,
-            resolving,
-        )?;
-
-        // Apply first solid transform if specified
-        let first_mesh =
-            apply_placement_transform(&first_mesh, &bs.first_position, &bs.first_rotation, engine)?;
-
-        // Apply second solid transform (position/rotation of second relative to first)
-        let second_mesh =
-            apply_placement_transform(&second_mesh, &bs.position, &bs.rotation, engine)?;
-
-        Ok(csg::boolean(&first_mesh, &second_mesh, &bs.operation))
-    })();
-
-    resolving.remove(&bs.name);
-    result
-}
-
 fn resolve_operand(
     name: &str,
     solid_map: &HashMap<&str, &Solid>,
     meshes: &mut HashMap<String, TriangleMesh>,
     engine: &EvalEngine,
     segments: u32,
-    resolving: &mut HashSet<String>,
+    seen: &mut HashSet<String>,
 ) -> Result<TriangleMesh> {
     // Check if already tessellated
     if let Some(mesh) = meshes.get(name) {
@@ -411,31 +179,90 @@ fn resolve_operand(
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Boolean operand '{}' not found", name))?;
 
-    let mesh = tessellate_solid(solid, solid_map, meshes, engine, segments, resolving)?;
+    let mesh = tessellate_solid(solid, solid_map, meshes, engine, segments, seen)?;
     meshes.insert(name.to_string(), mesh.clone());
     Ok(mesh)
 }
 
+/// Tessellate one solid. A composite resolves its operands through `meshes`,
+/// so each is built once however many solids use it. `seen` holds every solid
+/// entered for the current root: operands are cached as they complete, so
+/// entering one again uncached means a cycle.
 fn tessellate_solid(
     solid: &Solid,
     solid_map: &HashMap<&str, &Solid>,
     meshes: &mut HashMap<String, TriangleMesh>,
     engine: &EvalEngine,
     segments: u32,
-    resolving: &mut HashSet<String>,
+    seen: &mut HashSet<String>,
 ) -> Result<TriangleMesh> {
+    let name = solid.name();
+    anyhow::ensure!(
+        seen.insert(name.to_string()),
+        "Cyclic solid dependency detected at '{name}'"
+    );
+    let mut operand = |r: &str| resolve_operand(r, solid_map, meshes, engine, segments, seen);
     match solid {
-        Solid::Boolean(s) => {
-            tessellate_boolean_solid(s, solid_map, meshes, engine, segments, resolving)
+        Solid::Boolean(bs) => {
+            let first = operand(&bs.first_ref)?;
+            let second = operand(&bs.second_ref)?;
+            let first =
+                apply_placement_transform(&first, &bs.first_position, &bs.first_rotation, engine)?;
+            // The second solid is placed relative to the first.
+            let second = apply_placement_transform(&second, &bs.position, &bs.rotation, engine)?;
+            Ok(csg::boolean(&first, &second, &bs.operation))
         }
-        Solid::Scaled(s) => {
-            tessellate_scaled_solid(s, solid_map, meshes, engine, segments, resolving)
+        Solid::Scaled(ss) => {
+            let inner = operand(&ss.solid_ref)?;
+            // A <scaleref> resolves against the named <scale> defines. Without this
+            // the reference fell through to the (1,1,1) defaults and the solid
+            // rendered unscaled, with nothing to indicate it.
+            let [sx, sy, sz] = match &ss.scale_ref {
+                Some(name) => *engine
+                    .scale_values
+                    .get(name)
+                    .ok_or_else(|| anyhow::anyhow!("Undefined scale '{name}'"))?,
+                None => [
+                    resolve(engine, &ss.scale_x),
+                    resolve(engine, &ss.scale_y),
+                    resolve(engine, &ss.scale_z),
+                ],
+            };
+            Ok(scale_mesh(&inner, sx, sy, sz))
         }
-        Solid::Reflected(s) => {
-            tessellate_reflected_solid(s, solid_map, meshes, engine, segments, resolving)
+        Solid::Reflected(rs) => {
+            let inner = operand(&rs.solid_ref)?;
+            let sx = resolve(engine, &rs.sx);
+            let sy = resolve(engine, &rs.sy);
+            let sz = resolve(engine, &rs.sz);
+
+            let lunit = rs.lunit.as_deref().unwrap_or("mm");
+            let aunit = rs.aunit.as_deref().unwrap_or("rad");
+
+            let dx = resolve_with_lunit(engine, &rs.dx, lunit);
+            let dy = resolve_with_lunit(engine, &rs.dy, lunit);
+            let dz = resolve_with_lunit(engine, &rs.dz, lunit);
+
+            let rx = resolve_with_aunit(engine, &rs.rx, aunit);
+            let ry = resolve_with_aunit(engine, &rs.ry, aunit);
+            let rz = resolve_with_aunit(engine, &rs.rz, aunit);
+
+            // Apply scale (with reflection via negative values)
+            let scaled = scale_mesh(&inner, sx, sy, sz);
+            // Apply rotation + translation
+            Ok(csg::transform_mesh(&scaled, [dx, dy, dz], [rx, ry, rz]))
         }
-        Solid::MultiUnion(s) => {
-            tessellate_multiunion_solid(s, solid_map, meshes, engine, segments, resolving)
+        Solid::MultiUnion(mu) => {
+            let mut nodes = mu.nodes.iter().map(|node| {
+                let mesh = operand(&node.solid_ref)?;
+                apply_placement_transform(&mesh, &node.position, &node.rotation, engine)
+            });
+            let first = nodes
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("MultiUnion '{}' has no nodes", mu.name))??;
+            nodes.try_fold(first, |union, node| {
+                Ok(csg::boolean(&union, &node?, &BooleanOp::Union))
+            })
         }
         _ => tessellate_primitive(solid, engine, segments),
     }
@@ -1276,6 +1103,6 @@ mod tests {
         let (_meshes, warnings) = tessellate_all_solids(&solids, &engine, 24).unwrap();
         assert!(warnings
             .iter()
-            .any(|w| w.contains("Cyclic boolean solid dependency detected")));
+            .any(|w| w.contains("Cyclic solid dependency detected")));
     }
 }
