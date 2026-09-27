@@ -1065,17 +1065,16 @@ fn tessellate_paraboloid_solid(
     let rhi = resolve_with_lunit(engine, &s.rhi, lunit);
     let dz = resolve_with_lunit(engine, &s.dz, lunit);
     // G4Paraboloid refuses dz <= 0, rlo < 0 and rhi <= rlo. The wall is
-    // r^2 = k1 z + k2 through rlo at -dz and rhi at +dz.
+    // r^2 = k1 z + k2, linear from rlo^2 at -dz to rhi^2 at +dz; written in t
+    // so that an apex (rlo = 0) is exactly on the axis.
     if dz <= 0.0 || rlo < 0.0 || rhi <= rlo {
         return Ok(TriangleMesh::default());
     }
-    let (k1, k2) = (
-        (rhi * rhi - rlo * rlo) / (2.0 * dz),
-        (rhi * rhi + rlo * rlo) / 2.0,
-    );
     let wall = curve((segments / 2).max(2), |t| {
-        let z = dz * (2.0 * t - 1.0);
-        ((k1 * z + k2).max(0.0).sqrt(), z)
+        (
+            (rlo * rlo + (rhi * rhi - rlo * rlo) * t).sqrt(),
+            dz * (2.0 * t - 1.0),
+        )
     });
     let outline = std::iter::once(corner((0.0, -dz)))
         .chain(wall)

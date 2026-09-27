@@ -424,6 +424,61 @@ fn revolved_and_elliptical_solids_match_geant4() {
 }
 
 #[test]
+fn a_curve_ending_on_the_axis_shades_smooth_there() {
+    // A sphere, ellipsoid or paraboloid crosses the axis square, so at its
+    // pole the one normal is along the axis; the first chord's normal there
+    // drew a pinched star (26 deg at a paraboloid apex). A cone's apex, and
+    // hype's double cone at z = 0, are true points and keep their edge normals.
+    for (xml, z, axial) in [
+        (r#"<orb name="S" r="10"/>"#, 10.0, true),
+        (r#"<orb name="S" r="10"/>"#, -10.0, true),
+        (
+            r#"<ellipsoid name="S" ax="5" by="8" cz="10"/>"#,
+            -10.0,
+            true,
+        ),
+        (
+            r#"<paraboloid name="S" rlo="0" rhi="7" dz="3"/>"#,
+            -3.0,
+            true,
+        ),
+        (
+            r#"<sphere name="S" rmax="50" deltatheta="45" aunit="deg"/>"#,
+            50.0,
+            true,
+        ),
+        (
+            r#"<sphere name="S" rmax="50" deltatheta="45" aunit="deg"/>"#,
+            0.0,
+            false,
+        ),
+        (
+            r#"<cone name="S" rmax1="10" rmax2="0" z="20"/>"#,
+            10.0,
+            false,
+        ),
+        (
+            r#"<hype name="S" rmax="6" inst="0.3" outst="0.6" z="40"/>"#,
+            0.0,
+            false,
+        ),
+    ] {
+        let m = solid(xml).0.unwrap();
+        let on_axis: Vec<bool> = (0..m.positions.len() / 3)
+            .filter(|&i| {
+                let p = &m.positions[i * 3..i * 3 + 3];
+                p[0].hypot(p[1]) < 1e-6 && (p[2] as f64 - z).abs() < 1e-4
+            })
+            .map(|i| m.normals[i * 3 + 2].abs() > 0.9999)
+            .collect();
+        assert!(
+            !on_axis.is_empty() && on_axis.iter().all(|&a| a == axial),
+            "{xml} at z = {z}: normal along the axis {on_axis:?}, want {axial}"
+        );
+    }
+}
+
+#[test]
 fn parameters_geant4_rejects_are_reported() {
     for xml in [
         // G4Tubs: rmin >= rmax.

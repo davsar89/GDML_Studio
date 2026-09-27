@@ -18,8 +18,8 @@ pub fn curve(n: u32, f: impl Fn(f64) -> (f64, f64)) -> impl Iterator<Item = (f64
 ///
 /// Each point is `(r, z, smooth)`. `smooth` marks a sample inside a curve
 /// (`curve`), where the two edges meeting there share the mean of their
-/// normals, so a sphere or a hyperboloid shades round instead of banded; any
-/// other point is a crease.
+/// normals, so a sphere or a hyperboloid shades round instead of banded, as
+/// does a curve's end on the axis (a pole); any other point is a crease.
 ///
 /// The outline is a **closed polygon** in the (r,z) half-plane, not a list of
 /// z-planes: `G4Polycone`'s generic constructor calls `Area()`,
@@ -70,13 +70,22 @@ pub fn tessellate_generic_polycone(
             (ri > 0.0 || rj > 0.0).then(|| ((zj - zi) / len, (ri - rj) / len))
         })
         .collect();
-    // The shared normal at a smooth point, off the axis.
+    // The shared normal at a smooth point. A curve that ends on the axis (a
+    // sphere or ellipsoid pole, a paraboloid apex) crosses it square, so its
+    // one normal there is along the axis. A cone's apex, between straight
+    // edges, and a curve pinched onto the axis (hype's double cone) stay points.
     let point_n: Vec<Option<(f64, f64)>> = (0..n_pts)
         .map(|i| {
-            let (a, b) = (edge_n[(i + n_pts - 1) % n_pts]?, edge_n[i]?);
-            let len = (a.0 + b.0).hypot(a.1 + b.1);
-            (pts[i].2 && pts[i].0 > 0.0 && len > 1e-12)
-                .then(|| ((a.0 + b.0) / len, (a.1 + b.1) / len))
+            let (h, j) = ((i + n_pts - 1) % n_pts, (i + 1) % n_pts);
+            match (edge_n[h], edge_n[i]) {
+                (Some(a), Some(b)) if pts[i].2 && pts[i].0 > 0.0 => {
+                    let len = (a.0 + b.0).hypot(a.1 + b.1);
+                    (len > 1e-12).then(|| ((a.0 + b.0) / len, (a.1 + b.1) / len))
+                }
+                (Some((_, nz)), None) if pts[h].2 => Some((0.0, nz.signum())),
+                (None, Some((_, nz))) if pts[j].2 => Some((0.0, nz.signum())),
+                _ => None,
+            }
         })
         .collect();
 
@@ -119,8 +128,8 @@ pub fn tessellate_generic_polycone(
             continue;
         }
         // Smooth revolution: a ring of vertices per end, shared with the next
-        // band where the outline is smooth. The centre of a flat face on the
-        // axis has one normal at every phi, so it is one vertex (stride 0).
+        // band where the outline is smooth. A point on the axis with its normal
+        // along it (a pole, the centre of a flat face) is one vertex (stride 0).
         let mut ring = |p: usize| {
             let mut push = |(nr, nz): (f64, f64)| {
                 let one = pts[p].0 == 0.0 && nr == 0.0;
