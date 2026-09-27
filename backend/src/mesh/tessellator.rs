@@ -4,8 +4,8 @@ use std::f64::consts::PI;
 
 use super::csg;
 use super::primitives::{
-    arb8_mesh, cut_tube_mesh, elcone_mesh, ellipsoid_mesh, eltube_mesh, face_normal,
-    generic_polycone_mesh, torus_mesh, twisted_trap_mesh, twisted_tubs_mesh, xtru_mesh,
+    arb8_mesh, cut_tube_mesh, face_normal, generic_polycone_mesh, torus_mesh, twisted_trap_mesh,
+    twisted_tubs_mesh, xtru_mesh,
 };
 use super::types::TriangleMesh;
 use crate::eval::engine::EvalEngine;
@@ -877,17 +877,39 @@ fn tessellate_ellipsoid_solid(
     let cz = resolve_with_lunit(engine, &s.cz, lunit);
     // A missing cut is 0 (G4GDMLReadSolids.cc:472-473), and two zero cuts
     // mean uncut (G4Ellipsoid.cc:191); otherwise each cut is clamped into
-    // [-cz, cz] (l.207-208), which the mesher does.
+    // [-cz, cz] (l.207-208), and crossed cuts are refused (l.196).
     let zcut1 = resolve_opt_with_lunit(engine, &s.zcut1, lunit);
     let zcut2 = resolve_opt_with_lunit(engine, &s.zcut2, lunit);
     let (zcut1, zcut2) = if zcut1 == 0.0 && zcut2 == 0.0 {
         (-cz, cz)
     } else {
-        (zcut1, zcut2)
+        (zcut1.max(-cz), zcut2.min(cz))
     };
-    Ok(ellipsoid_mesh::tessellate_ellipsoid(
-        ax, by, cz, zcut1, zcut2, segments,
-    ))
+    if ax <= 0.0 || by <= 0.0 || cz <= 0.0 || zcut1 >= zcut2 {
+        return Ok(TriangleMesh::default());
+    }
+    // The unit section's radius is sin(theta) at z = cz cos(theta), sampled
+    // evenly in theta between the cuts, which are flat.
+    let (t1, t2) = ((zcut1 / cz).acos(), (zcut2 / cz).acos());
+    let arc = curve((segments / 2).max(2), |t| {
+        let theta = t1 + (t2 - t1) * t;
+        (theta.sin(), cz * theta.cos())
+    });
+    let outline = arc.chain([(0.0, zcut2), (0.0, zcut1)].map(corner));
+    Ok(elliptical(outline, ax, by, segments))
+}
+
+/// An elliptical tube, cone or ellipsoid: the solid of revolution of its
+/// unit outline, stretched by (a, b) in x and y. Each is
+/// (x/a)^2 + (y/b)^2 = s(z)^2 in Geant4, so the sections are its rings at
+/// radius s scaled into ellipses; scale_mesh carries the normals along.
+fn elliptical(
+    outline: impl IntoIterator<Item = (f64, f64, bool)>,
+    a: f64,
+    b: f64,
+    segments: u32,
+) -> TriangleMesh {
+    scale_mesh(&revolve(outline, 0.0, 2.0 * PI, segments, None), a, b, 1.0)
 }
 
 fn tessellate_eltube_solid(
@@ -899,7 +921,12 @@ fn tessellate_eltube_solid(
     let dx = resolve_with_lunit(engine, &s.dx, lunit);
     let dy = resolve_with_lunit(engine, &s.dy, lunit);
     let dz = resolve_with_lunit(engine, &s.dz, lunit);
-    Ok(eltube_mesh::tessellate_eltube(dx, dy, dz, segments))
+    // G4EllipticalTube refuses dimensions that are not positive.
+    if dx <= 0.0 || dy <= 0.0 || dz <= 0.0 {
+        return Ok(TriangleMesh::default());
+    }
+    let outline = [(0.0, -dz), (1.0, -dz), (1.0, dz), (0.0, dz)].map(corner);
+    Ok(elliptical(outline, dx, dy, segments))
 }
 
 fn tessellate_tet_solid(s: &TetSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
@@ -1018,7 +1045,14 @@ fn tessellate_elcone_solid(
     let dy = engine.resolve_value(&s.dy);
     let zmax = resolve_with_lunit(engine, &s.zmax, lunit);
     let zcut = resolve_with_lunit(engine, &s.zcut, lunit);
-    Ok(elcone_mesh::tessellate_elcone(dx, dy, zmax, zcut, segments))
+    // G4EllipticalCone refuses values that are not positive and cuts at zmax
+    // at most; its section at z has semi-axes (dx, dy) (zmax - z), a cone.
+    if dx <= 0.0 || dy <= 0.0 || zmax <= 0.0 || zcut <= 0.0 {
+        return Ok(TriangleMesh::default());
+    }
+    let h = zcut.min(zmax);
+    let outline = [(0.0, -h), (zmax + h, -h), (zmax - h, h), (0.0, h)].map(corner);
+    Ok(elliptical(outline, dx, dy, segments))
 }
 
 fn tessellate_paraboloid_solid(
