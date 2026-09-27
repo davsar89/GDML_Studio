@@ -183,6 +183,7 @@ pub fn serialize_gdml(doc: &GdmlDocument) -> Result<String> {
     write_materials(
         &mut writer,
         &doc.materials,
+        &mut raw_in("materials"),
         &doc.order,
         &doc.defines,
         doc.materials_define.as_ref(),
@@ -562,6 +563,7 @@ fn write_scale(
 fn write_materials(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     materials: &MaterialSection,
+    raws: &mut Vec<&RawElement>,
     order: &DocumentOrder,
     defines: &DefineSection,
     nested: Option<&Vec<String>>,
@@ -574,6 +576,7 @@ fn write_materials(
     if let Some(names) = nested {
         write_materials_define(writer, defines, order, names)?;
     }
+    write_raws(writer, raws, |after| after.is_none())?;
 
     for iso in &materials.isotopes {
         write_comments(writer, order, "materials", Some(&iso.name))?;
@@ -600,6 +603,7 @@ fn write_materials(
         } else {
             writer.write_event(Event::Empty(elem))?;
         }
+        write_raws(writer, raws, |after| after == Some(iso.name.as_str()))?;
     }
 
     for el in &materials.elements {
@@ -635,6 +639,7 @@ fn write_materials(
         } else {
             writer.write_event(Event::Empty(elem))?;
         }
+        write_raws(writer, raws, |after| after == Some(el.name.as_str()))?;
     }
 
     for mat in material_order(materials)?
@@ -748,7 +753,9 @@ fn write_materials(
         }
 
         writer.write_event(Event::End(BytesEnd::new("material")))?;
+        write_raws(writer, raws, |after| after == Some(mat.name.as_str()))?;
     }
+    write_raws(writer, raws, |_| true)?;
 
     write_comments(writer, order, "materials", None)?;
     writer.write_event(Event::End(BytesEnd::new("materials")))?;

@@ -195,6 +195,14 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                             Section::Define | Section::MaterialsDefine => {
                                 order.define_slots.last().map(|s| s.name.clone())
                             }
+                            // The writer groups isotopes, elements, materials.
+                            Section::Materials => materials
+                                .materials
+                                .last()
+                                .map(|m| &m.name)
+                                .or_else(|| materials.elements.last().map(|e| &e.name))
+                                .or_else(|| materials.isotopes.last().map(|i| &i.name))
+                                .cloned(),
                             Section::Solids => solids.solids.last().map(|s| s.name().to_string()),
                             Section::Structure => structure.volumes.last().map(|v| v.name.clone()),
                             _ => None,

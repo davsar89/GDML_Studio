@@ -1345,3 +1345,28 @@ async fn material_named_like_an_element_can_be_edited() {
     assert!(saved.contains(r#"<composite n="2" ref="Al"/>"#), "{saved}");
     assert_eq!(material_names(&saved), ["AlMat", "Oxide", "M", "N"]);
 }
+
+#[tokio::test]
+async fn loop_inside_materials_survives_export() {
+    // Preserved elements go back after the element they followed; the
+    // materials section never wrote its own, so a <loop> there was deleted by
+    // the first save. (Geant4 10.7 refuses a loop in <materials>,
+    // G4GDMLReadMaterials.cc:922-927, but the file is the user's to fix.)
+    let xml = document(
+        r#"<variable name="i" value="0"/>"#,
+        r#"<box name="B" x="1" y="1" z="1"/>"#,
+        "",
+    )
+    .replace(
+        "<materials>",
+        r#"<materials><element name="H" Z="1"><atom value="1.008"/></element>
+        <loop for="i" from="1" to="2" step="1"><material name="L[i]" Z="1"><D value="i"/><atom value="1"/></material></loop>"#,
+    );
+    let saved = export(&load(&xml).await).await;
+    let at = |needle: &str| {
+        saved
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle}:\n{saved}"))
+    };
+    assert!(at(r#"<element name="H""#) < at("<loop") && at("<loop") < at(r#"<material name="M""#));
+}
