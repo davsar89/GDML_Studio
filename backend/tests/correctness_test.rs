@@ -1052,3 +1052,25 @@ async fn delete_material_used_only_inside_a_loop_is_refused() {
     assert!(refused.is_err(), "a material used by a loop was deleted");
     assert!(material_names(&export(&state).await).contains(&"N".to_string()));
 }
+
+#[tokio::test]
+async fn bad_position_define_warns_instead_of_rejecting() {
+    // One bad <position> define rejected the whole upload, although the same
+    // mistake in a <constant> only warns. The rest of the file should load and
+    // the warning name the define.
+    let xml = document(
+        r#"<position name="bad" x="1/0"/><position name="good" x="5"/>"#,
+        r#"<box name="B" x="1" y="1" z="1"/><box name="Big" x="100" y="100" z="100"/>"#,
+        r#"<volume name="V"><materialref ref="M"/><solidref ref="B"/></volume>
+      <volume name="W"><materialref ref="M"/><solidref ref="Big"/>
+      <physvol><volumeref ref="V"/><positionref ref="good"/></physvol></volume>"#,
+    );
+    let state = load(&xml).await;
+    let warnings = state.read().await.loaded.as_ref().unwrap().warnings.clone();
+    assert!(
+        warnings.iter().any(|w| w.contains("position \"bad\"")),
+        "{warnings:?}"
+    );
+    let scene = get_scene(State(state)).await.unwrap().0;
+    assert_eq!(scene["scene_graph"]["children"][0]["position"][0], 5.0);
+}

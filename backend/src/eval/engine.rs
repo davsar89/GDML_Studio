@@ -122,16 +122,29 @@ impl EvalEngine {
             self.context.set(&entry.name, finite_value(final_value)?);
         }
 
-        // Evaluate positions
+        // A bad position or rotation is a warning too, not a rejected file. It
+        // stays undefined, so whatever references it reports that and is skipped.
         for pos in &defines.positions {
-            let values = self.eval_position(pos)?;
-            self.position_values.insert(pos.name.clone(), values);
+            match self.eval_position(pos) {
+                Ok(values) => {
+                    self.position_values.insert(pos.name.clone(), values);
+                }
+                Err(e) => self.record_warning(format!(
+                    "Could not evaluate position \"{}\": {e}. Anything using it is skipped.",
+                    pos.name
+                )),
+            }
         }
-
-        // Evaluate rotations
         for rot in &defines.rotations {
-            let values = self.eval_rotation(rot)?;
-            self.rotation_values.insert(rot.name.clone(), values);
+            match self.eval_rotation(rot) {
+                Ok(values) => {
+                    self.rotation_values.insert(rot.name.clone(), values);
+                }
+                Err(e) => self.record_warning(format!(
+                    "Could not evaluate rotation \"{}\": {e}. Anything using it is skipped.",
+                    rot.name
+                )),
+            }
         }
 
         // Evaluate named <scale> defines. Dimensionless, so no unit handling.
