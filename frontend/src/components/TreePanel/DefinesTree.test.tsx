@@ -62,6 +62,19 @@ describe('DefinesTree', () => {
     expect(screen.getByText('d4')).toBeInTheDocument();
   });
 
+  it('does not round tiny values to zero', () => {
+    useAppStore.getState().setDefines([
+      { name: 'tiny', expression: '1e-9', evaluated: 1e-9, unit: null, kind: 'constant' },
+      { name: 'q', expression: '10', evaluated: 10, unit: 'cm', kind: 'quantity' },
+      { name: 'third', expression: '1/3', evaluated: 1 / 3, unit: null, kind: 'constant' },
+    ]);
+    render(<DefinesTree />);
+    expect(screen.getByText('1e-9')).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(screen.getByText('0.333333')).toBeInTheDocument();
+    expect(screen.getByTitle(/tiny = 1e-9 => 1e-9/)).toBeInTheDocument();
+  });
+
   it('shows the empty state with no document', () => {
     render(<DefinesTree />);
     expect(screen.getByText('No file loaded')).toBeInTheDocument();

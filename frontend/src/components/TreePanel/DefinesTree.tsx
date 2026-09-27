@@ -86,7 +86,8 @@ export default function DefinesTree() {
               <span style={{ color: '#e94560' }}>{d.name}</span>
               <span style={{ color: '#666' }}> = </span>
               <span style={{ color: '#4fc3f7' }}>
-                {d.evaluated !== null ? d.evaluated.toFixed(4) : '?'}
+                {/* Six significant digits: fixed decimals would show 1e-9 as 0. */}
+                {d.evaluated !== null ? String(Number(d.evaluated.toPrecision(6))) : '?'}
               </span>
               {d.unit && <span style={{ color: '#666' }}> {d.unit}</span>}
             </div>
