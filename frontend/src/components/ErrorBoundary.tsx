@@ -27,8 +27,8 @@ export default class ErrorBoundary extends Component<Props, State> {
   // Clearing `error` alone re-renders the same children against the same store
   // state that just threw, so getDerivedStateFromError catches again and the
   // message comes straight back -- the button appeared to do nothing. Drop the
-  // loaded document first: `reset()` disposes the geometries and returns every
-  // slice to its empty state, which is a state the tree is known to render.
+  // loaded document first: `reset()` disposes the geometries and empties the
+  // document, which is a state the tree is known to render.
   handleRetry = () => {
     useAppStore.getState().reset();
     this.setState({ error: null });

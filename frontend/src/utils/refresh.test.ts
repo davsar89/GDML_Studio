@@ -14,7 +14,8 @@ vi.mock('../api/client', () => ({
 
 import * as api from '../api/client';
 import { useAppStore } from '../store';
-import { refreshMaterialsAndScene, restoreOpenDocument } from './refresh';
+import { loadDocument, refreshMaterialsAndScene, restoreOpenDocument } from './refresh';
+import { runDocumentAction } from './documentActions';
 import type { DocumentSummary, ElementInfo, SceneNode, VolumeInfo } from '../store/types';
 
 const mocked = vi.mocked(api);
@@ -51,6 +52,19 @@ describe('refreshMaterialsAndScene', () => {
     // Logging this to the console would leave the materials list updated while
     // the 3D view still showed pre-edit colours, with no sign anything failed.
     expect(useAppStore.getState().error).toContain('backend exploded');
+  });
+});
+
+describe('loadDocument', () => {
+  it('keeps the document action locked after a failed load', async () => {
+    mocked.getMeshes.mockRejectedValue(new Error('backend down'));
+    let busy: boolean | undefined;
+    await runDocumentAction(async () => {
+      await loadDocument(async () => ({ filename: 'next.gdml' }) as DocumentSummary, 'next.gdml');
+      busy = useAppStore.getState().documentBusy;
+    });
+    expect(busy).toBe(true);
+    expect(useAppStore.getState()).toMatchObject({ summary: null, documentBusy: false, error: 'Failed to load next.gdml: backend down' });
   });
 });
 

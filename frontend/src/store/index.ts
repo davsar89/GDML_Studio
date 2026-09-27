@@ -195,9 +195,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   clearMeasurements: () => set({ measurements: [], pendingPoint: null, surfaceCandidates: [] }),
 
+  // Closes the document. A failed load calls this inside its document action,
+  // which still owns the lock (documentBusy) and any dialog until it returns.
   reset: () => {
-    get().decision?.resolve('cancel');
     clearAllGeometries();
-    set(initialState());
+    set({ ...emptyDocument(), error: null });
   },
 }));
