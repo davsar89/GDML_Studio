@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = { version = "0.8", features = ["ws"] }
+axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 quick-xml = { version = "0.37", features = ["encoding"] }
 evalexpr = "13"

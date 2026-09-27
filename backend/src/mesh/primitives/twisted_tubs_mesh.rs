@@ -35,11 +35,7 @@ pub fn tessellate_twisted_tubs(
 
     let z_half = z_neg.abs().max(z_pos.abs());
     if z_half < 1e-12 || rmax_mid <= 1e-12 {
-        return TriangleMesh {
-            positions,
-            normals,
-            indices,
-        };
+        return TriangleMesh::default();
     }
 
     let has_hole = rmin_mid > 1e-10;

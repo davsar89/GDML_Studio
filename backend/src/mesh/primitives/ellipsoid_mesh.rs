@@ -18,22 +18,14 @@ pub fn tessellate_ellipsoid(
     let mut indices: Vec<u32> = Vec::new();
 
     if ax <= 0.0 || by <= 0.0 || cz <= 0.0 {
-        return TriangleMesh {
-            positions,
-            normals,
-            indices,
-        };
+        return TriangleMesh::default();
     }
 
     // Clamp z-cuts to valid range
     let zcut1 = zcut1.max(-cz).min(cz);
     let zcut2 = zcut2.max(-cz).min(cz);
     if zcut1 >= zcut2 {
-        return TriangleMesh {
-            positions,
-            normals,
-            indices,
-        };
+        return TriangleMesh::default();
     }
 
     // Convert z-cuts to theta range: z = cz * cos(theta)

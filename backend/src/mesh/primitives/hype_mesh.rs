@@ -21,11 +21,7 @@ pub fn tessellate_hype(
     let mut indices: Vec<u32> = Vec::new();
 
     if rmax <= 0.0 || hz <= 0.0 {
-        return TriangleMesh {
-            positions,
-            normals,
-            indices,
-        };
+        return TriangleMesh::default();
     }
 
     let phi_seg = segments.max(3); // guard divisor against 0 (defense in depth)

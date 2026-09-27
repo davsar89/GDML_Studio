@@ -195,7 +195,6 @@ fn add_sphere_surface(
 
 /// Add a radial wedge face at a given phi angle, connecting outer to inner surface
 /// (or outer to the polar axis if solid). Sweeps along theta.
-#[allow(clippy::too_many_arguments)]
 fn add_phi_wedge_face(
     positions: &mut Vec<f32>,
     normals: &mut Vec<f32>,
@@ -279,7 +278,6 @@ fn add_phi_wedge_face(
 /// Add an annular or disk cap at a given theta angle.
 /// This cap is a ring (or disk) in the plane at the given theta,
 /// sweeping phi from startphi to startphi+deltaphi.
-#[allow(clippy::too_many_arguments)]
 fn add_theta_cap(
     positions: &mut Vec<f32>,
     normals: &mut Vec<f32>,

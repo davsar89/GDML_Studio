@@ -20,11 +20,7 @@ pub fn tessellate_polyhedra(
     let mut indices: Vec<u32> = Vec::new();
 
     if planes.len() < 2 || numsides < 3 {
-        return TriangleMesh {
-            positions,
-            normals,
-            indices,
-        };
+        return TriangleMesh::default();
     }
 
     // Matches G4Polycone::Create: a non-positive or over-full sweep means a

@@ -514,7 +514,6 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
         engine,
         meshes,
         warnings,
-        file_path: main_file,
     })
 }
 
@@ -1659,6 +1658,19 @@ mod tests {
         }
     }
 
+    /// Shared state holding `document` as if it had just been uploaded.
+    fn state_with(document: GdmlDocument) -> SharedState {
+        let state = crate::state::app_state::create_shared_state();
+        state.try_write().unwrap().loaded = Some(LoadedDocument {
+            document,
+            render: None,
+            engine: EvalEngine::new(),
+            meshes: HashMap::new(),
+            warnings: Vec::new(),
+        });
+        state
+    }
+
     fn material(name: &str) -> Material {
         Material {
             name: name.to_string(),
@@ -1755,7 +1767,6 @@ mod tests {
 
     #[tokio::test]
     async fn material_rename_cascades_to_components_and_volumes() {
-        let state = crate::state::app_state::create_shared_state();
         let mut doc = base_doc("test.gdml", "World");
         let mut world = volume("World", "Steel");
         world.physvols.push(PhysVol {
@@ -1779,17 +1790,7 @@ mod tests {
         doc.materials.materials.push(steel);
         doc.materials.materials.push(alloy);
 
-        {
-            let mut w = state.write().await;
-            w.loaded = Some(LoadedDocument {
-                document: doc,
-                render: None,
-                engine: EvalEngine::new(),
-                meshes: HashMap::new(),
-                warnings: Vec::new(),
-                file_path: "test.gdml".to_string(),
-            });
-        }
+        let state = state_with(doc);
 
         let req = UpdateMaterialRequest {
             elements: Vec::new(),
@@ -1823,23 +1824,12 @@ mod tests {
 
     #[tokio::test]
     async fn material_rename_rejects_name_collisions() {
-        let state = crate::state::app_state::create_shared_state();
         let mut doc = base_doc("test.gdml", "World");
         doc.structure.volumes.push(volume("World", "A"));
         doc.materials.materials.push(material("A"));
         doc.materials.materials.push(material("B"));
 
-        {
-            let mut w = state.write().await;
-            w.loaded = Some(LoadedDocument {
-                document: doc,
-                render: None,
-                engine: EvalEngine::new(),
-                meshes: HashMap::new(),
-                warnings: Vec::new(),
-                file_path: "test.gdml".to_string(),
-            });
-        }
+        let state = state_with(doc);
 
         let req = UpdateMaterialRequest {
             elements: Vec::new(),
@@ -1854,7 +1844,6 @@ mod tests {
 
     #[tokio::test]
     async fn deleting_material_referenced_by_components_is_blocked() {
-        let state = crate::state::app_state::create_shared_state();
         let mut doc = base_doc("test.gdml", "World");
         doc.structure.volumes.push(volume("World", "Alloy"));
         doc.materials.materials.push(material("Steel"));
@@ -1865,17 +1854,7 @@ mod tests {
         });
         doc.materials.materials.push(alloy);
 
-        {
-            let mut w = state.write().await;
-            w.loaded = Some(LoadedDocument {
-                document: doc,
-                render: None,
-                engine: EvalEngine::new(),
-                meshes: HashMap::new(),
-                warnings: Vec::new(),
-                file_path: "test.gdml".to_string(),
-            });
-        }
+        let state = state_with(doc);
 
         let err = delete_material(
             State(state.clone()),
@@ -1890,22 +1869,11 @@ mod tests {
 
     #[tokio::test]
     async fn add_material_rejects_unknown_component_reference() {
-        let state = crate::state::app_state::create_shared_state();
         let mut doc = base_doc("test.gdml", "World");
         doc.structure.volumes.push(volume("World", "Air"));
         doc.materials.materials.push(material("Air"));
 
-        {
-            let mut w = state.write().await;
-            w.loaded = Some(LoadedDocument {
-                document: doc,
-                render: None,
-                engine: EvalEngine::new(),
-                meshes: HashMap::new(),
-                warnings: Vec::new(),
-                file_path: "test.gdml".to_string(),
-            });
-        }
+        let state = state_with(doc);
 
         let mut invalid = material("Mixture");
         invalid.components.push(MaterialComponent::Fraction {
@@ -1927,22 +1895,11 @@ mod tests {
 
     #[tokio::test]
     async fn update_material_rejects_direct_self_reference() {
-        let state = crate::state::app_state::create_shared_state();
         let mut doc = base_doc("test.gdml", "World");
         doc.structure.volumes.push(volume("World", "Steel"));
         doc.materials.materials.push(material("Steel"));
 
-        {
-            let mut w = state.write().await;
-            w.loaded = Some(LoadedDocument {
-                document: doc,
-                render: None,
-                engine: EvalEngine::new(),
-                meshes: HashMap::new(),
-                warnings: Vec::new(),
-                file_path: "test.gdml".to_string(),
-            });
-        }
+        let state = state_with(doc);
 
         let mut invalid = material("Steel");
         invalid.components.push(MaterialComponent::Composite {
@@ -1965,22 +1922,11 @@ mod tests {
 
     #[tokio::test]
     async fn update_volume_material_ref_rejects_unknown_material() {
-        let state = crate::state::app_state::create_shared_state();
         let mut doc = base_doc("test.gdml", "World");
         doc.structure.volumes.push(volume("World", "Steel"));
         doc.materials.materials.push(material("Steel"));
 
-        {
-            let mut w = state.write().await;
-            w.loaded = Some(LoadedDocument {
-                document: doc,
-                render: None,
-                engine: EvalEngine::new(),
-                meshes: HashMap::new(),
-                warnings: Vec::new(),
-                file_path: "test.gdml".to_string(),
-            });
-        }
+        let state = state_with(doc);
 
         let err = update_volume_material_ref(
             State(state.clone()),

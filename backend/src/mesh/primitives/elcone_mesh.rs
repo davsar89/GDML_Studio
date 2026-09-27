@@ -15,11 +15,7 @@ pub fn tessellate_elcone(dx: f64, dy: f64, zmax: f64, zcut: f64, segments: u32) 
     let mut indices: Vec<u32> = Vec::new();
 
     if dx <= 0.0 || dy <= 0.0 || zmax <= 0.0 || zcut <= 0.0 {
-        return TriangleMesh {
-            positions,
-            normals,
-            indices,
-        };
+        return TriangleMesh::default();
     }
 
     let zcut = zcut.min(zmax);

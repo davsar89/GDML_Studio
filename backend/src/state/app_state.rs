@@ -20,7 +20,6 @@ pub struct LoadedDocument {
     pub engine: EvalEngine,
     pub meshes: HashMap<String, TriangleMesh>,
     pub warnings: Vec<String>,
-    pub file_path: String,
 }
 
 impl LoadedDocument {

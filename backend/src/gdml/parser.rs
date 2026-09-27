@@ -230,7 +230,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         xml += &capture_raw(&mut reader, e, open)?;
                         raw_unknown.push(RawElement {
                             tag: String::from_utf8_lossy(tag).to_string(),
-                            section: Some(section_key(section)),
+                            section: section_key(section),
                             after,
                             xml,
                         });
@@ -1300,7 +1300,7 @@ fn read_volume_body(
                     let xml = capture_raw(reader, c, open)?;
                     vol.loops.push(RawElement {
                         tag: "loop".to_string(),
-                        section: Some("structure".to_string()),
+                        section: "structure".to_string(),
                         after: None,
                         xml,
                     });

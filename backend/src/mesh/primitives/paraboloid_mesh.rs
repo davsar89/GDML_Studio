@@ -15,11 +15,7 @@ pub fn tessellate_paraboloid(rlo: f64, rhi: f64, dz: f64, segments: u32) -> Tria
     let mut indices: Vec<u32> = Vec::new();
 
     if dz <= 0.0 || (rlo <= 0.0 && rhi <= 0.0) {
-        return TriangleMesh {
-            positions,
-            normals,
-            indices,
-        };
+        return TriangleMesh::default();
     }
 
     let k1 = (rhi * rhi + rlo * rlo) / 2.0;

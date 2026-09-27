@@ -584,7 +584,7 @@ pub fn boolean(a: &TriangleMesh, b: &TriangleMesh, op: &BooleanOp) -> TriangleMe
         return match op {
             BooleanOp::Subtraction => a.clone(),
             BooleanOp::Union => polygons_to_mesh(&[pa, pb].concat()),
-            BooleanOp::Intersection => TriangleMesh::new(),
+            BooleanOp::Intersection => TriangleMesh::default(),
         };
     }
 

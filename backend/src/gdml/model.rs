@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GdmlDocument {
@@ -132,7 +131,7 @@ pub struct RawElement {
     /// Geant4 will not load. Recording the section is right by construction and
     /// removes the whole class of bug.
     #[serde(default)]
-    pub section: Option<String>,
+    pub section: String,
     /// The define, solid or volume this element followed in its section
     /// (`None`: it opened the section), so the writer can put it back there.
     /// Geant4 reads each section in one pass, so a `<loop>` or `<assembly>`
@@ -1022,19 +1021,6 @@ pub struct SetupSection {
 }
 
 // ─── Scene/Mesh data for API responses ───────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SceneData {
-    pub meshes: HashMap<String, MeshData>,
-    pub scene_graph: SceneNode,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MeshData {
-    pub positions: Vec<f32>,
-    pub normals: Vec<f32>,
-    pub indices: Vec<u32>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SceneNode {

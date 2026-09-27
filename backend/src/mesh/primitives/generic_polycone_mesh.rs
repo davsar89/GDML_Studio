@@ -35,11 +35,6 @@ pub fn tessellate_generic_polycone(
     let mut positions: Vec<f32> = Vec::new();
     let mut normals: Vec<f32> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
-    let empty = |p, n, i| TriangleMesh {
-        positions: p,
-        normals: n,
-        indices: i,
-    };
 
     // Matches G4Polycone::Create — a non-positive or over-full sweep is a
     // complete revolution.
@@ -56,7 +51,7 @@ pub fn tessellate_generic_polycone(
     let clamped: Vec<(f64, f64)> = rz.iter().map(|&(r, z)| (r.max(0.0), z)).collect();
     let mut pts = clean_polygon(&clamped);
     if pts.len() < 3 {
-        return empty(positions, normals, indices);
+        return TriangleMesh::default();
     }
 
     // G4Polycone::Create reverses the contour when its signed area is negative,
@@ -164,5 +159,9 @@ pub fn tessellate_generic_polycone(
         }
     }
 
-    empty(positions, normals, indices)
+    TriangleMesh {
+        positions,
+        normals,
+        indices,
+    }
 }

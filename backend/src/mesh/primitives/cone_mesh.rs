@@ -194,7 +194,6 @@ pub fn tessellate_cone(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn add_cone_wedge_face(
     positions: &mut Vec<f32>,
     normals: &mut Vec<f32>,

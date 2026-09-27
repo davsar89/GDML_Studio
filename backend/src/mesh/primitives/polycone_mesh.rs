@@ -25,11 +25,7 @@ pub fn tessellate_polycone(
 
     let n = planes.len();
     if n < 2 {
-        return TriangleMesh {
-            positions,
-            normals,
-            indices,
-        };
+        return TriangleMesh::default();
     }
 
     // Z-planes listed in decreasing z are legal GDML: G4Polycone::Create builds

@@ -222,18 +222,18 @@ fn tessellate_solid(
                     .get(name)
                     .ok_or_else(|| anyhow::anyhow!("Undefined scale '{name}'"))?,
                 None => [
-                    resolve(engine, &ss.scale_x),
-                    resolve(engine, &ss.scale_y),
-                    resolve(engine, &ss.scale_z),
+                    engine.resolve_value(&ss.scale_x),
+                    engine.resolve_value(&ss.scale_y),
+                    engine.resolve_value(&ss.scale_z),
                 ],
             };
             Ok(scale_mesh(&inner, sx, sy, sz))
         }
         Solid::Reflected(rs) => {
             let inner = operand(&rs.solid_ref)?;
-            let sx = resolve(engine, &rs.sx);
-            let sy = resolve(engine, &rs.sy);
-            let sz = resolve(engine, &rs.sz);
+            let sx = engine.resolve_value(&rs.sx);
+            let sy = engine.resolve_value(&rs.sy);
+            let sz = engine.resolve_value(&rs.sz);
 
             let lunit = rs.lunit.as_deref().unwrap_or("mm");
             let aunit = rs.aunit.as_deref().unwrap_or("rad");
@@ -280,10 +280,6 @@ fn apply_placement_transform(
     ))
 }
 
-fn resolve(engine: &EvalEngine, expr: &str) -> f64 {
-    engine.resolve_value(expr)
-}
-
 /// A polyhedra's side count. Geant4 reads a missing `numsides` as 0 and
 /// G4Polyhedra rejects fewer than one side (G4GDMLReadSolids.cc:1404,
 /// G4Polyhedra.cc:81-88), so that is an error, not a guessed hexagon. An
@@ -292,7 +288,7 @@ fn polyhedra_sides(engine: &EvalEngine, numsides: &str) -> Result<u32> {
     let n = if numsides.trim().is_empty() {
         0.0
     } else {
-        resolve(engine, numsides)
+        engine.resolve_value(numsides)
     };
     anyhow::ensure!(
         n >= 1.0,
@@ -664,7 +660,7 @@ fn scaled_positions(
 }
 
 fn tessellate_tessellated_solid(s: &TessellatedSolid, engine: &EvalEngine) -> Result<TriangleMesh> {
-    let mut mesh = TriangleMesh::new();
+    let mut mesh = TriangleMesh::default();
     for facet in &s.facets {
         let (_, names, r#type, lunit) = facet.parts();
         let mut v = scaled_positions(engine, &names, lunit)?;
@@ -721,7 +717,7 @@ fn tessellate_cut_tube_solid(
         resolve_opt(engine, &s.low_x),
         resolve_opt(engine, &s.low_y),
         match &s.low_z {
-            Some(expr) => resolve(engine, expr),
+            Some(expr) => engine.resolve_value(expr),
             None => -1.0,
         },
     ];
@@ -729,7 +725,7 @@ fn tessellate_cut_tube_solid(
         resolve_opt(engine, &s.high_x),
         resolve_opt(engine, &s.high_y),
         match &s.high_z {
-            Some(expr) => resolve(engine, expr),
+            Some(expr) => engine.resolve_value(expr),
             None => 1.0,
         },
     ];
@@ -848,7 +844,7 @@ fn tessellate_tet_solid(s: &TetSolid, engine: &EvalEngine) -> Result<TriangleMes
     let centroid = [0, 1, 2].map(|k| v.iter().map(|p| p[k]).sum::<f32>() / 4.0);
 
     // Each face wound so its normal points away from the centroid.
-    let mut mesh = TriangleMesh::new();
+    let mut mesh = TriangleMesh::default();
     for [a, b, c] in [[0, 1, 2], [0, 2, 3], [0, 3, 1], [1, 3, 2]].map(|f| f.map(|i| v[i])) {
         let n = face_normal(a, b, c);
         let out = (0..3).map(|k| n[k] * (a[k] - centroid[k])).sum::<f32>() >= 0.0;
@@ -936,8 +932,8 @@ fn tessellate_elcone_solid(
 ) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
     // dx, dy are dimensionless ratios — NOT scaled by lunit
-    let dx = resolve(engine, &s.dx);
-    let dy = resolve(engine, &s.dy);
+    let dx = engine.resolve_value(&s.dx);
+    let dy = engine.resolve_value(&s.dy);
     let zmax = resolve_with_lunit(engine, &s.zmax, lunit);
     let zcut = resolve_with_lunit(engine, &s.zcut, lunit);
     Ok(elcone_mesh::tessellate_elcone(dx, dy, zmax, zcut, segments))
@@ -1009,7 +1005,7 @@ fn tessellate_xtru_solid(s: &XtruSolid, engine: &EvalEngine) -> Result<TriangleM
             let z = resolve_with_lunit(engine, &sec.z_position, lunit);
             let xoff = resolve_with_lunit(engine, &sec.x_offset, lunit);
             let yoff = resolve_with_lunit(engine, &sec.y_offset, lunit);
-            let scale = resolve(engine, &sec.scaling_factor);
+            let scale = engine.resolve_value(&sec.scaling_factor);
             (z, xoff, yoff, scale)
         })
         .collect();

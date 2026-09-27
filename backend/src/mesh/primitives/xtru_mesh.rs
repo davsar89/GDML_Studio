@@ -15,11 +15,7 @@ pub fn tessellate_xtru(
     let nv = vertices.len();
     let ns = sections.len();
     if nv < 3 || ns < 2 {
-        return TriangleMesh {
-            positions,
-            normals,
-            indices,
-        };
+        return TriangleMesh::default();
     }
 
     // Determine polygon winding: positive signed area = CCW
