@@ -135,6 +135,7 @@ describe('material drafts and document actions', () => {
     vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'needs atomic number and mass' }), { status: 400 }));
     await user.click(screen.getByRole('button', { name: 'Apply' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('needs atomic number and mass');
+    expect(useAppStore.getState().error).toBeNull(); // shown next to the draft, not again in the banner
     await user.type(screen.getByRole('textbox', { name: 'Atomic number' }), '1');
     await user.type(screen.getByRole('textbox', { name: 'Atomic mass' }), '1.008');
     await user.click(screen.getByRole('button', { name: 'Apply' }));

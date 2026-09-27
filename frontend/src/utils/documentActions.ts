@@ -49,7 +49,9 @@ export async function runDocumentAction(action: () => Promise<void>): Promise<vo
   try {
     await action();
   } catch (e: unknown) {
-    useAppStore.getState().setError(e instanceof Error ? e.message : String(e));
+    const message = e instanceof Error ? e.message : String(e);
+    // A failed Apply already shows its error next to the draft.
+    if (useAppStore.getState().draftError !== message) useAppStore.getState().setError(message);
   } finally {
     useAppStore.setState({ documentBusy: false });
     // The lock disabled the control that started the action and its dialogs took focus.
