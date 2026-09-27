@@ -891,20 +891,28 @@ fn tessellate_generic_polycone_solid(
 
     // The rzpoints are a closed contour in the (r,z) half-plane, revolved about
     // z -- not a list of z-planes.
-    let contour: Vec<(f64, f64)> = s
-        .rzpoints
-        .iter()
-        .map(|rz| {
-            (
-                resolve_with_lunit(engine, &rz.r, lunit),
-                resolve_with_lunit(engine, &rz.z, lunit),
-            )
-        })
-        .collect();
-
     Ok(generic_polycone_mesh::tessellate_generic_polycone(
-        &contour, startphi, deltaphi, segments, None,
+        rz_points(engine, &s.rzpoints, lunit),
+        startphi,
+        deltaphi,
+        segments,
+        None,
     ))
+}
+
+/// A generic polycone's or polyhedra's contour, every point a corner.
+fn rz_points<'a>(
+    engine: &'a EvalEngine,
+    points: &'a [RZPoint],
+    lunit: &'a str,
+) -> impl Iterator<Item = (f64, f64, bool)> + 'a {
+    points.iter().map(move |p| {
+        (
+            resolve_with_lunit(engine, &p.r, lunit),
+            resolve_with_lunit(engine, &p.z, lunit),
+            false,
+        )
+    })
 }
 
 fn tessellate_hype_solid(
@@ -965,19 +973,8 @@ fn tessellate_generic_polyhedra_solid(
 
     // As with genericPolycone, the rzpoints are a closed contour, not z-planes,
     // and their radii are corner radii, used as given (no apothem conversion).
-    let contour: Vec<(f64, f64)> = s
-        .rzpoints
-        .iter()
-        .map(|rz| {
-            (
-                resolve_with_lunit(engine, &rz.r, lunit),
-                resolve_with_lunit(engine, &rz.z, lunit),
-            )
-        })
-        .collect();
-
     Ok(generic_polycone_mesh::tessellate_generic_polycone(
-        &contour,
+        rz_points(engine, &s.rzpoints, lunit),
         startphi,
         deltaphi,
         numsides,

@@ -1,167 +1,170 @@
-use super::clean_polygon;
 use super::xtru_mesh::{ear_clip_triangulate, polygon_signed_area};
+use super::{clean_polygon, face_normal};
 use crate::mesh::types::TriangleMesh;
 use std::f64::consts::PI;
 
-/// Tessellate `<genericPolycone>` / `<genericPolyhedra>` by revolving a closed
-/// (r,z) contour about the z axis.
+/// `n` steps along the curve `f(t)`, t from 0 to 1, as outline points: the two
+/// ends are corners, the samples between them lie on a smooth surface.
+pub fn curve(n: u32, f: impl Fn(f64) -> (f64, f64)) -> impl Iterator<Item = (f64, f64, bool)> {
+    (0..=n).map(move |k| {
+        let (r, z) = f(k as f64 / n as f64);
+        (r, z, k > 0 && k < n)
+    })
+}
+
+/// Tessellate a solid of revolution: the closed (r,z) outline swept about the
+/// z axis. Geant4 builds G4Polycone and G4Polyhedra this way (`Create` takes a
+/// G4ReduciblePolygon), and every other revolved solid is one such outline.
 ///
-/// The `<rzpoint>` list is a **closed polygon** in the (r,z) half-plane, not a
-/// list of z-planes. `G4Polycone`'s generic constructor builds a
-/// `G4ReduciblePolygon(r, z, numRZ)` and then calls `Area()`,
-/// `RemoveDuplicateVertices()` and `CrossesItself()` on it — all polygon
-/// operations, none of which make sense for an ordered stack of planes.
+/// Each point is `(r, z, smooth)`. `smooth` marks a sample inside a curve
+/// (`curve`), where the two edges meeting there share the mean of their
+/// normals, so a sphere or a hyperboloid shades round instead of banded; any
+/// other point is a crease.
 ///
-/// Routing these solids through the z-plane mesher never revolved the closing
-/// edge from the last point back to the first. For a contour that is a monotone
-/// function of z with r=0 at both ends — which both shipped samples are — the
-/// result happens to be correct to within 0.01%. For a contour with a bore or a
-/// re-entrant profile it is not: the inner wall is dropped and full disks of the
-/// inner radius are emitted at each end, plugging the hole. A hollow-tube
-/// contour came out 33.3% too large.
+/// The outline is a **closed polygon** in the (r,z) half-plane, not a list of
+/// z-planes: `G4Polycone`'s generic constructor calls `Area()`,
+/// `RemoveDuplicateVertices()` and `CrossesItself()` on it. Either winding is
+/// accepted, since `Create` reverses a clockwise one.
 ///
-/// `sides` selects the two GDML solids:
-/// - `None` — smooth revolution in `segments` steps (`genericPolycone`).
-/// - `Some(n)` — `n` flat facets (`genericPolyhedra`). Unlike `<polyhedra>`,
-///   the radii are already corner radii and are used as given; see the note on
-///   the two G4Polyhedra constructors below.
+/// `sides` selects the surface:
+/// - `None` — smooth revolution in `segments` steps.
+/// - `Some(n)` — `n` flat facets whose corners sit at the given radii. The
+///   radii are corner radii: `<genericPolyhedra>` hands them to G4Polyhedra
+///   unscaled (`G4Polyhedra.cc:154`, from `G4GDMLReadSolids.cc:1629`), and the
+///   `<polyhedra>` caller converts its apothems first.
 pub fn tessellate_generic_polycone(
-    rz: &[(f64, f64)], // (r, z) contour points
+    outline: impl IntoIterator<Item = (f64, f64, bool)>,
     startphi: f64,
     deltaphi: f64,
     segments: u32,
     sides: Option<u32>,
 ) -> TriangleMesh {
-    let mut positions: Vec<f32> = Vec::new();
-    let mut normals: Vec<f32> = Vec::new();
-    let mut indices: Vec<u32> = Vec::new();
+    let mut m = TriangleMesh::default();
 
     // Matches G4Polycone::Create — a non-positive or over-full sweep is a
     // complete revolution.
     let full_circle = deltaphi <= 0.0 || deltaphi >= 2.0 * PI - 1e-6;
     let deltaphi = if full_circle { 2.0 * PI } else { deltaphi };
+    let steps = sides.unwrap_or(segments).max(3);
 
-    let steps = match sides {
-        Some(n) => n.max(3),
-        None => segments.max(3),
-    };
-
-    // Radii below the axis are clamped onto it, then coincident and collinear
-    // points dropped, including across the wrap, as G4Polycone::Create does.
-    let clamped: Vec<(f64, f64)> = rz.iter().map(|&(r, z)| (r.max(0.0), z)).collect();
-    let mut pts = clean_polygon(&clamped);
-    if pts.len() < 3 {
-        return TriangleMesh::default();
-    }
-
-    // G4Polycone::Create reverses the contour when its signed area is negative,
-    // so either winding is legal input.
-    if polygon_signed_area(&pts) < 0.0 {
+    // Radii below the axis, or within kCarTolerance of it, go onto it; then
+    // coincident and collinear points are dropped, including across the wrap,
+    // as G4Polycone::Create does.
+    let snapped: Vec<_> = outline
+        .into_iter()
+        .map(|(r, z, s)| (if r > 1e-9 { r } else { 0.0 }, z, s))
+        .collect();
+    let mut pts = clean_polygon(&snapped, |p| (p.0, p.1));
+    if polygon_signed_area(&xy_of(&pts)) < 0.0 {
         pts.reverse();
     }
-
-    // No apothem conversion here, unlike `<polyhedra>`.
-    //
-    // Geant4 has two G4Polyhedra constructors and the GDML reader picks a
-    // different one per solid. `<polyhedra>` goes to the z-plane form
-    // (`G4Polyhedra.cc:71`, called from `G4GDMLReadSolids.cc:1509`), which is
-    // the historical GEANT3 signature: it computes
-    // `convertRad = cos(0.5*phiTotal/numSide)` and stores `rInner/convertRad`,
-    // so those radii are inscribed-circle values. `<genericPolyhedra>` goes to
-    // the (r,z) form (`G4Polyhedra.cc:154`, from `G4GDMLReadSolids.cc:1629`),
-    // which hands `r[]` straight to G4ReduciblePolygon and Create with no
-    // scaling at all -- its radii are already corner radii.
-    //
-    // Applying the conversion here inflated every genericPolyhedra by
-    // 1/cos(deltaphi/2n): 15.5% for a full six-sided solid.
-
-    let phi_at = |k: u32| startphi + deltaphi * (k as f64) / (steps as f64);
     let n_pts = pts.len();
 
-    // ─── Bands of revolution, one per contour edge including the closing one ──
-    for i in 0..n_pts {
-        let j = (i + 1) % n_pts;
-        let (ri, zi) = pts[i];
-        let (rj, zj) = pts[j];
+    // Outward (r,z) normal of edge i -> i+1: the edge turned by -90 degrees,
+    // out of the counter-clockwise outline. An edge on the axis sweeps no
+    // surface and is skipped, as G4Polycone::Create skips it.
+    let edge_n: Vec<Option<(f64, f64)>> = (0..n_pts)
+        .map(|i| {
+            let ((ri, zi, _), (rj, zj, _)) = (pts[i], pts[(i + 1) % n_pts]);
+            let len = (rj - ri).hypot(zj - zi);
+            (ri > 0.0 || rj > 0.0).then(|| ((zj - zi) / len, (ri - rj) / len))
+        })
+        .collect();
+    // The shared normal at a smooth point, off the axis.
+    let point_n: Vec<Option<(f64, f64)>> = (0..n_pts)
+        .map(|i| {
+            let (a, b) = (edge_n[(i + n_pts - 1) % n_pts]?, edge_n[i]?);
+            let len = (a.0 + b.0).hypot(a.1 + b.1);
+            (pts[i].2 && pts[i].0 > 0.0 && len > 1e-12)
+                .then(|| ((a.0 + b.0) / len, (a.1 + b.1) / len))
+        })
+        .collect();
 
-        // Outward normal in the (r,z) plane is the edge direction rotated by
-        // -90 degrees, which points out of a counter-clockwise contour.
-        let (dr, dz) = (rj - ri, zj - zi);
-        let len = (dr * dr + dz * dz).sqrt();
-        if len < 1e-12 {
+    let sc: Vec<(f64, f64)> = (0..=steps)
+        .map(|k| (startphi + deltaphi * k as f64 / steps as f64).sin_cos())
+        .collect();
+    let at = |(r, z, _): (f64, f64, bool), (s, c): (f64, f64)| {
+        [(r * c) as f32, (r * s) as f32, z as f32]
+    };
+
+    // ─── Bands of revolution, one per outline edge including the closing one ─
+    // Corners of step k: a = (i, k), b = (j, k), c = (j, k+1), d = (i, k+1).
+    // A band touching the axis is a fan: drop the triangle collapsed there.
+    let quad = |indices: &mut Vec<u32>, [a, b, c, d]: [u32; 4], ri: f64, rj: f64| {
+        if ri > 0.0 {
+            indices.extend([a, d, c]);
+        }
+        if rj > 0.0 {
+            indices.extend([a, c, b]);
+        }
+    };
+    let mut shared: Vec<Option<u32>> = vec![None; n_pts];
+    for (i, en) in edge_n.iter().enumerate() {
+        let Some(en) = *en else { continue };
+        let j = (i + 1) % n_pts;
+        let (ri, rj) = (pts[i].0, pts[j].0);
+        if sides.is_some() {
+            // Flat facets: each quad is planar and carries its own normal.
+            for k in 0..steps as usize {
+                let q = [(i, k), (j, k), (j, k + 1), (i, k + 1)].map(|(p, k)| at(pts[p], sc[k]));
+                let d = |a: [f32; 3], b: [f32; 3]| [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+                let n = face_normal([0.0; 3], d(q[0], q[2]), d(q[3], q[1]));
+                let base = m.positions.len() as u32 / 3;
+                for p in q {
+                    m.positions.extend(p);
+                    m.normals.extend(n);
+                }
+                quad(&mut m.indices, [0, 1, 2, 3].map(|v| base + v), ri, rj);
+            }
             continue;
         }
-        let (nr, nz) = (dz / len, -dr / len);
-
-        let base = positions.len() as u32 / 3;
-        for k in 0..=steps {
-            let phi = phi_at(k);
-            let (sp, cp) = phi.sin_cos();
-            // Flat facets share one normal per side; a smooth revolution
-            // interpolates per phi step.
-            let (fnr_x, fnr_y) = match sides {
-                Some(_) => {
-                    let mid =
-                        phi_at(k.min(steps.saturating_sub(1))) + deltaphi / (2.0 * steps as f64);
-                    (nr * mid.cos(), nr * mid.sin())
+        // Smooth revolution: a ring of vertices per end, shared with the next
+        // band where the outline is smooth.
+        let mut ring = |p: usize| {
+            let mut push = |(nr, nz): (f64, f64)| {
+                let base = m.positions.len() as u32 / 3;
+                for &(s, c) in &sc {
+                    m.positions.extend(at(pts[p], (s, c)));
+                    m.normals
+                        .extend([(nr * c) as f32, (nr * s) as f32, nz as f32]);
                 }
-                None => (nr * cp, nr * sp),
+                base
             };
-            positions.extend_from_slice(&[(ri * cp) as f32, (ri * sp) as f32, zi as f32]);
-            normals.extend_from_slice(&[fnr_x as f32, fnr_y as f32, nz as f32]);
-            positions.extend_from_slice(&[(rj * cp) as f32, (rj * sp) as f32, zj as f32]);
-            normals.extend_from_slice(&[fnr_x as f32, fnr_y as f32, nz as f32]);
-        }
-
+            match point_n[p] {
+                Some(n) => *shared[p].get_or_insert_with(|| push(n)),
+                None => push(en),
+            }
+        };
+        let (a, b) = (ring(i), ring(j));
         for k in 0..steps {
-            let a = base + k * 2; // point i at phi_k
-            let b = a + 1; // point j at phi_k
-            let d = a + 2; // point i at phi_k+1
-            let c = a + 3; // point j at phi_k+1
-            indices.extend_from_slice(&[a, d, c]);
-            indices.extend_from_slice(&[a, c, b]);
+            quad(&mut m.indices, [a + k, b + k, b + k + 1, a + k + 1], ri, rj);
         }
     }
 
     // ─── Flat faces closing a partial sweep ──────────────────────────────────
     if !full_circle {
-        let contour: Vec<(f64, f64)> = pts.clone();
-        let tris = ear_clip_triangulate(&contour, true);
-
-        for (is_start, phi) in [(true, startphi), (false, startphi + deltaphi)] {
-            let (sp, cp) = phi.sin_cos();
+        let tris = ear_clip_triangulate(&xy_of(&pts), true);
+        for (is_start, k) in [(true, 0), (false, steps as usize)] {
+            let (s, c) = sc[k];
             // -phi_hat on the start face, +phi_hat on the end face.
-            let (nx, ny) = if is_start { (sp, -cp) } else { (-sp, cp) };
-
-            let base = positions.len() as u32 / 3;
-            for &(r, z) in &contour {
-                positions.extend_from_slice(&[(r * cp) as f32, (r * sp) as f32, z as f32]);
-                normals.extend_from_slice(&[nx as f32, ny as f32, 0.0]);
+            let n = if is_start { [s, -c, 0.0] } else { [-s, c, 0.0] }.map(|v| v as f32);
+            let base = m.positions.len() as u32 / 3;
+            for &p in &pts {
+                m.positions.extend(at(p, sc[k]));
+                m.normals.extend(n);
             }
-            for t in &tris {
-                // A counter-clockwise triangle in (r,z) maps to a face whose
-                // normal is -phi_hat, which is what the start face wants; the
-                // end face is the same triangle reversed.
-                if is_start {
-                    indices.extend_from_slice(&[
-                        base + t[0] as u32,
-                        base + t[1] as u32,
-                        base + t[2] as u32,
-                    ]);
-                } else {
-                    indices.extend_from_slice(&[
-                        base + t[0] as u32,
-                        base + t[2] as u32,
-                        base + t[1] as u32,
-                    ]);
-                }
+            // A counter-clockwise triangle in (r,z) faces -phi_hat, which is
+            // what the start face wants; the end face is the same reversed.
+            for &t in &tris {
+                let t = t.map(|v| base + v as u32);
+                m.indices
+                    .extend(if is_start { t } else { [t[0], t[2], t[1]] });
             }
         }
     }
+    m
+}
 
-    TriangleMesh {
-        positions,
-        normals,
-        indices,
-    }
+fn xy_of(pts: &[(f64, f64, bool)]) -> Vec<(f64, f64)> {
+    pts.iter().map(|p| (p.0, p.1)).collect()
 }

@@ -16,8 +16,11 @@
 //!    (from vertex order) must point the same way as its stored vertex
 //!    normals, otherwise lighting and CSG classification disagree.
 
+use std::collections::HashMap;
 use std::f64::consts::PI;
 
+use gdml_studio_backend::eval::engine::EvalEngine;
+use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
 use gdml_studio_backend::mesh::primitives::{
     arb8_mesh::{tessellate_arb8, tessellate_box, tessellate_trap, tessellate_trd},
     cone_mesh::tessellate_cone,
@@ -37,6 +40,7 @@ use gdml_studio_backend::mesh::primitives::{
     twisted_tubs_mesh::tessellate_twisted_tubs,
     xtru_mesh::tessellate_xtru,
 };
+use gdml_studio_backend::mesh::tessellator::tessellate_all_solids;
 use gdml_studio_backend::mesh::types::TriangleMesh;
 
 /// Signed volume of the mesh about reference point `o` (tetrahedron sum).
@@ -152,6 +156,260 @@ fn assert_closed_outward(mesh: &TriangleMesh, name: &str) {
 }
 
 const SEG: u32 = 64;
+
+/// An (r,z) contour whose every point is a corner.
+fn corners(rz: &[(f64, f64)]) -> impl Iterator<Item = (f64, f64, bool)> + '_ {
+    rz.iter().map(|&(r, z)| (r, z, false))
+}
+
+/// Solid `S` declared by `xml`, through the real path: parser, evaluator and
+/// tessellator.
+fn solid(xml: &str) -> TriangleMesh {
+    let gdml = format!("<gdml><solids>{xml}</solids></gdml>");
+    let doc = parse_gdml_from_bytes(gdml.as_bytes(), "t.gdml".into()).unwrap();
+    let mut engine = EvalEngine::new();
+    engine.evaluate_all(&doc.defines).unwrap();
+    let (mut meshes, warnings) = tessellate_all_solids(&doc.solids, &engine, SEG).unwrap();
+    assert!(warnings.is_empty(), "{xml}: {warnings:?}");
+    meshes.remove("S").unwrap()
+}
+
+/// Once vertices within 1e-4 mm are welded, every edge bounds exactly two
+/// triangles, once in each direction: a closed, consistently wound surface.
+fn assert_closed(m: &TriangleMesh, name: &str) {
+    const TOL: f64 = 1e-4;
+    let mut cells: HashMap<[i64; 3], Vec<usize>> = HashMap::new();
+    let mut welded: Vec<[f64; 3]> = Vec::new();
+    let id: Vec<usize> = m
+        .positions
+        .chunks_exact(3)
+        .map(|p| {
+            let p = [0, 1, 2].map(|k| p[k] as f64);
+            let cell = p.map(|c| (c / TOL).round() as i64);
+            let near = (0..27).find_map(|n: i64| {
+                let key = [0, 1, 2].map(|k| cell[k] + n / 3_i64.pow(k as u32) % 3 - 1);
+                let close = |&w: &usize| (0..3).all(|k| (welded[w][k] - p[k]).abs() <= TOL);
+                cells.get(&key)?.iter().copied().find(close)
+            });
+            near.unwrap_or_else(|| {
+                welded.push(p);
+                cells.entry(cell).or_default().push(welded.len() - 1);
+                welded.len() - 1
+            })
+        })
+        .collect();
+    let mut edges: HashMap<(usize, usize), u32> = HashMap::new();
+    for t in m.indices.chunks_exact(3) {
+        let v = [0, 1, 2].map(|k| id[t[k] as usize]);
+        // A triangle collapsed onto an edge by the weld has no area.
+        if v[0] != v[1] && v[1] != v[2] && v[2] != v[0] {
+            for k in 0..3 {
+                *edges.entry((v[k], v[(k + 1) % 3])).or_default() += 1;
+            }
+        }
+    }
+    let bad = edges
+        .iter()
+        .filter(|&(&(a, b), &n)| n != 1 || edges.get(&(b, a)) != Some(&1))
+        .count();
+    assert!(
+        bad == 0,
+        "{name}: {bad} of {} edges open or reused",
+        edges.len()
+    );
+}
+
+/// Every stored normal is a unit vector within 60 degrees of the winding
+/// normal of each facet it shades, also where a wall collapses to a point.
+fn assert_unit_normals(m: &TriangleMesh, name: &str) {
+    let p = |i: u32| [0, 1, 2].map(|k| m.positions[i as usize * 3 + k] as f64);
+    let n = |i: u32| [0, 1, 2].map(|k| m.normals[i as usize * 3 + k] as f64);
+    for tri in m.indices.chunks_exact(3) {
+        let (a, b, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
+        let (u, v) = (
+            [0, 1, 2].map(|k| b[k] - a[k]),
+            [0, 1, 2].map(|k| c[k] - a[k]),
+        );
+        let geo = [
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0],
+        ];
+        let area2 = geo.iter().map(|g| g * g).sum::<f64>().sqrt();
+        for ni in tri.iter().map(|&i| n(i)) {
+            let len = ni.iter().map(|c| c * c).sum::<f64>().sqrt();
+            let cos = (0..3).map(|k| geo[k] * ni[k]).sum::<f64>() / area2;
+            assert!(
+                (len - 1.0).abs() < 1e-3 && (area2 < 1e-6 || cos > 0.5),
+                "{name}: normal {ni:?} on facet {geo:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn revolved_and_elliptical_solids_match_geant4() {
+    // Analytic volumes of the Geant4 solids. A revolved solid is dphi times
+    // INT INT r dr dz over its (r,z) outline (Pappus); a polyhedra of n sides
+    // over dphi is n sin(dphi/n) times it, at its corner radii.
+    let moment = |p: &[(f64, f64)]| {
+        let terms = (0..p.len()).map(|i| {
+            let (a, b) = (p[i], p[(i + 1) % p.len()]);
+            (a.0 + b.0) * (a.0 * b.1 - b.0 * a.1)
+        });
+        (terms.sum::<f64>() / 6.0).abs()
+    };
+    let frustum = |h: f64, r1: f64, r2: f64| h * (r1 * r1 + r1 * r2 + r2 * r2) / 3.0;
+    let sector = |r: f64, t0: f64, t1: f64| r.powi(3) / 3.0 * (t0.cos() - t1.cos());
+    let d = PI / 180.0;
+    // Inner radii from the top down, then outer radii back up.
+    let steps = [
+        (0.0, -15.0),
+        (5.0, -10.0),
+        (5.0, 0.0),
+        (2.0, 0.0),
+        (2.0, 10.0),
+        (0.0, 15.0),
+        (20.0, 10.0),
+        (20.0, 0.0),
+        (10.0, 0.0),
+        (10.0, -10.0),
+    ];
+    let c5 = 1.0 / (270.0 * d / 10.0).cos(); // apothem -> corner, 5 sides over 270 deg
+    let c6 = 1.0 / (PI / 6.0).cos();
+    let hype = |r: f64, st: f64| 40.0 * r * r + 2.0 * 20f64.powi(3) / 3.0 * st.tan().powi(2);
+    let ellipsoid = |z: f64| z - z.powi(3) / 300.0;
+    let cases = [
+        (
+            "tube, hollow, 270 deg",
+            r#"<tube name="S" rmin="5" rmax="10" z="20" startphi="40" deltaphi="270" aunit="deg"/>"#,
+            135.0 * d * 75.0 * 20.0,
+        ),
+        (
+            // G4Polycone.cc:232: a zero opening angle is a full turn.
+            "tube, deltaphi 0",
+            r#"<tube name="S" rmax="10" z="20" deltaphi="0"/>"#,
+            PI * 100.0 * 20.0,
+        ),
+        (
+            "cone, hollow quarter",
+            r#"<cone name="S" rmin1="2" rmax1="10" rmin2="2" rmax2="5" z="20" startphi="17" deltaphi="90" aunit="deg"/>"#,
+            45.0 * d * (frustum(20.0, 10.0, 5.0) - frustum(20.0, 2.0, 2.0)),
+        ),
+        (
+            "cone, apex",
+            r#"<cone name="S" rmax1="10" rmax2="0" z="20"/>"#,
+            PI * frustum(20.0, 10.0, 0.0),
+        ),
+        (
+            "sphere, shell cut in phi and theta",
+            r#"<sphere name="S" rmin="5" rmax="10" startphi="30" deltaphi="90" starttheta="23" deltatheta="60" aunit="deg"/>"#,
+            90.0 * d * (sector(10.0, 23.0 * d, 83.0 * d) - sector(5.0, 23.0 * d, 83.0 * d)),
+        ),
+        (
+            // A solid sphere's theta cut is a cone to the origin: a flat disk
+            // made it a zone, -60% here and +12.5% at 120 deg.
+            "sphere, narrow theta cut",
+            r#"<sphere name="S" rmax="50" deltatheta="45" aunit="deg"/>"#,
+            2.0 * PI * sector(50.0, 0.0, 45.0 * d),
+        ),
+        (
+            "sphere, wide theta cut",
+            r#"<sphere name="S" rmax="50" deltatheta="120" aunit="deg"/>"#,
+            2.0 * PI * sector(50.0, 0.0, 120.0 * d),
+        ),
+        (
+            "sphere, theta and phi cut",
+            r#"<sphere name="S" rmax="50" deltaphi="90" starttheta="30" deltatheta="90" aunit="deg"/>"#,
+            90.0 * d * sector(50.0, 30.0 * d, 120.0 * d),
+        ),
+        ("orb", r#"<orb name="S" r="10"/>"#, 4.0 / 3.0 * PI * 1000.0),
+        (
+            // Decreasing z is legal (G4Polycone::Create reverses the outline);
+            // the dz = 0 steps are flat annuli, the ends close on the axis.
+            "polycone, decreasing z with steps",
+            r#"<polycone name="S" deltaphi="2"><zplane z="15" rmax="0"/><zplane z="10" rmin="2" rmax="20"/><zplane z="0" rmin="2" rmax="20"/><zplane z="0" rmin="5" rmax="10"/><zplane z="-10" rmin="5" rmax="10"/><zplane z="-15" rmax="0"/></polycone>"#,
+            2.0 * moment(&steps),
+        ),
+        (
+            "polyhedra, apothems, hollow, 270 deg",
+            r#"<polyhedra name="S" numsides="5" startphi="20" deltaphi="270" aunit="deg"><zplane z="-10" rmin="4" rmax="10"/><zplane z="10" rmin="6" rmax="12"/></polyhedra>"#,
+            5.0 * (54.0 * d).sin()
+                * moment(&[(4.0, -10.0), (10.0, -10.0), (12.0, 10.0), (6.0, 10.0)])
+                * c5
+                * c5,
+        ),
+        (
+            "polyhedra, steps closing on the axis",
+            r#"<polyhedra name="S" numsides="5" deltaphi="2"><zplane z="-15" rmax="0"/><zplane z="-10" rmin="5" rmax="10"/><zplane z="0" rmin="5" rmax="10"/><zplane z="0" rmin="2" rmax="20"/><zplane z="10" rmin="2" rmax="20"/><zplane z="15" rmax="0"/></polyhedra>"#,
+            5.0 * 0.4f64.sin() * moment(&steps) / 0.2f64.cos().powi(2),
+        ),
+        (
+            "polyhedra, hexagonal prism, deltaphi 0",
+            r#"<polyhedra name="S" numsides="6" deltaphi="0"><zplane z="-5" rmax="10"/><zplane z="5" rmax="10"/></polyhedra>"#,
+            3.0 * (10.0 * c6).powi(2) * (60.0 * d).sin() * 10.0,
+        ),
+        (
+            // A contour, not z-planes: z-plane meshing lost the bore (+33%).
+            "genericPolycone, clockwise hollow tube, quarter",
+            r#"<genericPolycone name="S" startphi="17" deltaphi="90" aunit="deg"><rzpoint r="10" z="50"/><rzpoint r="20" z="50"/><rzpoint r="20" z="-50"/><rzpoint r="10" z="-50"/></genericPolycone>"#,
+            45.0 * d * 300.0 * 100.0,
+        ),
+        (
+            "genericPolycone, bicone",
+            r#"<genericPolycone name="S"><rzpoint r="0" z="10"/><rzpoint r="5" z="20"/><rzpoint r="0" z="30"/></genericPolycone>"#,
+            2.0 * PI * frustum(10.0, 5.0, 0.0),
+        ),
+        (
+            // Corner radii, unlike <polyhedra> (G4Polyhedra.cc:154): +33% as apothems.
+            "genericPolyhedra, hexagonal prism",
+            r#"<genericPolyhedra name="S" numsides="6"><rzpoint r="0" z="-5"/><rzpoint r="10" z="-5"/><rzpoint r="10" z="5"/><rzpoint r="0" z="5"/></genericPolyhedra>"#,
+            3.0 * 100.0 * (60.0 * d).sin() * 10.0,
+        ),
+        (
+            "hype, hollow",
+            r#"<hype name="S" rmin="3" rmax="6" inst="0.2" outst="0.3" z="40"/>"#,
+            PI * (hype(6.0, 0.3) - hype(3.0, 0.2)),
+        ),
+        (
+            "hype, solid",
+            r#"<hype name="S" rmax="6" outst="0.5" z="40"/>"#,
+            PI * hype(6.0, 0.5),
+        ),
+        (
+            "paraboloid",
+            r#"<paraboloid name="S" rlo="2" rhi="5" dz="10"/>"#,
+            PI * (4.0 + 25.0) * 10.0,
+        ),
+        (
+            "eltube",
+            r#"<eltube name="S" dx="5" dy="8" dz="10"/>"#,
+            PI * 40.0 * 20.0,
+        ),
+        (
+            // dx, dy are slopes: the section at z has semi-axes dx (zmax - z).
+            "elcone",
+            r#"<elcone name="S" dx="0.5" dy="0.8" zmax="10" zcut="5"/>"#,
+            PI * 0.4 * (15f64.powi(3) - 5f64.powi(3)) / 3.0,
+        ),
+        (
+            "ellipsoid",
+            r#"<ellipsoid name="S" ax="5" by="8" cz="10"/>"#,
+            PI * 40.0 * (ellipsoid(10.0) - ellipsoid(-10.0)),
+        ),
+        (
+            "ellipsoid, cut",
+            r#"<ellipsoid name="S" ax="5" by="8" cz="10" zcut1="-5" zcut2="7"/>"#,
+            PI * 40.0 * (ellipsoid(7.0) - ellipsoid(-5.0)),
+        ),
+    ];
+    for (name, xml, volume) in cases {
+        let m = solid(xml);
+        assert_volume(&m, volume, 0.01, name);
+        assert_closed(&m, name);
+        assert_unit_normals(&m, name);
+    }
+}
 
 #[test]
 fn box_volume_sanity() {
@@ -320,14 +578,14 @@ fn generic_polycone_revolves_the_closing_edge() {
     // full disks are emitted at both ends: measured 33.3% too large.
     let hollow = [(10.0, -50.0), (20.0, -50.0), (20.0, 50.0), (10.0, 50.0)];
     let expected = PI * (400.0 - 100.0) * 100.0;
-    let m = tessellate_generic_polycone(&hollow, 0.0, 2.0 * PI, SEG, None);
+    let m = tessellate_generic_polycone(corners(&hollow), 0.0, 2.0 * PI, SEG, None);
     assert_volume(&m, expected, 0.01, "generic polycone hollow tube");
     assert_normals_match_winding(&m, "generic polycone hollow tube");
 
     // Reversed contour winding is legal input -- G4Polycone::Create normalises
     // it by signed area.
     let cw: Vec<(f64, f64)> = hollow.iter().rev().copied().collect();
-    let r = tessellate_generic_polycone(&cw, 0.0, 2.0 * PI, SEG, None);
+    let r = tessellate_generic_polycone(corners(&cw), 0.0, 2.0 * PI, SEG, None);
     assert_volume(&r, expected, 0.01, "generic polycone reversed contour");
 }
 
@@ -339,7 +597,7 @@ fn generic_polycone_bicone_still_correct() {
     let bicone = [(0.0, 10.0), (5.0, 20.0), (0.0, 30.0)];
     // Two cones joined base to base, each h=10, r=5.
     let expected = 2.0 * PI * 25.0 * 10.0 / 3.0;
-    let m = tessellate_generic_polycone(&bicone, 0.0, 2.0 * PI, SEG, None);
+    let m = tessellate_generic_polycone(corners(&bicone), 0.0, 2.0 * PI, SEG, None);
     assert_volume(&m, expected, 0.01, "generic polycone bicone");
 }
 
@@ -348,7 +606,7 @@ fn generic_polycone_partial_sweep_is_closed() {
     // Exercises the flat phi faces produced by ear-clipping the contour.
     let hollow = [(10.0, -50.0), (20.0, -50.0), (20.0, 50.0), (10.0, 50.0)];
     let expected = 0.25 * PI * (400.0 - 100.0) * 100.0;
-    let m = tessellate_generic_polycone(&hollow, 0.3, PI / 2.0, SEG, None);
+    let m = tessellate_generic_polycone(corners(&hollow), 0.3, PI / 2.0, SEG, None);
     assert_volume(&m, expected, 0.01, "generic polycone quarter sweep");
     assert_closed_outward(&m, "generic polycone quarter sweep");
 }
@@ -539,7 +797,7 @@ fn generic_polyhedra_radii_are_corner_radii_not_apothems() {
         (r, half_height),
         (0.0, half_height),
     ];
-    let m = tessellate_generic_polycone(&contour, 0.0, 2.0 * PI, SEG, Some(n));
+    let m = tessellate_generic_polycone(corners(&contour), 0.0, 2.0 * PI, SEG, Some(n));
 
     // Regular n-gon of CIRCUMradius r: area = (n/2) r^2 sin(2*pi/n).
     let area = 0.5 * n as f64 * r * r * (2.0 * PI / n as f64).sin();
@@ -670,7 +928,7 @@ fn all_primitive_normals_are_unit_length() {
         (
             "generic polycone",
             tessellate_generic_polycone(
-                &[(0.0, -5.0), (5.0, -5.0), (5.0, 0.0), (8.0, 0.0), (0.0, 5.0)],
+                corners(&[(0.0, -5.0), (5.0, -5.0), (5.0, 0.0), (8.0, 0.0), (0.0, 5.0)]),
                 0.0,
                 2.0,
                 SEG,
