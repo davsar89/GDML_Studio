@@ -5,6 +5,7 @@ import type { SceneNode, MeshData, DocumentSummary, DefineValue, VolumeInfo, Mat
 import { clearAllGeometries } from '../components/Viewport/geometryCache';
 
 interface AppState {
+  /** Set only by loadDocument, which runs inside a document action, so `documentBusy` covers it. */
   loading: boolean;
   error: string | null;
   warnings: string[];
@@ -112,7 +113,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearWarnings: () => set({ warnings: [] }),
   setSelectedVolume: (name) => {
     const state = get();
-    if (state.documentBusy || state.loading) return;
+    if (state.documentBusy) return;
     const material = state.volumes.find((v) => v.name === name)?.material_ref ?? state.selectedMaterial;
     if (material === state.selectedMaterial || !state.materialDraft) {
       set({ selectedVolume: name, selectedMaterial: material }); return;
@@ -125,7 +126,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setSelectedMaterial: (name) => {
     const state = get();
-    if (state.documentBusy || state.loading || name === state.selectedMaterial) return;
+    if (state.documentBusy || name === state.selectedMaterial) return;
     if (!state.materialDraft) { set({ selectedMaterial: name }); return; }
     void runDocumentAction(async () => {
       if (await resolveMaterialDraft()) set({ selectedMaterial: name });

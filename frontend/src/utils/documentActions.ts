@@ -43,8 +43,7 @@ export async function askFilename(initial: string): Promise<string | null> {
 
 /** One document action at a time, including the dialogs that precede it. */
 export async function runDocumentAction(action: () => Promise<void>): Promise<void> {
-  const store = useAppStore.getState();
-  if (store.documentBusy || store.loading) return;
+  if (useAppStore.getState().documentBusy) return;
   useAppStore.setState({ documentBusy: true, error: null });
   try {
     await action();

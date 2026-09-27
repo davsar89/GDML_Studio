@@ -10,7 +10,7 @@ export default function VolumeDetail() {
   const selectedVolume = useAppStore((s) => s.selectedVolume);
   const volumes = useAppStore((s) => s.volumes);
   const materials = useAppStore((s) => s.materials);
-  const busy = useAppStore((s) => s.documentBusy || s.loading);
+  const busy = useAppStore((s) => s.documentBusy);
 
   if (!selectedVolume) return null;
 

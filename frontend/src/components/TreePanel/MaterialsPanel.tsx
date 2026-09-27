@@ -9,7 +9,7 @@ import { applyMaterialDraft, confirmAction, resolveMaterialDraft, runDocumentAct
 
 export default function MaterialsPanel() {
   const materials = useAppStore((s) => s.materials);
-  const busy = useAppStore((s) => s.documentBusy || s.loading);
+  const busy = useAppStore((s) => s.documentBusy);
   const elements = useAppStore((s) => s.elements);
   const selectedMaterial = useAppStore((s) => s.selectedMaterial);
   const setSelectedMaterial = useAppStore((s) => s.setSelectedMaterial);

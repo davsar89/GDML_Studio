@@ -14,7 +14,6 @@ export default function Toolbar() {
   const dirty = useAppStore((s) => s.dirty);
   const hasDraft = useAppStore((s) => s.materialDraft !== null);
   const documentBusy = useAppStore((s) => s.documentBusy);
-  const unavailable = loading || documentBusy;
 
   // Edits live only in the backend's in-memory document; closing the tab
   // discards them, and nothing else warns about that.
@@ -72,7 +71,7 @@ export default function Toolbar() {
       <span style={{ fontWeight: 700, fontSize: 14, color: '#e94560', marginRight: 8 }}>
         GDML Studio
       </span>
-      <button onClick={handleOpenFile} disabled={unavailable} style={btnStyle}>
+      <button onClick={handleOpenFile} disabled={documentBusy} style={btnStyle}>
         {loading ? 'Loading...' : 'Open File(s)'}
       </button>
       <button
@@ -100,8 +99,8 @@ export default function Toolbar() {
       )}
       {summary && (
         <>
-          <button onClick={handleSave} disabled={unavailable} style={btnStyle}>Save</button>
-          <button onClick={handleSaveAs} disabled={unavailable} style={btnStyle}>Save As</button>
+          <button onClick={handleSave} disabled={documentBusy} style={btnStyle}>Save</button>
+          <button onClick={handleSaveAs} disabled={documentBusy} style={btnStyle}>Save As</button>
           <span style={{ fontSize: 12, color: '#8899aa' }}>
             {summary.filename}
             {(dirty || hasDraft) && (
