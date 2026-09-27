@@ -2,6 +2,15 @@ import type { MaterialInfo, MaterialComponent, NistMaterial, ElementInfo } from 
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 
+/** A material with only a name and the density Geant4 requires. */
+export function emptyMaterial(name: string): MaterialInfo {
+  return {
+    name, formula: null, z: null, state: null, density: { value: '1.0', unit: 'g/cm3' }, density_ref: null,
+    temperature: null, pressure: null, mee: null, rl: null, al: null, properties: [],
+    atom_value: null, atom_unit: null, atom_type: null, components: [],
+  };
+}
+
 /** Prepare a material and its missing elements without changing the document. */
 export async function prepareNistMaterial(nist: NistMaterial): Promise<{ material: MaterialInfo; elements: ElementInfo[] }> {
   const existing = useAppStore.getState().elements;
@@ -25,21 +34,12 @@ export async function prepareNistMaterial(nist: NistMaterial): Promise<{ materia
   );
 
   const mat: MaterialInfo = {
-    name: nist.name,
+    ...emptyMaterial(nist.name),
     formula: nist.formula,
     z: nist.z != null ? String(nist.z) : null,
     state: nist.state.toLowerCase() || null,
     density: { value: String(nist.density), unit: 'g/cm3' },
-    density_ref: null,
-    temperature: null,
-    pressure: null,
-    mee: null,
-    rl: null,
-    al: null,
-    properties: [],
     atom_value: nist.atom_value != null ? String(nist.atom_value) : null,
-    atom_unit: null,
-    atom_type: null,
     components,
   };
 

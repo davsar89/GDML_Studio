@@ -37,7 +37,7 @@ beforeEach(() => {
   useAppStore.setState({ summary, materials: serverMaterials, selectedMaterial: 'M' });
   // Keep the real client: serialization, HTTP errors and dirty tracking must
   // execute in production code, not be reproduced by an API mock.
-  for (const name of ['updateMaterial', 'addElement', 'exportGdml', 'uploadFiles'] as const) vi.spyOn(api, name);
+  for (const name of ['updateMaterial', 'addMaterial', 'addElement', 'exportGdml', 'uploadFiles'] as const) vi.spyOn(api, name);
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const path = url.split('?')[0];
     let body: unknown;
@@ -102,14 +102,29 @@ async function chooseFile(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('material drafts and document actions', () => {
-  it('creates a default material without colliding with material or element names', async () => {
-    serverMaterials = [makeMaterial('Material_d1.0')];
-    serverElements = [{ name: 'Material_d1.0_2', formula: null, z: '1', atom_value: '1', atom_unit: null, atom_type: null, fractions: [] }];
+  it('Add material stays local until Apply', async () => {
+    serverMaterials = [makeMaterial('Material_1')];
+    serverElements = [{ name: 'Material_2', formula: null, z: '1', atom_value: '1', atom_unit: null, atom_type: null, fractions: [] }];
     useAppStore.setState({ materials: serverMaterials, elements: serverElements, selectedMaterial: null });
     const user = mount();
     await user.click(screen.getByRole('button', { name: 'Add material' }));
-    expect(serverMaterials.map((m) => m.name)).toEqual(['Material_d1.0', 'Material_d1.0_3']);
-    expect(screen.getByRole('textbox', { name: 'Material name' })).toHaveValue('Material_d1.0_3');
+    expect(screen.getByRole('textbox', { name: 'Material name' })).toHaveValue('Material_3');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(useAppStore.getState().selectedMaterial).toBeNull();
+    expect(mocked.addMaterial).not.toHaveBeenCalled();
+    expect(serverMaterials.map((m) => m.name)).toEqual(['Material_1']);
+
+    await user.click(screen.getByRole('button', { name: 'Add material' }));
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: 'needs atomic number and mass' }), { status: 400 }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('needs atomic number and mass');
+    await user.type(screen.getByRole('textbox', { name: 'Atomic number' }), '1');
+    await user.type(screen.getByRole('textbox', { name: 'Atomic mass' }), '1.008');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(mocked.addMaterial).toHaveBeenCalledTimes(2);
+    expect(mocked.updateMaterial).not.toHaveBeenCalled();
+    expect(serverMaterials.map((m) => m.name)).toEqual(['Material_1', 'Material_3']);
+    expect(serverMaterials[1]).toMatchObject({ z: '1', atom_value: '1.008' });
   });
 
   it('keeps edits local until Apply and preserves unedited GDML properties', async () => {

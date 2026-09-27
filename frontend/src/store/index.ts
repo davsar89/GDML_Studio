@@ -109,15 +109,16 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!original) return {};
     const material = { ...(state.materialDraft?.material ?? original), ...changes };
     const dependencies = elements ?? state.materialDraft?.elements ?? [];
-    return {
-      materialDraft: JSON.stringify(material) === JSON.stringify(original) && dependencies.length === 0
-        ? null : { original, material, elements: dependencies },
-      draftError: null,
-    };
+    // A material that is not in the document yet stays a draft until Apply or Cancel.
+    const unchanged = JSON.stringify(material) === JSON.stringify(original) && dependencies.length === 0
+      && state.materials.some((m) => m.name === original.name);
+    return { materialDraft: unchanged ? null : { original, material, elements: dependencies }, draftError: null };
   }),
   discardMaterialDraft: () => set((state) => ({
     materialDraft: null, draftError: null,
     error: state.error === state.draftError ? null : state.error,
+    // Cancelling a material that was never applied leaves nothing to select.
+    selectedMaterial: state.materials.some((m) => m.name === state.selectedMaterial) ? state.selectedMaterial : null,
   })),
   setWarnings: (warnings) => set({ warnings }),
   clearWarnings: () => set({ warnings: [] }),

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore } from '../../store';
 import type { MaterialInfo, ElementInfo, MaterialComponent, NistMaterial } from '../../store/types';
 import * as api from '../../api/client';
-import { prepareNistMaterial } from '../../utils/nistImport';
+import { emptyMaterial, prepareNistMaterial } from '../../utils/nistImport';
 import { refreshMaterials } from '../../utils/refresh';
 import { applyMaterialDraft, resolveMaterialDraft, runDocumentAction } from '../../utils/documentActions';
 
@@ -47,36 +47,16 @@ function MaterialsList({
   selectedMaterial: string | null;
   onSelect: (name: string | null) => void;
 }) {
-  const handleAdd = async () => {
-    await runDocumentAction(async () => {
-      if (!await resolveMaterialDraft()) return;
-      const { materials, elements } = useAppStore.getState();
-      const names = new Set([...materials, ...elements].map((item) => item.name));
-      let name = 'Material_d1.0';
-      for (let i = 2; names.has(name); i++) name = `Material_d1.0_${i}`;
-      const newMat: MaterialInfo = {
-        name,
-        formula: null,
-        z: null,
-        state: null,
-        density: { value: '1.0', unit: 'g/cm3' },
-        density_ref: null,
-        temperature: null,
-        pressure: null,
-        mee: null,
-        rl: null,
-        al: null,
-        properties: [],
-        atom_value: null,
-        atom_unit: null,
-        atom_type: null,
-        components: [],
-      };
-      await api.addMaterial(newMat);
-      await refreshMaterials();
-      useAppStore.setState({ selectedMaterial: newMat.name });
-    });
-  };
+  // Only a local draft: the material reaches the document on Apply.
+  const handleAdd = () => runDocumentAction(async () => {
+    if (!await resolveMaterialDraft()) return;
+    const { materials, elements } = useAppStore.getState();
+    const names = new Set([...materials, ...elements].map((item) => item.name));
+    let n = 1;
+    while (names.has(`Material_${n}`)) n++;
+    const material = emptyMaterial(`Material_${n}`);
+    useAppStore.setState({ selectedMaterial: material.name, materialDraft: { original: material, material, elements: [] } });
+  });
 
   const handleDelete = async (name: string) => {
     await runDocumentAction(async () => {
@@ -192,6 +172,9 @@ function MaterialFields({ material, onChange }: {
       </FieldRow>
       <FieldRow label="Z">
         <input aria-label="Atomic number" value={material.z ?? ''} onChange={(e) => onChange({ z: e.target.value || null })} style={{ ...inputStyle, width: 50 }} />
+        <span style={{ fontSize: 10, color: '#8899aa' }}>A</span>
+        <input aria-label="Atomic mass" value={material.atom_value ?? ''} onChange={(e) => onChange({ atom_value: e.target.value || null })} style={{ ...inputStyle, width: 60 }} />
+        <span style={{ fontSize: 10, color: '#8899aa' }}>{material.atom_unit ?? 'g/mole'}</span>
       </FieldRow>
     </div>
   );

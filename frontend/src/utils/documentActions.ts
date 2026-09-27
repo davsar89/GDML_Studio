@@ -37,11 +37,14 @@ export async function runDocumentAction(action: () => Promise<void>): Promise<vo
 
 /** Caller owns the document action; a failed Apply leaves the complete draft. */
 export async function applyMaterialDraft(): Promise<void> {
-  const draft = useAppStore.getState().materialDraft;
+  const { materialDraft: draft, materials } = useAppStore.getState();
   if (!draft) return;
+  const isNew = !materials.some((m) => m.name === draft.original.name);
   useAppStore.setState({ draftError: null });
   try {
-    await api.updateMaterial(draft.original.name, draft.material, draft.elements);
+    await (isNew
+      ? api.addMaterial(draft.material, draft.elements)
+      : api.updateMaterial(draft.original.name, draft.material, draft.elements));
   } catch (e: unknown) {
     useAppStore.setState({ draftError: e instanceof Error ? e.message : String(e), activeTreeTab: 'materials' });
     throw e;
@@ -49,7 +52,8 @@ export async function applyMaterialDraft(): Promise<void> {
   // Commit the acknowledged value locally before refreshing. A failed refresh
   // must not turn a successfully applied rename into a stale second request.
   useAppStore.setState((state) => ({
-    materials: state.materials.map((m) => m.name === draft.original.name ? draft.material : m),
+    materials: isNew ? [...state.materials, draft.material]
+      : state.materials.map((m) => m.name === draft.original.name ? draft.material : m),
     elements: [...state.elements, ...draft.elements.filter((el) => !state.elements.some((existing) => existing.name === el.name))],
     selectedMaterial: draft.material.name,
     materialDraft: null,
