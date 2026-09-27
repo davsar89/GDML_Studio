@@ -62,3 +62,16 @@ describe('store.reset', () => {
     expect(clearAllGeometries).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('measurement', () => {
+  it('ignores a second point identical to the first', () => {
+    const a = { position: [1, 2, 3] as [number, number, number], type: 'vertex' as const };
+    const store = useAppStore.getState();
+    store.placeMeasurePoint(a);
+    store.placeMeasurePoint({ ...a, position: [1, 2, 3] });
+    expect(useAppStore.getState().measurements).toEqual([]);
+    expect(useAppStore.getState().pendingPoint).toBe(a);
+    store.placeMeasurePoint({ position: [4, 6, 3], type: 'edge' });
+    expect(useAppStore.getState().measurements.map((m) => m.distance)).toEqual([5]);
+  });
+});

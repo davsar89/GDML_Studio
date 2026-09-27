@@ -178,8 +178,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       const a = state.pendingPoint.position;
       const b = snap.position;
-      const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
-      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const distance = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      // A second click on point A would record a meaningless 0 mm measurement.
+      if (distance < 1e-9) return {};
       const measurement: Measurement = {
         id: `m_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         pointA: state.pendingPoint,
@@ -188,11 +189,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
       return { measurements: [...state.measurements, measurement], pendingPoint: null, surfaceCandidates: [] };
     }),
-  cancelMeasure: () =>
-    set((state) => {
-      if (state.pendingPoint) return { pendingPoint: null, surfaceCandidates: [] };
-      return { measureMode: false, pendingPoint: null, hoverSnap: null, surfaceCandidates: [] };
-    }),
+  cancelMeasure: () => {
+    if (get().pendingPoint) set({ pendingPoint: null, surfaceCandidates: [] });
+    else get().setMeasureMode(false);
+  },
   clearMeasurements: () => set({ measurements: [], pendingPoint: null, surfaceCandidates: [] }),
 
   reset: () => {
