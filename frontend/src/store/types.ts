@@ -40,12 +40,6 @@ export interface DefineValue {
   kind: string;
 }
 
-export interface SolidInfo {
-  type: string;
-  name: string;
-  [key: string]: unknown;
-}
-
 export interface VolumeInfo {
   name: string;
   material_ref: string;
@@ -57,11 +51,6 @@ export interface VolumeInfo {
 // ─── Material/Element types ─────────────────────────────────────────────────
 
 export interface PropertyValue {
-  value: string;
-  unit: string | null;
-}
-
-export interface MaterialDensity {
   value: string;
   unit: string | null;
 }
@@ -94,7 +83,7 @@ export interface MaterialInfo {
   z: string | null;
   /** GDML `state="solid|liquid|gas"`. */
   state: string | null;
-  density: MaterialDensity | null;
+  density: PropertyValue | null;
   density_ref: string | null;
   temperature: PropertyValue | null;
   pressure: PropertyValue | null;
