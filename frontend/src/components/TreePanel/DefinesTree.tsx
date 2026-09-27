@@ -34,7 +34,9 @@ export default function DefinesTree() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
+  const hasRows = defines.length > 0;
 
+  // The scroller only mounts with the first rows, which may arrive after this component.
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -43,9 +45,9 @@ export default function DefinesTree() {
     const observer = new ResizeObserver(() => setViewportHeight(el.clientHeight));
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [hasRows]);
 
-  if (defines.length === 0) {
+  if (!hasRows) {
     return <div style={{ color: '#666', fontSize: 12, padding: 8 }}>{loaded ? 'No defines' : 'No file loaded'}</div>;
   }
 

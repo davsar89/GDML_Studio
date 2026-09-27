@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 vi.mock('../Viewport/geometryCache', () => ({
   clearAllGeometries: vi.fn(),
@@ -25,6 +25,10 @@ function makeDefines(n: number): DefineValue[] {
 
 beforeEach(() => {
   useAppStore.getState().reset();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe('DefinesTree', () => {
@@ -73,6 +77,14 @@ describe('DefinesTree', () => {
     expect(screen.getByText('10')).toBeInTheDocument();
     expect(screen.getByText('0.333333')).toBeInTheDocument();
     expect(screen.getByTitle(/tiny = 1e-9 => 1e-9/)).toBeInTheDocument();
+  });
+
+  it('measures once rows arrive after mount', () => {
+    vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(2000);
+    render(<DefinesTree />);
+    act(() => useAppStore.getState().setDefines(makeDefines(HUGE)));
+    // 2000 px shows 125 rows; the unmeasured fallback of 600 px would stop near d53.
+    expect(screen.getByText('d130')).toBeInTheDocument();
   });
 
   it("shows 'No defines' for a loaded document without defines", () => {
