@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::reader::Reader;
 use quick_xml::Writer;
@@ -43,25 +43,35 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
 
     loop {
         buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) => {
+        let event = reader.read_event_into(&mut buf);
+        // A self-closed element has no body and no end tag: reading one for it
+        // would consume the enclosing element's children instead.
+        let open = matches!(event, Ok(Event::Start(_)));
+        match event {
+            Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
                 let local = e.local_name();
                 let tag = local.as_ref();
                 anchor_pending_comments(&mut pending_comments, &mut order, section, e, tag);
+                note_define(section, &mut order, &mut materials_define, e, tag);
+                let in_define = matches!(section, Section::Define | Section::MaterialsDefine);
+                let in_materials = section == Section::Materials;
+                let in_solids = section == Section::Solids;
                 match tag {
                     b"define" => {
-                        if section == Section::Materials {
-                            section = Section::MaterialsDefine;
+                        if in_materials {
                             // Present-but-empty is meaningful: it still has to
                             // round-trip as an empty <define/>.
                             materials_define.get_or_insert_with(Vec::new);
-                        } else {
+                            if open {
+                                section = Section::MaterialsDefine;
+                            }
+                        } else if open {
                             section = Section::Define;
                         }
                     }
-                    b"materials" => section = Section::Materials,
-                    b"solids" => section = Section::Solids,
-                    b"structure" => section = Section::Structure,
+                    b"materials" if open => section = Section::Materials,
+                    b"solids" if open => section = Section::Solids,
+                    b"structure" if open => section = Section::Structure,
                     // Capture the root's own attributes so the writer can
                     // reproduce them instead of substituting a hardcoded pair.
                     b"gdml" => {
@@ -83,453 +93,122 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                             })
                             .collect();
                     }
-                    b"constant"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Constant,
-                            e,
-                        );
-                        parse_constant(e, &mut defines);
+                    b"constant" if in_define => parse_constant(e, &mut defines),
+                    b"quantity" if in_define => parse_quantity(e, &mut defines),
+                    b"variable" if in_define => parse_variable(e, &mut defines),
+                    b"expression" if in_define => {
+                        let text = if open {
+                            reader.read_text(e.name())?.into_owned()
+                        } else {
+                            String::new()
+                        };
+                        defines.expressions.push(Expression {
+                            name: get_attr(e, "name").unwrap_or_default(),
+                            value: collapse_spaces(&text),
+                        });
                     }
-                    b"quantity"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Quantity,
-                            e,
-                        );
-                        parse_quantity(e, &mut defines);
+                    b"position" if in_define => defines.positions.push(position_from(e)),
+                    b"rotation" if in_define => defines.rotations.push(rotation_from(e)),
+                    b"scale" if in_define => parse_scale(e, &mut defines),
+                    b"isotope" if in_materials => {
+                        read_isotope(&mut reader, e, open, &mut materials)?;
                     }
-                    b"variable"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Variable,
-                            e,
-                        );
-                        parse_variable(e, &mut defines);
+                    b"element" if in_materials => {
+                        read_element(&mut reader, e, open, &mut materials)?;
                     }
-                    b"expression"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Expression,
-                            e,
-                        );
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let text = reader.read_text(e.name()).unwrap_or_default().to_string();
-                        let text = collapse_spaces(&text);
-                        defines.expressions.push(Expression { name, value: text });
+                    b"material" if in_materials => {
+                        read_material(&mut reader, e, open, &mut materials)?;
                     }
-                    b"position"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Position,
-                            e,
-                        );
-                        parse_position(e, &mut defines);
-                    }
-                    b"scale"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Scale,
-                            e,
-                        );
-                        parse_scale(e, &mut defines);
-                    }
-                    b"rotation"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Rotation,
-                            e,
-                        );
-                        parse_rotation(e, &mut defines);
-                    }
-                    b"isotope" if section == Section::Materials => {
-                        let attrs = extract_isotope_attrs(e);
-                        read_isotope_body(&mut reader, attrs, &mut materials)?;
-                    }
-                    b"element" if section == Section::Materials => {
-                        let attrs = extract_element_attrs(e);
-                        read_element_body(&mut reader, attrs, &mut materials)?;
-                    }
-                    b"material" if section == Section::Materials => {
-                        let attrs = extract_material_attrs(e);
-                        read_material_body(&mut reader, attrs, &mut materials)?;
-                    }
-                    b"box" if section == Section::Solids => {
-                        parse_box_solid(e, &mut solids);
-                    }
-                    b"tube" if section == Section::Solids => {
-                        parse_tube_solid(e, &mut solids);
-                    }
-                    b"cone" if section == Section::Solids => {
-                        parse_cone_solid(e, &mut solids);
-                    }
-                    b"sphere" if section == Section::Solids => {
-                        parse_sphere_solid(e, &mut solids);
-                    }
-                    b"trd" if section == Section::Solids => {
-                        parse_trd_solid(e, &mut solids);
-                    }
-                    b"orb" if section == Section::Solids => {
-                        parse_orb_solid(e, &mut solids);
-                    }
-                    b"torus" if section == Section::Solids => {
-                        parse_torus_solid(e, &mut solids);
-                    }
-                    b"trap" if section == Section::Solids => {
-                        parse_trap_solid(e, &mut solids);
-                    }
-                    b"para" if section == Section::Solids => {
-                        parse_para_solid(e, &mut solids);
-                    }
-                    b"cutTube" if section == Section::Solids => {
-                        parse_cut_tube_solid(e, &mut solids);
-                    }
-                    b"ellipsoid" if section == Section::Solids => {
-                        parse_ellipsoid_solid(e, &mut solids);
-                    }
-                    b"eltube" if section == Section::Solids => {
-                        parse_eltube_solid(e, &mut solids);
-                    }
-                    b"tet" if section == Section::Solids => {
-                        parse_tet_solid(e, &mut solids);
-                    }
-                    b"hype" if section == Section::Solids => {
-                        parse_hype_solid(e, &mut solids);
-                    }
-                    b"elcone" if section == Section::Solids => {
-                        parse_elcone_solid(e, &mut solids);
-                    }
-                    b"paraboloid" if section == Section::Solids => {
-                        parse_paraboloid_solid(e, &mut solids);
-                    }
-                    b"arb8" if section == Section::Solids => {
-                        parse_arb8_solid(e, &mut solids);
-                    }
-                    b"twistedtubs" if section == Section::Solids => {
-                        parse_twisted_tubs_solid(e, &mut solids);
-                    }
-                    b"twistedbox" if section == Section::Solids => {
-                        parse_twisted_box_solid(e, &mut solids);
-                    }
-                    b"twistedtrap" if section == Section::Solids => {
-                        parse_twisted_trap_solid(e, &mut solids);
-                    }
-                    b"twistedtrd" if section == Section::Solids => {
-                        parse_twisted_trd_solid(e, &mut solids);
-                    }
-                    b"polycone" if section == Section::Solids => {
-                        let attrs = extract_polycone_attrs(e);
-                        let solid = read_polycone_body(&mut reader, attrs)?;
+                    b"box" if in_solids => parse_box_solid(e, &mut solids),
+                    b"tube" if in_solids => parse_tube_solid(e, &mut solids),
+                    b"cone" if in_solids => parse_cone_solid(e, &mut solids),
+                    b"sphere" if in_solids => parse_sphere_solid(e, &mut solids),
+                    b"trd" if in_solids => parse_trd_solid(e, &mut solids),
+                    b"orb" if in_solids => parse_orb_solid(e, &mut solids),
+                    b"torus" if in_solids => parse_torus_solid(e, &mut solids),
+                    b"trap" if in_solids => parse_trap_solid(e, &mut solids),
+                    b"para" if in_solids => parse_para_solid(e, &mut solids),
+                    b"cutTube" if in_solids => parse_cut_tube_solid(e, &mut solids),
+                    b"ellipsoid" if in_solids => parse_ellipsoid_solid(e, &mut solids),
+                    b"eltube" if in_solids => parse_eltube_solid(e, &mut solids),
+                    b"tet" if in_solids => parse_tet_solid(e, &mut solids),
+                    b"hype" if in_solids => parse_hype_solid(e, &mut solids),
+                    b"elcone" if in_solids => parse_elcone_solid(e, &mut solids),
+                    b"paraboloid" if in_solids => parse_paraboloid_solid(e, &mut solids),
+                    b"arb8" if in_solids => parse_arb8_solid(e, &mut solids),
+                    b"twistedtubs" if in_solids => parse_twisted_tubs_solid(e, &mut solids),
+                    b"twistedbox" if in_solids => parse_twisted_box_solid(e, &mut solids),
+                    b"twistedtrap" if in_solids => parse_twisted_trap_solid(e, &mut solids),
+                    b"twistedtrd" if in_solids => parse_twisted_trd_solid(e, &mut solids),
+                    b"reflectedSolid" if in_solids => parse_reflected_solid(e, &mut solids),
+                    b"polycone" if in_solids => {
+                        let solid = read_polycone_body(&mut reader, e, open)?;
                         solids.solids.push(Solid::Polycone(solid));
                     }
-                    b"genericPolycone" if section == Section::Solids => {
-                        let solid = read_generic_polycone_body(&mut reader, e)?;
+                    b"genericPolycone" if in_solids => {
+                        let solid = read_generic_polycone_body(&mut reader, e, open)?;
                         solids.solids.push(Solid::GenericPolycone(solid));
                     }
-                    b"xtru" if section == Section::Solids => {
-                        let attrs = extract_xtru_attrs(e);
-                        let solid = read_xtru_body(&mut reader, attrs)?;
+                    b"xtru" if in_solids => {
+                        let solid = read_xtru_body(&mut reader, e, open)?;
                         solids.solids.push(Solid::Xtru(solid));
                     }
-                    b"tessellated" if section == Section::Solids => {
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let lunit = get_attr(e, "lunit");
-                        let aunit = get_attr(e, "aunit");
-                        let mut solid = read_tessellated_body(&mut reader, name)?;
-                        solid.lunit = lunit;
-                        solid.aunit = aunit;
+                    b"tessellated" if in_solids => {
+                        let solid = read_tessellated_body(&mut reader, e, open)?;
                         solids.solids.push(Solid::Tessellated(solid));
                     }
-                    b"polyhedra" if section == Section::Solids => {
-                        let solid = read_polyhedra_body(&mut reader, e)?;
+                    b"polyhedra" if in_solids => {
+                        let solid = read_polyhedra_body(&mut reader, e, open)?;
                         solids.solids.push(Solid::Polyhedra(solid));
                     }
-                    b"genericPolyhedra" if section == Section::Solids => {
-                        let solid = read_generic_polyhedra_body(&mut reader, e)?;
+                    b"genericPolyhedra" if in_solids => {
+                        let solid = read_generic_polyhedra_body(&mut reader, e, open)?;
                         solids.solids.push(Solid::GenericPolyhedra(solid));
                     }
-                    b"reflectedSolid" if section == Section::Solids => {
-                        parse_reflected_solid(e, &mut solids);
+                    b"multiUnion" if in_solids => {
+                        let solid = read_multiunion_body(&mut reader, e, open)?;
+                        solids.solids.push(Solid::MultiUnion(solid));
                     }
-                    b"multiUnion" if section == Section::Solids => {
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let mu = read_multiunion_body(&mut reader, name)?;
-                        solids.solids.push(Solid::MultiUnion(mu));
+                    b"scaledSolid" if in_solids => {
+                        let solid = read_scaled_solid_body(&mut reader, e, open)?;
+                        solids.solids.push(Solid::Scaled(solid));
                     }
-                    b"scaledSolid" if section == Section::Solids => {
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let ss = read_scaled_solid_body(&mut reader, name)?;
-                        solids.solids.push(Solid::Scaled(ss));
-                    }
-                    b"subtraction" if section == Section::Solids => {
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let bs =
-                            read_boolean_solid_body(&mut reader, name, BooleanOp::Subtraction)?;
-                        solids.solids.push(Solid::Boolean(bs));
-                    }
-                    b"union" if section == Section::Solids => {
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let bs = read_boolean_solid_body(&mut reader, name, BooleanOp::Union)?;
-                        solids.solids.push(Solid::Boolean(bs));
-                    }
-                    b"intersection" if section == Section::Solids => {
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let bs =
-                            read_boolean_solid_body(&mut reader, name, BooleanOp::Intersection)?;
-                        solids.solids.push(Solid::Boolean(bs));
+                    b"subtraction" | b"union" | b"intersection" if in_solids => {
+                        let op = match tag {
+                            b"union" => BooleanOp::Union,
+                            b"intersection" => BooleanOp::Intersection,
+                            _ => BooleanOp::Subtraction,
+                        };
+                        let solid = read_boolean_solid_body(&mut reader, e, open, op)?;
+                        solids.solids.push(Solid::Boolean(solid));
                     }
                     b"volume" if section == Section::Structure => {
-                        let vol_name = get_attr(e, "name").unwrap_or_default();
-                        read_volume_body(
-                            &mut reader,
-                            vol_name,
-                            &mut structure,
-                            &mut skipped_unsupported,
-                        )?;
+                        let volume =
+                            read_volume_body(&mut reader, e, open, &mut skipped_unsupported)?;
+                        structure.volumes.push(volume);
                     }
                     // Recognized-but-uninterpreted constructs: preserve verbatim so
                     // they survive a load -> save round-trip (and warn the user).
                     b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
                     | b"loop" | b"assembly" | b"matrix" => {
-                        let raw_tag = String::from_utf8_lossy(tag).to_string();
-                        let xml = capture_raw_subtree(&mut reader, e.clone().into_owned())?;
+                        let xml = capture_raw(&mut reader, e, open)?;
                         raw_unknown.push(RawElement {
-                            tag: raw_tag,
+                            tag: String::from_utf8_lossy(tag).to_string(),
                             section: Some(section_key(section)),
                             xml,
                         });
                     }
                     b"setup" => {
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let version = get_attr(e, "version").unwrap_or_else(|| "1.0".to_string());
-                        let world_ref = read_setup_body(&mut reader)?;
+                        let mut world_ref = get_attr(e, "world").unwrap_or_default();
+                        for_each_child(&mut reader, e, open, |_, c, _| {
+                            if c.local_name().as_ref() == b"world" {
+                                world_ref = ref_attr(c);
+                            }
+                            Ok(())
+                        })?;
                         setups.push(SetupSection {
-                            name,
-                            version,
-                            world_ref,
-                        });
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::Empty(ref e)) => {
-                let local = e.local_name();
-                let tag = local.as_ref();
-                anchor_pending_comments(&mut pending_comments, &mut order, section, e, tag);
-                match tag {
-                    // A self-closed <define/> inside <materials>: no items, but
-                    // the element itself still has to survive the round trip.
-                    b"define" if section == Section::Materials => {
-                        materials_define.get_or_insert_with(Vec::new);
-                    }
-                    b"constant"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Constant,
-                            e,
-                        );
-                        parse_constant(e, &mut defines);
-                    }
-                    b"quantity"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Quantity,
-                            e,
-                        );
-                        parse_quantity(e, &mut defines);
-                    }
-                    b"variable"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Variable,
-                            e,
-                        );
-                        parse_variable(e, &mut defines);
-                    }
-                    b"position"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Position,
-                            e,
-                        );
-                        parse_position(e, &mut defines);
-                    }
-                    b"scale"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Scale,
-                            e,
-                        );
-                        parse_scale(e, &mut defines);
-                    }
-                    b"rotation"
-                        if section == Section::Define || section == Section::MaterialsDefine =>
-                    {
-                        note_define(
-                            section,
-                            &mut order,
-                            &mut materials_define,
-                            DefineKind::Rotation,
-                            e,
-                        );
-                        parse_rotation(e, &mut defines);
-                    }
-                    b"isotope" if section == Section::Materials => {
-                        materials.isotopes.push(Isotope {
                             name: get_attr(e, "name").unwrap_or_default(),
-                            n: get_attr(e, "N"),
-                            z: get_attr(e, "Z"),
-                            atom_value: None,
-                            atom_unit: None,
-                            atom_type: None,
-                        });
-                    }
-                    b"element" if section == Section::Materials => {
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let formula = get_attr(e, "formula");
-                        let z = get_attr(e, "Z");
-                        materials.elements.push(Element {
-                            name,
-                            formula,
-                            z,
-                            atom_value: None,
-                            atom_unit: None,
-                            atom_type: None,
-                            fractions: Vec::new(),
-                        });
-                    }
-                    b"box" if section == Section::Solids => {
-                        parse_box_solid(e, &mut solids);
-                    }
-                    b"tube" if section == Section::Solids => {
-                        parse_tube_solid(e, &mut solids);
-                    }
-                    b"cone" if section == Section::Solids => {
-                        parse_cone_solid(e, &mut solids);
-                    }
-                    b"sphere" if section == Section::Solids => {
-                        parse_sphere_solid(e, &mut solids);
-                    }
-                    b"trd" if section == Section::Solids => {
-                        parse_trd_solid(e, &mut solids);
-                    }
-                    b"orb" if section == Section::Solids => {
-                        parse_orb_solid(e, &mut solids);
-                    }
-                    b"torus" if section == Section::Solids => {
-                        parse_torus_solid(e, &mut solids);
-                    }
-                    b"trap" if section == Section::Solids => {
-                        parse_trap_solid(e, &mut solids);
-                    }
-                    b"para" if section == Section::Solids => {
-                        parse_para_solid(e, &mut solids);
-                    }
-                    b"cutTube" if section == Section::Solids => {
-                        parse_cut_tube_solid(e, &mut solids);
-                    }
-                    b"ellipsoid" if section == Section::Solids => {
-                        parse_ellipsoid_solid(e, &mut solids);
-                    }
-                    b"eltube" if section == Section::Solids => {
-                        parse_eltube_solid(e, &mut solids);
-                    }
-                    b"tet" if section == Section::Solids => {
-                        parse_tet_solid(e, &mut solids);
-                    }
-                    b"hype" if section == Section::Solids => {
-                        parse_hype_solid(e, &mut solids);
-                    }
-                    b"elcone" if section == Section::Solids => {
-                        parse_elcone_solid(e, &mut solids);
-                    }
-                    b"paraboloid" if section == Section::Solids => {
-                        parse_paraboloid_solid(e, &mut solids);
-                    }
-                    b"arb8" if section == Section::Solids => {
-                        parse_arb8_solid(e, &mut solids);
-                    }
-                    b"twistedtubs" if section == Section::Solids => {
-                        parse_twisted_tubs_solid(e, &mut solids);
-                    }
-                    b"twistedbox" if section == Section::Solids => {
-                        parse_twisted_box_solid(e, &mut solids);
-                    }
-                    b"twistedtrap" if section == Section::Solids => {
-                        parse_twisted_trap_solid(e, &mut solids);
-                    }
-                    b"twistedtrd" if section == Section::Solids => {
-                        parse_twisted_trd_solid(e, &mut solids);
-                    }
-                    b"reflectedSolid" if section == Section::Solids => {
-                        parse_reflected_solid(e, &mut solids);
-                    }
-                    // Self-closing recognized-but-uninterpreted constructs: preserve verbatim.
-                    b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo"
-                    | b"loop" | b"assembly" | b"matrix" => {
-                        let raw_tag = String::from_utf8_lossy(tag).to_string();
-                        let xml = empty_element_to_string(e)?;
-                        raw_unknown.push(RawElement {
-                            tag: raw_tag,
-                            section: Some(section_key(section)),
-                            xml,
-                        });
-                    }
-                    b"setup" => {
-                        let name = get_attr(e, "name").unwrap_or_default();
-                        let version = get_attr(e, "version").unwrap_or_else(|| "1.0".to_string());
-                        let world_ref = get_attr(e, "world").unwrap_or_default();
-                        setups.push(SetupSection {
-                            name,
-                            version,
+                            version: get_attr(e, "version").unwrap_or_else(|| "1.0".to_string()),
                             world_ref,
                         });
                     }
@@ -663,12 +342,16 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
     })
 }
 
-/// Capture a recognized-but-uninterpreted element (`<tag>...</tag>`) verbatim,
-/// including all nested content, so it can be re-emitted unchanged on save.
-fn capture_raw_subtree(reader: &mut Reader<&[u8]>, start: BytesStart<'static>) -> Result<String> {
+/// Capture a recognized-but-uninterpreted element verbatim, including all
+/// nested content, so it can be re-emitted unchanged on save.
+fn capture_raw(reader: &mut Reader<&[u8]>, start: &BytesStart, open: bool) -> Result<String> {
     let mut w = Writer::new(Vec::new());
+    if !open {
+        w.write_event(Event::Empty(start.borrow()))?;
+        return Ok(String::from_utf8(w.into_inner())?);
+    }
     let tag_name = start.name().as_ref().to_vec();
-    w.write_event(Event::Start(start))?;
+    w.write_event(Event::Start(start.borrow()))?;
     let mut depth = 1usize;
     let mut buf = Vec::new();
     loop {
@@ -697,11 +380,35 @@ fn capture_raw_subtree(reader: &mut Reader<&[u8]>, start: BytesStart<'static>) -
     Ok(String::from_utf8(w.into_inner())?)
 }
 
-/// Serialize a single self-closing element verbatim.
-fn empty_element_to_string(e: &BytesStart) -> Result<String> {
-    let mut w = Writer::new(Vec::new());
-    w.write_event(Event::Empty(e.clone()))?;
-    Ok(String::from_utf8(w.into_inner())?)
+/// Call `f` for every element inside `parent` up to its end tag, with whether
+/// that element is open (`<x>…</x>`) rather than self-closed (`<x/>`).
+///
+/// The one child loop the body readers share, so malformed XML inside any
+/// element is an error instead of a silently truncated element. A self-closed
+/// parent has no children and no end tag, so nothing is read for it. Nested
+/// elements `f` does not consume itself are visited too, as flat children.
+fn for_each_child(
+    reader: &mut Reader<&[u8]>,
+    parent: &BytesStart,
+    open: bool,
+    mut f: impl FnMut(&mut Reader<&[u8]>, &BytesStart, bool) -> Result<()>,
+) -> Result<()> {
+    if !open {
+        return Ok(());
+    }
+    let end = parent.local_name().as_ref().to_vec();
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => f(reader, &e, true)?,
+            Ok(Event::Empty(e)) => f(reader, &e, false)?,
+            Ok(Event::End(e)) if e.local_name().as_ref() == end.as_slice() => return Ok(()),
+            Ok(Event::Eof) => return Ok(()),
+            Ok(_) => {}
+            Err(err) => bail!("XML error in <{}>: {err}", String::from_utf8_lossy(&end)),
+        }
+    }
 }
 
 // ─── Attribute helpers ───────────────────────────────────────────────────────
@@ -726,13 +433,29 @@ enum Section {
 /// Order matters because `G4GDMLReadDefine::DefineRead` reads the children in
 /// one forward pass and evaluates each `value` as it goes, so emitting them
 /// regrouped by type can put a define ahead of one it references.
+///
+/// Called for every element at the top-level dispatch point; anything that is
+/// not a define item inside a define block is ignored.
 fn note_define(
     section: Section,
     order: &mut DocumentOrder,
     materials_slot: &mut Option<Vec<String>>,
-    kind: DefineKind,
     e: &BytesStart,
+    tag: &[u8],
 ) {
+    if !matches!(section, Section::Define | Section::MaterialsDefine) {
+        return;
+    }
+    let kind = match tag {
+        b"constant" => DefineKind::Constant,
+        b"quantity" => DefineKind::Quantity,
+        b"variable" => DefineKind::Variable,
+        b"expression" => DefineKind::Expression,
+        b"position" => DefineKind::Position,
+        b"rotation" => DefineKind::Rotation,
+        b"scale" => DefineKind::Scale,
+        _ => return,
+    };
     let Some(name) = get_attr(e, "name") else {
         return;
     };
@@ -868,16 +591,6 @@ fn parse_variable(e: &BytesStart, defines: &mut DefineSection) {
     });
 }
 
-fn parse_position(e: &BytesStart, defines: &mut DefineSection) {
-    defines.positions.push(Position {
-        name: get_attr(e, "name").unwrap_or_default(),
-        x: get_attr(e, "x"),
-        y: get_attr(e, "y"),
-        z: get_attr(e, "z"),
-        unit: get_attr(e, "unit"),
-    });
-}
-
 fn parse_scale(e: &BytesStart, defines: &mut DefineSection) {
     defines.scales.push(Scale {
         name: get_attr(e, "name").unwrap_or_default(),
@@ -887,277 +600,160 @@ fn parse_scale(e: &BytesStart, defines: &mut DefineSection) {
     });
 }
 
-fn parse_rotation(e: &BytesStart, defines: &mut DefineSection) {
-    defines.rotations.push(Rotation {
+/// A `<position>`, whether a define or inline in a placement.
+fn position_from(e: &BytesStart) -> Position {
+    Position {
         name: get_attr(e, "name").unwrap_or_default(),
         x: get_attr(e, "x"),
         y: get_attr(e, "y"),
         z: get_attr(e, "z"),
         unit: get_attr(e, "unit"),
-    });
+    }
 }
 
-// ─── Material parsers (extract attrs, then read body with own buffer) ────────
-
-struct ElementAttrs {
-    name: String,
-    formula: Option<String>,
-    z: Option<String>,
+/// A `<rotation>`, whether a define or inline in a placement.
+fn rotation_from(e: &BytesStart) -> Rotation {
+    Rotation {
+        name: get_attr(e, "name").unwrap_or_default(),
+        x: get_attr(e, "x"),
+        y: get_attr(e, "y"),
+        z: get_attr(e, "z"),
+        unit: get_attr(e, "unit"),
+    }
 }
 
-fn extract_element_attrs(e: &BytesStart) -> ElementAttrs {
-    ElementAttrs {
+/// The `ref` attribute of a reference such as `<solidref>` or `<positionref>`.
+fn ref_attr(e: &BytesStart) -> String {
+    get_attr(e, "ref").unwrap_or_default()
+}
+
+// ─── Material parsers ────────────────────────────────────────────────────────
+
+fn read_element(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+    materials: &mut MaterialSection,
+) -> Result<()> {
+    let mut element = Element {
         name: get_attr(e, "name").unwrap_or_default(),
         formula: get_attr(e, "formula"),
         z: get_attr(e, "Z"),
-    }
-}
-
-fn read_element_body(
-    reader: &mut Reader<&[u8]>,
-    attrs: ElementAttrs,
-    materials: &mut MaterialSection,
-) -> Result<()> {
-    let mut atom_value = None;
-    let mut atom_unit = None;
-    let mut atom_type = None;
-    let mut fractions = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                match inner.local_name().as_ref() {
-                    b"atom" => {
-                        atom_value = get_attr(inner, "value");
-                        atom_unit = get_attr(inner, "unit");
-                        atom_type = get_attr(inner, "type");
-                    }
-                    b"fraction" => fractions.push(Fraction {
-                        n: get_attr(inner, "n").unwrap_or_default(),
-                        ref_name: get_attr(inner, "ref").unwrap_or_default(),
-                    }),
-                    _ => {}
-                }
+        atom_value: None,
+        atom_unit: None,
+        atom_type: None,
+        fractions: Vec::new(),
+    };
+    for_each_child(reader, e, open, |_, c, _| {
+        match c.local_name().as_ref() {
+            b"atom" => {
+                element.atom_value = get_attr(c, "value");
+                element.atom_unit = get_attr(c, "unit");
+                element.atom_type = get_attr(c, "type");
             }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"element" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in element: {}", e)),
+            b"fraction" => element.fractions.push(Fraction {
+                n: get_attr(c, "n").unwrap_or_default(),
+                ref_name: ref_attr(c),
+            }),
             _ => {}
         }
-    }
-
-    materials.elements.push(Element {
-        name: attrs.name,
-        formula: attrs.formula,
-        z: attrs.z,
-        atom_value,
-        atom_unit,
-        atom_type,
-        fractions,
-    });
+        Ok(())
+    })?;
+    materials.elements.push(element);
     Ok(())
 }
 
-// ─── Isotope parser ──────────────────────────────────────────────────────────
-
-struct IsotopeAttrs {
-    name: String,
-    n: Option<String>,
-    z: Option<String>,
-}
-
-fn extract_isotope_attrs(e: &BytesStart) -> IsotopeAttrs {
-    IsotopeAttrs {
+fn read_isotope(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+    materials: &mut MaterialSection,
+) -> Result<()> {
+    let mut isotope = Isotope {
         name: get_attr(e, "name").unwrap_or_default(),
         n: get_attr(e, "N"),
         z: get_attr(e, "Z"),
-    }
-}
-
-fn read_isotope_body(
-    reader: &mut Reader<&[u8]>,
-    attrs: IsotopeAttrs,
-    materials: &mut MaterialSection,
-) -> Result<()> {
-    let mut atom_value = None;
-    let mut atom_unit = None;
-    let mut atom_type = None;
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                if inner.local_name().as_ref() == b"atom" {
-                    atom_value = get_attr(inner, "value");
-                    atom_unit = get_attr(inner, "unit");
-                    atom_type = get_attr(inner, "type");
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"isotope" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in isotope: {}", e)),
-            _ => {}
+        atom_value: None,
+        atom_unit: None,
+        atom_type: None,
+    };
+    for_each_child(reader, e, open, |_, c, _| {
+        if c.local_name().as_ref() == b"atom" {
+            isotope.atom_value = get_attr(c, "value");
+            isotope.atom_unit = get_attr(c, "unit");
+            isotope.atom_type = get_attr(c, "type");
         }
-    }
-
-    materials.isotopes.push(Isotope {
-        name: attrs.name,
-        n: attrs.n,
-        z: attrs.z,
-        atom_value,
-        atom_unit,
-        atom_type,
-    });
+        Ok(())
+    })?;
+    materials.isotopes.push(isotope);
     Ok(())
 }
 
-struct MaterialAttrs {
-    name: String,
-    formula: Option<String>,
-    z: Option<String>,
-    state: Option<String>,
-}
-
-fn extract_material_attrs(e: &BytesStart) -> MaterialAttrs {
-    MaterialAttrs {
+fn read_material(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+    materials: &mut MaterialSection,
+) -> Result<()> {
+    let mut m = Material {
         name: get_attr(e, "name").unwrap_or_default(),
         formula: get_attr(e, "formula"),
         z: get_attr(e, "Z"),
         state: get_attr(e, "state"),
-    }
-}
-
-fn read_material_body(
-    reader: &mut Reader<&[u8]>,
-    attrs: MaterialAttrs,
-    materials: &mut MaterialSection,
-) -> Result<()> {
-    let mut density = None;
-    let mut density_ref = None;
-    let mut temperature = None;
-    let mut pressure = None;
-    let mut mee = None;
-    let mut rl = None;
-    let mut al = None;
-    let mut properties = Vec::new();
-    let mut atom_value = None;
-    let mut atom_unit = None;
-    let mut atom_type = None;
-    let mut components = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"D" => {
-                        density = Some(Density {
-                            value: get_attr(inner, "value").unwrap_or_default(),
-                            unit: get_attr(inner, "unit"),
-                        });
-                    }
-                    b"Dref" => {
-                        density_ref = get_attr(inner, "ref");
-                    }
-                    b"T" => {
-                        temperature = Some(PropertyValue {
-                            value: get_attr(inner, "value").unwrap_or_default(),
-                            unit: get_attr(inner, "unit"),
-                        });
-                    }
-                    b"P" => {
-                        pressure = Some(PropertyValue {
-                            value: get_attr(inner, "value").unwrap_or_default(),
-                            unit: get_attr(inner, "unit"),
-                        });
-                    }
-                    b"MEE" => {
-                        mee = Some(PropertyValue {
-                            value: get_attr(inner, "value").unwrap_or_default(),
-                            unit: get_attr(inner, "unit"),
-                        });
-                    }
-                    b"RL" => {
-                        rl = Some(PropertyValue {
-                            value: get_attr(inner, "value").unwrap_or_default(),
-                            unit: get_attr(inner, "unit"),
-                        });
-                    }
-                    b"AL" => {
-                        al = Some(PropertyValue {
-                            value: get_attr(inner, "value").unwrap_or_default(),
-                            unit: get_attr(inner, "unit"),
-                        });
-                    }
-                    b"property" => {
-                        properties.push(MaterialProperty {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            ref_name: get_attr(inner, "ref"),
-                            values: get_attr(inner, "values"),
-                        });
-                    }
-                    b"atom" => {
-                        atom_value = get_attr(inner, "value");
-                        atom_unit = get_attr(inner, "unit");
-                        atom_type = get_attr(inner, "type");
-                    }
-                    b"fraction" => {
-                        components.push(MaterialComponent::Fraction {
-                            n: get_attr(inner, "n").unwrap_or_default(),
-                            ref_name: get_attr(inner, "ref").unwrap_or_default(),
-                        });
-                    }
-                    b"composite" => {
-                        components.push(MaterialComponent::Composite {
-                            n: get_attr(inner, "n").unwrap_or_default(),
-                            ref_name: get_attr(inner, "ref").unwrap_or_default(),
-                        });
-                    }
-                    _ => {}
-                }
+        density: None,
+        density_ref: None,
+        temperature: None,
+        pressure: None,
+        mee: None,
+        atom_value: None,
+        atom_unit: None,
+        atom_type: None,
+        properties: Vec::new(),
+        rl: None,
+        al: None,
+        components: Vec::new(),
+    };
+    for_each_child(reader, e, open, |_, c, _| {
+        let value = || PropertyValue {
+            value: get_attr(c, "value").unwrap_or_default(),
+            unit: get_attr(c, "unit"),
+        };
+        match c.local_name().as_ref() {
+            b"D" => {
+                m.density = Some(Density {
+                    value: get_attr(c, "value").unwrap_or_default(),
+                    unit: get_attr(c, "unit"),
+                })
             }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"material" {
-                    break;
-                }
+            b"Dref" => m.density_ref = get_attr(c, "ref"),
+            b"T" => m.temperature = Some(value()),
+            b"P" => m.pressure = Some(value()),
+            b"MEE" => m.mee = Some(value()),
+            b"RL" => m.rl = Some(value()),
+            b"AL" => m.al = Some(value()),
+            b"property" => m.properties.push(MaterialProperty {
+                name: get_attr(c, "name").unwrap_or_default(),
+                ref_name: get_attr(c, "ref"),
+                values: get_attr(c, "values"),
+            }),
+            b"atom" => {
+                m.atom_value = get_attr(c, "value");
+                m.atom_unit = get_attr(c, "unit");
+                m.atom_type = get_attr(c, "type");
             }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in material: {}", e)),
+            b"fraction" => m.components.push(MaterialComponent::Fraction {
+                n: get_attr(c, "n").unwrap_or_default(),
+                ref_name: ref_attr(c),
+            }),
+            b"composite" => m.components.push(MaterialComponent::Composite {
+                n: get_attr(c, "n").unwrap_or_default(),
+                ref_name: ref_attr(c),
+            }),
             _ => {}
         }
-    }
-
-    materials.materials.push(Material {
-        name: attrs.name,
-        formula: attrs.formula,
-        z: attrs.z,
-        state: attrs.state,
-        density,
-        density_ref,
-        temperature,
-        pressure,
-        mee,
-        rl,
-        al,
-        properties,
-        atom_value,
-        atom_unit,
-        atom_type,
-        components,
-    });
+        Ok(())
+    })?;
+    materials.materials.push(m);
     Ok(())
 }
 
@@ -1455,262 +1051,130 @@ fn parse_ellipsoid_solid(e: &BytesStart, solids: &mut SolidSection) {
     }));
 }
 
-// ─── Polycone parser ─────────────────────────────────────────────────────────
+// ─── Polycone / polyhedra parsers ────────────────────────────────────────────
 
-struct PolyconeAttrs {
-    name: String,
-    startphi: Option<String>,
-    deltaphi: Option<String>,
-    aunit: Option<String>,
-    lunit: Option<String>,
+/// The `<zplane>` children of a polycone or polyhedra.
+fn read_zplanes(reader: &mut Reader<&[u8]>, e: &BytesStart, open: bool) -> Result<Vec<ZPlane>> {
+    let mut zplanes = Vec::new();
+    for_each_child(reader, e, open, |_, c, _| {
+        if c.local_name().as_ref() == b"zplane" {
+            zplanes.push(ZPlane {
+                rmin: get_attr(c, "rmin"),
+                rmax: get_attr_or(c, "rmax", "0"),
+                z: get_attr_or(c, "z", "0"),
+            });
+        }
+        Ok(())
+    })?;
+    Ok(zplanes)
 }
 
-fn extract_polycone_attrs(e: &BytesStart) -> PolyconeAttrs {
-    PolyconeAttrs {
+/// The `<rzpoint>` children of a generic polycone or polyhedra.
+fn read_rzpoints(reader: &mut Reader<&[u8]>, e: &BytesStart, open: bool) -> Result<Vec<RZPoint>> {
+    let mut rzpoints = Vec::new();
+    for_each_child(reader, e, open, |_, c, _| {
+        if c.local_name().as_ref() == b"rzpoint" {
+            rzpoints.push(RZPoint {
+                r: get_attr_or(c, "r", "0"),
+                z: get_attr_or(c, "z", "0"),
+            });
+        }
+        Ok(())
+    })?;
+    Ok(rzpoints)
+}
+
+fn read_polycone_body(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+) -> Result<PolyconeSolid> {
+    Ok(PolyconeSolid {
         name: get_attr(e, "name").unwrap_or_default(),
         startphi: get_attr(e, "startphi"),
         deltaphi: get_attr(e, "deltaphi"),
         aunit: get_attr(e, "aunit"),
         lunit: get_attr(e, "lunit"),
-    }
-}
-
-fn read_polycone_body(reader: &mut Reader<&[u8]>, attrs: PolyconeAttrs) -> Result<PolyconeSolid> {
-    let mut zplanes = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                if inner.local_name().as_ref() == b"zplane" {
-                    zplanes.push(ZPlane {
-                        rmin: get_attr(inner, "rmin"),
-                        rmax: get_attr_or(inner, "rmax", "0"),
-                        z: get_attr_or(inner, "z", "0"),
-                    });
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"polycone" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in polycone: {}", e)),
-            _ => {}
-        }
-    }
-
-    Ok(PolyconeSolid {
-        name: attrs.name,
-        startphi: attrs.startphi,
-        deltaphi: attrs.deltaphi,
-        aunit: attrs.aunit,
-        lunit: attrs.lunit,
-        zplanes,
+        zplanes: read_zplanes(reader, e, open)?,
     })
 }
 
 fn read_generic_polycone_body(
     reader: &mut Reader<&[u8]>,
     e: &BytesStart,
+    open: bool,
 ) -> Result<GenericPolyconeSolid> {
-    let name = get_attr(e, "name").unwrap_or_default();
-    let startphi = get_attr(e, "startphi");
-    let deltaphi = get_attr(e, "deltaphi");
-    let aunit = get_attr(e, "aunit");
-    let lunit = get_attr(e, "lunit");
-
-    let mut rzpoints = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                if inner.local_name().as_ref() == b"rzpoint" {
-                    rzpoints.push(RZPoint {
-                        r: get_attr_or(inner, "r", "0"),
-                        z: get_attr_or(inner, "z", "0"),
-                    });
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"genericPolycone" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in genericPolycone: {}", e)),
-            _ => {}
-        }
-    }
-
     Ok(GenericPolyconeSolid {
-        name,
-        startphi,
-        deltaphi,
-        aunit,
-        lunit,
-        rzpoints,
+        name: get_attr(e, "name").unwrap_or_default(),
+        startphi: get_attr(e, "startphi"),
+        deltaphi: get_attr(e, "deltaphi"),
+        aunit: get_attr(e, "aunit"),
+        lunit: get_attr(e, "lunit"),
+        rzpoints: read_rzpoints(reader, e, open)?,
     })
 }
 
-// ─── Polyhedra parser ────────────────────────────────────────────────────────
-
-fn read_polyhedra_body(reader: &mut Reader<&[u8]>, e: &BytesStart) -> Result<PolyhedraSolid> {
-    let name = get_attr(e, "name").unwrap_or_default();
-    let numsides = get_attr_or(e, "numsides", "6");
-    let startphi = get_attr(e, "startphi");
-    let deltaphi = get_attr(e, "deltaphi");
-    let aunit = get_attr(e, "aunit");
-    let lunit = get_attr(e, "lunit");
-
-    let mut zplanes = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                if inner.local_name().as_ref() == b"zplane" {
-                    zplanes.push(ZPlane {
-                        rmin: get_attr(inner, "rmin"),
-                        rmax: get_attr_or(inner, "rmax", "0"),
-                        z: get_attr_or(inner, "z", "0"),
-                    });
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"polyhedra" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in polyhedra: {}", e)),
-            _ => {}
-        }
-    }
-
+fn read_polyhedra_body(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+) -> Result<PolyhedraSolid> {
     Ok(PolyhedraSolid {
-        name,
-        startphi,
-        deltaphi,
-        numsides,
-        aunit,
-        lunit,
-        zplanes,
+        name: get_attr(e, "name").unwrap_or_default(),
+        startphi: get_attr(e, "startphi"),
+        deltaphi: get_attr(e, "deltaphi"),
+        numsides: get_attr_or(e, "numsides", "6"),
+        aunit: get_attr(e, "aunit"),
+        lunit: get_attr(e, "lunit"),
+        zplanes: read_zplanes(reader, e, open)?,
     })
 }
 
 fn read_generic_polyhedra_body(
     reader: &mut Reader<&[u8]>,
     e: &BytesStart,
+    open: bool,
 ) -> Result<GenericPolyhedraSolid> {
-    let name = get_attr(e, "name").unwrap_or_default();
-    let numsides = get_attr_or(e, "numsides", "6");
-    let startphi = get_attr(e, "startphi");
-    let deltaphi = get_attr(e, "deltaphi");
-    let aunit = get_attr(e, "aunit");
-    let lunit = get_attr(e, "lunit");
-
-    let mut rzpoints = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                if inner.local_name().as_ref() == b"rzpoint" {
-                    rzpoints.push(RZPoint {
-                        r: get_attr_or(inner, "r", "0"),
-                        z: get_attr_or(inner, "z", "0"),
-                    });
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"genericPolyhedra" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in genericPolyhedra: {}", e)),
-            _ => {}
-        }
-    }
-
     Ok(GenericPolyhedraSolid {
-        name,
-        startphi,
-        deltaphi,
-        numsides,
-        aunit,
-        lunit,
-        rzpoints,
+        name: get_attr(e, "name").unwrap_or_default(),
+        startphi: get_attr(e, "startphi"),
+        deltaphi: get_attr(e, "deltaphi"),
+        numsides: get_attr_or(e, "numsides", "6"),
+        aunit: get_attr(e, "aunit"),
+        lunit: get_attr(e, "lunit"),
+        rzpoints: read_rzpoints(reader, e, open)?,
     })
 }
 
 // ─── Xtru parser ─────────────────────────────────────────────────────────────
 
-struct XtruAttrs {
-    name: String,
-    lunit: Option<String>,
-}
-
-fn extract_xtru_attrs(e: &BytesStart) -> XtruAttrs {
-    XtruAttrs {
-        name: get_attr(e, "name").unwrap_or_default(),
-        lunit: get_attr(e, "lunit"),
-    }
-}
-
-fn read_xtru_body(reader: &mut Reader<&[u8]>, attrs: XtruAttrs) -> Result<XtruSolid> {
+fn read_xtru_body(reader: &mut Reader<&[u8]>, e: &BytesStart, open: bool) -> Result<XtruSolid> {
     let mut vertices = Vec::new();
     let mut sections = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"twoDimVertex" => {
-                        vertices.push(TwoDimVertex {
-                            x: get_attr_or(inner, "x", "0"),
-                            y: get_attr_or(inner, "y", "0"),
-                        });
-                    }
-                    b"section" => {
-                        sections.push(XtruSection {
-                            z_order: get_attr_or(inner, "zOrder", "0"),
-                            z_position: get_attr_or(inner, "zPosition", "0"),
-                            x_offset: get_attr_or(inner, "xOffset", "0"),
-                            y_offset: get_attr_or(inner, "yOffset", "0"),
-                            scaling_factor: get_attr_or(inner, "scalingFactor", "1"),
-                        });
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"xtru" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in xtru: {}", e)),
+    for_each_child(reader, e, open, |_, c, _| {
+        match c.local_name().as_ref() {
+            b"twoDimVertex" => vertices.push(TwoDimVertex {
+                x: get_attr_or(c, "x", "0"),
+                y: get_attr_or(c, "y", "0"),
+            }),
+            b"section" => sections.push(XtruSection {
+                z_order: get_attr_or(c, "zOrder", "0"),
+                z_position: get_attr_or(c, "zPosition", "0"),
+                x_offset: get_attr_or(c, "xOffset", "0"),
+                y_offset: get_attr_or(c, "yOffset", "0"),
+                scaling_factor: get_attr_or(c, "scalingFactor", "1"),
+            }),
             _ => {}
         }
-    }
+        Ok(())
+    })?;
 
     // Sort sections by zOrder for correct ordering
     sections.sort_by_key(|s| s.z_order.parse::<i64>().unwrap_or(0));
 
     Ok(XtruSolid {
-        name: attrs.name,
-        lunit: attrs.lunit,
+        name: get_attr(e, "name").unwrap_or_default(),
+        lunit: get_attr(e, "lunit"),
         vertices,
         sections,
     })
@@ -1718,53 +1182,38 @@ fn read_xtru_body(reader: &mut Reader<&[u8]>, attrs: XtruAttrs) -> Result<XtruSo
 
 // ─── Tessellated parser ──────────────────────────────────────────────────────
 
-fn read_tessellated_body(reader: &mut Reader<&[u8]>, name: String) -> Result<TessellatedSolid> {
+fn read_tessellated_body(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+) -> Result<TessellatedSolid> {
     let mut facets = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"triangular" => {
-                        facets.push(TessellatedFacet::Triangular {
-                            vertex1: get_attr_or(inner, "vertex1", ""),
-                            vertex2: get_attr_or(inner, "vertex2", ""),
-                            vertex3: get_attr_or(inner, "vertex3", ""),
-                            r#type: get_attr(inner, "type"),
-                            lunit: get_attr(inner, "lunit"),
-                        });
-                    }
-                    b"quadrangular" => {
-                        facets.push(TessellatedFacet::Quadrangular {
-                            vertex1: get_attr_or(inner, "vertex1", ""),
-                            vertex2: get_attr_or(inner, "vertex2", ""),
-                            vertex3: get_attr_or(inner, "vertex3", ""),
-                            vertex4: get_attr_or(inner, "vertex4", ""),
-                            r#type: get_attr(inner, "type"),
-                            lunit: get_attr(inner, "lunit"),
-                        });
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"tessellated" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in tessellated: {}", e)),
+    for_each_child(reader, e, open, |_, c, _| {
+        match c.local_name().as_ref() {
+            b"triangular" => facets.push(TessellatedFacet::Triangular {
+                vertex1: get_attr_or(c, "vertex1", ""),
+                vertex2: get_attr_or(c, "vertex2", ""),
+                vertex3: get_attr_or(c, "vertex3", ""),
+                r#type: get_attr(c, "type"),
+                lunit: get_attr(c, "lunit"),
+            }),
+            b"quadrangular" => facets.push(TessellatedFacet::Quadrangular {
+                vertex1: get_attr_or(c, "vertex1", ""),
+                vertex2: get_attr_or(c, "vertex2", ""),
+                vertex3: get_attr_or(c, "vertex3", ""),
+                vertex4: get_attr_or(c, "vertex4", ""),
+                r#type: get_attr(c, "type"),
+                lunit: get_attr(c, "lunit"),
+            }),
             _ => {}
         }
-    }
+        Ok(())
+    })?;
 
     Ok(TessellatedSolid {
-        name,
-        lunit: None,
-        aunit: None,
+        name: get_attr(e, "name").unwrap_or_default(),
+        lunit: get_attr(e, "lunit"),
+        aunit: get_attr(e, "aunit"),
         facets,
     })
 }
@@ -1773,313 +1222,140 @@ fn read_tessellated_body(reader: &mut Reader<&[u8]>, name: String) -> Result<Tes
 
 fn read_volume_body(
     reader: &mut Reader<&[u8]>,
-    vol_name: String,
-    structure: &mut StructureSection,
+    e: &BytesStart,
+    open: bool,
     skipped: &mut Vec<String>,
-) -> Result<()> {
-    let mut material_ref = String::new();
-    let mut solid_ref = String::new();
-    let mut physvols = Vec::new();
-    let mut auxiliaries = Vec::new();
-    let mut replica = None;
-    let mut body_comments: Vec<String> = Vec::new();
-    let mut loops: Vec<RawElement> = Vec::new();
+) -> Result<Volume> {
+    let mut vol = Volume {
+        name: get_attr(e, "name").unwrap_or_default(),
+        material_ref: String::new(),
+        solid_ref: String::new(),
+        physvols: Vec::new(),
+        auxiliaries: Vec::new(),
+        replica: None,
+        body_comments: Vec::new(),
+        loops: Vec::new(),
+    };
+    if !open {
+        return Ok(vol);
+    }
+    // Its own loop rather than `for_each_child`, to keep the body's comments.
     let mut buf = Vec::new();
-
     loop {
         buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"materialref" => {
-                        material_ref = get_attr(inner, "ref").unwrap_or_default();
-                    }
-                    b"solidref" => {
-                        solid_ref = get_attr(inner, "ref").unwrap_or_default();
-                    }
-                    b"auxiliary" => {
-                        auxiliaries.push(auxiliary_from(inner));
-                    }
-                    _ => {}
+        let event = reader.read_event_into(&mut buf);
+        let open = matches!(event, Ok(Event::Start(_)));
+        match event {
+            Ok(Event::Start(ref c) | Event::Empty(ref c)) => match c.local_name().as_ref() {
+                b"materialref" => vol.material_ref = ref_attr(c),
+                b"solidref" => vol.solid_ref = ref_attr(c),
+                b"auxiliary" => vol.auxiliaries.push(read_auxiliary(reader, c, open)?),
+                b"physvol" => {
+                    let pv = read_physvol_body(reader, c, open, &vol.name, skipped)?;
+                    vol.physvols.push(pv);
                 }
-            }
-            Ok(Event::Start(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"materialref" => {
-                        material_ref = get_attr(inner, "ref").unwrap_or_default();
-                        // consume closing tag
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"solidref" => {
-                        solid_ref = get_attr(inner, "ref").unwrap_or_default();
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    // Non-self-closing <auxiliary> with nested children. This
-                    // needs its own recursive reader rather than being folded
-                    // into the Empty arm above: <auxiliary> is the one element
-                    // here whose children are themselves <auxiliary>, so the
-                    // flat treatment re-parented a nested production cut onto
-                    // the volume and dropped its enclosing Region entirely.
-                    b"auxiliary" => {
-                        auxiliaries.push(read_auxiliary_body(reader, inner)?);
-                    }
-                    b"physvol" => {
-                        let pv_name = get_attr(inner, "name");
-                        let copynumber = get_attr(inner, "copynumber");
-                        let mut pv = read_physvol_body(reader, pv_name, &vol_name, skipped)?;
-                        pv.copynumber = copynumber;
-                        physvols.push(pv);
-                    }
-                    b"replicavol" => {
-                        let number = get_attr(inner, "number").unwrap_or_else(|| "0".to_string());
-                        replica = Some(read_replicavol_body(reader, number)?);
-                    }
-                    // Unsupported placement constructs: skip the whole subtree so
-                    // their children can't leak into this volume, and warn.
-                    // Capture the whole subtree. Falling through to the
-                    // catch-all meant the <loop> start tag was ignored and its
-                    // children were read as direct children of the volume, so
-                    // the wrapper vanished on save and N placements became one.
-                    b"loop" => {
-                        let xml = capture_raw_subtree(reader, inner.clone().into_owned())?;
-                        loops.push(RawElement {
-                            tag: "loop".to_string(),
-                            section: Some("structure".to_string()),
-                            xml,
-                        });
-                    }
-                    b"divisionvol" | b"paramvol" => {
-                        let t = String::from_utf8_lossy(tag.as_ref()).to_string();
-                        skipped.push(format!(
-                            "volume '{}': <{}> is not supported; its placements are not \
-                             rendered and it will be MISSING from a save.",
-                            vol_name, t
-                        ));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    _ => {}
+                b"replicavol" => vol.replica = Some(read_replicavol_body(reader, c, open)?),
+                // Capture the whole subtree. Falling through to the
+                // catch-all meant the <loop> start tag was ignored and its
+                // children were read as direct children of the volume, so
+                // the wrapper vanished on save and N placements became one.
+                b"loop" => {
+                    let xml = capture_raw(reader, c, open)?;
+                    vol.loops.push(RawElement {
+                        tag: "loop".to_string(),
+                        section: Some("structure".to_string()),
+                        xml,
+                    });
                 }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"volume" {
-                    break;
+                // Unsupported placement constructs: skip the whole subtree so
+                // their children can't leak into this volume, and warn.
+                b"divisionvol" | b"paramvol" => {
+                    skipped.push(format!(
+                        "volume '{}': <{}> is not supported; its placements are not \
+                         rendered and it will be MISSING from a save.",
+                        vol.name,
+                        String::from_utf8_lossy(c.local_name().as_ref())
+                    ));
+                    if open {
+                        reader.read_to_end(c.to_end().name())?;
+                    }
                 }
-            }
+                _ => {}
+            },
+            Ok(Event::End(ref c)) if c.local_name().as_ref() == b"volume" => return Ok(vol),
             Ok(Event::Comment(ref c)) => {
-                body_comments.push(String::from_utf8_lossy(c).to_string());
+                vol.body_comments
+                    .push(String::from_utf8_lossy(c).to_string());
             }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in volume: {}", e)),
+            Ok(Event::Eof) => return Ok(vol),
+            Err(err) => bail!("XML error in volume: {err}"),
             _ => {}
         }
     }
-
-    structure.volumes.push(Volume {
-        name: vol_name,
-        material_ref,
-        solid_ref,
-        physvols,
-        auxiliaries,
-        replica,
-        body_comments,
-        loops,
-    });
-    Ok(())
 }
 
-/// Build an `Auxiliary` from a self-closing `<auxiliary/>` element.
-fn auxiliary_from(e: &BytesStart) -> Auxiliary {
-    Auxiliary {
+/// Read an `<auxiliary>` and its nested `<auxiliary>` children.
+///
+/// The one volume child whose children are themselves `<auxiliary>`, hence
+/// the recursion: the flat treatment re-parented a nested production cut onto
+/// the volume and dropped its enclosing Region entirely.
+fn read_auxiliary(reader: &mut Reader<&[u8]>, e: &BytesStart, open: bool) -> Result<Auxiliary> {
+    let mut aux = Auxiliary {
         auxtype: get_attr(e, "auxtype").unwrap_or_default(),
         auxvalue: get_attr(e, "auxvalue").unwrap_or_default(),
         auxunit: get_attr(e, "auxunit"),
         children: Vec::new(),
-    }
-}
-
-/// Read a non-self-closing `<auxiliary>` and its nested `<auxiliary>` children.
-fn read_auxiliary_body(reader: &mut Reader<&[u8]>, start: &BytesStart) -> Result<Auxiliary> {
-    let mut aux = auxiliary_from(start);
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
-                if inner.local_name().as_ref() == b"auxiliary" {
-                    aux.children.push(auxiliary_from(inner));
-                }
-            }
-            Ok(Event::Start(ref inner)) => {
-                if inner.local_name().as_ref() == b"auxiliary" {
-                    aux.children.push(read_auxiliary_body(reader, inner)?);
-                } else {
-                    reader.read_to_end(inner.to_end().name())?;
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"auxiliary" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in auxiliary: {}", e)),
-            _ => {}
+    };
+    for_each_child(reader, e, open, |reader, c, open| {
+        if c.local_name().as_ref() == b"auxiliary" {
+            aux.children.push(read_auxiliary(reader, c, open)?);
+        } else if open {
+            reader.read_to_end(c.to_end().name())?;
         }
-    }
-
+        Ok(())
+    })?;
     Ok(aux)
 }
 
 fn read_physvol_body(
     reader: &mut Reader<&[u8]>,
-    name: Option<String>,
+    e: &BytesStart,
+    open: bool,
     parent_vol: &str,
     skipped: &mut Vec<String>,
 ) -> Result<PhysVol> {
-    let mut volume_ref = String::new();
-    let mut file_ref = None;
-    let mut position = None;
-    let mut rotation = None;
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"volumeref" => {
-                        volume_ref = get_attr(inner, "ref").unwrap_or_default();
-                    }
-                    b"file" => {
-                        let fname = get_attr(inner, "name").unwrap_or_default();
-                        let volname = get_attr(inner, "volname");
-                        file_ref = Some(FileRef {
-                            name: fname,
-                            volname,
-                        });
-                    }
-                    b"position" => {
-                        position = Some(PlacementPos::Inline(Position {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                    }
-                    b"positionref" => {
-                        position = Some(PlacementPos::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                    }
-                    b"rotation" => {
-                        rotation = Some(PlacementRot::Inline(Rotation {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                    }
-                    b"rotationref" => {
-                        rotation = Some(PlacementRot::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                    }
-                    b"scale" | b"scaleref" => {
-                        skipped.push(format!(
-                            "volume '{}': physvol <scale> (reflection) is not supported; \
-                             the placement is rendered unmirrored and the scale will be \
-                             MISSING from a save.",
-                            parent_vol
-                        ));
-                    }
-                    _ => {}
-                }
+    let mut pv = PhysVol {
+        name: get_attr(e, "name"),
+        volume_ref: String::new(),
+        copynumber: get_attr(e, "copynumber"),
+        file_ref: None,
+        position: None,
+        rotation: None,
+    };
+    for_each_child(reader, e, open, |_, c, _| {
+        match c.local_name().as_ref() {
+            b"volumeref" => pv.volume_ref = ref_attr(c),
+            b"file" => {
+                pv.file_ref = Some(FileRef {
+                    name: get_attr(c, "name").unwrap_or_default(),
+                    volname: get_attr(c, "volname"),
+                })
             }
-            Ok(Event::Start(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"volumeref" => {
-                        volume_ref = get_attr(inner, "ref").unwrap_or_default();
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"scale" | b"scaleref" => {
-                        skipped.push(format!(
-                            "volume '{}': physvol <scale> (reflection) is not supported; \
-                             the placement is rendered unmirrored and the scale will be \
-                             MISSING from a save.",
-                            parent_vol
-                        ));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"file" => {
-                        let fname = get_attr(inner, "name").unwrap_or_default();
-                        let volname = get_attr(inner, "volname");
-                        file_ref = Some(FileRef {
-                            name: fname,
-                            volname,
-                        });
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"position" => {
-                        position = Some(PlacementPos::Inline(Position {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"positionref" => {
-                        position = Some(PlacementPos::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"rotation" => {
-                        rotation = Some(PlacementRot::Inline(Rotation {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"rotationref" => {
-                        rotation = Some(PlacementRot::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"physvol" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in physvol: {}", e)),
+            b"position" => pv.position = Some(PlacementPos::Inline(position_from(c))),
+            b"positionref" => pv.position = Some(PlacementPos::Ref(ref_attr(c))),
+            b"rotation" => pv.rotation = Some(PlacementRot::Inline(rotation_from(c))),
+            b"rotationref" => pv.rotation = Some(PlacementRot::Ref(ref_attr(c))),
+            b"scale" | b"scaleref" => skipped.push(format!(
+                "volume '{}': physvol <scale> (reflection) is not supported; \
+                 the placement is rendered unmirrored and the scale will be \
+                 MISSING from a save.",
+                parent_vol
+            )),
             _ => {}
         }
-    }
-
-    Ok(PhysVol {
-        name,
-        volume_ref,
-        copynumber: None,
-        file_ref,
-        position,
-        rotation,
-    })
+        Ok(())
+    })?;
+    Ok(pv)
 }
 
 // ─── Boolean solid parser ────────────────────────────────────────────────────
@@ -2102,504 +1378,167 @@ fn parse_reflected_solid(e: &BytesStart, solids: &mut SolidSection) {
     }));
 }
 
-fn read_multiunion_body(reader: &mut Reader<&[u8]>, name: String) -> Result<MultiUnionSolid> {
+fn read_multiunion_body(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+) -> Result<MultiUnionSolid> {
     let mut nodes = Vec::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref inner)) => {
-                if inner.local_name().as_ref() == b"multiUnionNode" {
-                    let node_name = get_attr(inner, "name");
-                    let mut node = read_multiunion_node(reader)?;
-                    node.name = node_name;
-                    nodes.push(node);
-                }
-            }
-            Ok(Event::End(ref e)) if e.local_name().as_ref() == b"multiUnion" => break,
-            Ok(Event::Eof) => break,
-            _ => {}
+    for_each_child(reader, e, open, |reader, c, open| {
+        if c.local_name().as_ref() == b"multiUnionNode" {
+            nodes.push(read_multiunion_node(reader, c, open)?);
         }
-    }
-
-    Ok(MultiUnionSolid { name, nodes })
-}
-
-fn read_multiunion_node(reader: &mut Reader<&[u8]>) -> Result<MultiUnionNode> {
-    let mut solid_ref = String::new();
-    let mut position = None;
-    let mut rotation = None;
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"solid" => {
-                        // <solid ref="...">...</solid> or <solid>ref_name</solid>
-                        if let Some(r) = get_attr(inner, "ref") {
-                            solid_ref = r;
-                            // consume until </solid>
-                            let _ = reader.read_to_end(inner.to_end().name());
-                        } else {
-                            solid_ref = reader
-                                .read_text(inner.to_end().name())
-                                .unwrap_or_default()
-                                .trim()
-                                .to_string();
-                        }
-                    }
-                    b"position" => {
-                        position = Some(PlacementPos::Inline(Position {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                        let _ = reader.read_to_end(inner.to_end().name());
-                    }
-                    b"rotation" => {
-                        rotation = Some(PlacementRot::Inline(Rotation {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                        let _ = reader.read_to_end(inner.to_end().name());
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::Empty(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"solid" => {
-                        solid_ref = get_attr(inner, "ref").unwrap_or_default();
-                    }
-                    b"solidref" => {
-                        solid_ref = get_attr(inner, "ref").unwrap_or_default();
-                    }
-                    b"position" => {
-                        position = Some(PlacementPos::Inline(Position {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                    }
-                    b"positionref" => {
-                        position = Some(PlacementPos::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                    }
-                    b"rotation" => {
-                        rotation = Some(PlacementRot::Inline(Rotation {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                    }
-                    b"rotationref" => {
-                        rotation = Some(PlacementRot::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::End(ref e)) if e.local_name().as_ref() == b"multiUnionNode" => break,
-            Ok(Event::Eof) => break,
-            _ => {}
-        }
-    }
-
-    Ok(MultiUnionNode {
-        name: None,
-        solid_ref,
-        position,
-        rotation,
+        Ok(())
+    })?;
+    Ok(MultiUnionSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        nodes,
     })
 }
 
-fn read_scaled_solid_body(reader: &mut Reader<&[u8]>, name: String) -> Result<ScaledSolidDef> {
-    let mut solid_ref = String::new();
-    let mut scale_x = "1".to_string();
-    let mut scale_y = "1".to_string();
-    let mut scale_z = "1".to_string();
-    let mut scale_ref = None;
-    let mut scale_name = None;
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) | Ok(Event::Start(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"solidref" => {
-                        solid_ref = get_attr(inner, "ref").unwrap_or_default();
-                    }
-                    b"scale" => {
-                        scale_x = get_attr_or(inner, "x", "1");
-                        scale_y = get_attr_or(inner, "y", "1");
-                        scale_z = get_attr_or(inner, "z", "1");
-                        scale_name = get_attr(inner, "name");
-                    }
-                    // Geant4 accepts a reference to a named <scale> here just as
-                    // it does an inline one.
-                    b"scaleref" => {
-                        scale_ref = get_attr(inner, "ref");
-                    }
-                    _ => {}
+fn read_multiunion_node(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+) -> Result<MultiUnionNode> {
+    let mut node = MultiUnionNode {
+        name: get_attr(e, "name"),
+        solid_ref: String::new(),
+        position: None,
+        rotation: None,
+    };
+    for_each_child(reader, e, open, |reader, c, open| {
+        match c.local_name().as_ref() {
+            // <solid ref="..."/>, or the name as text: <solid>name</solid>
+            b"solid" | b"solidref" => {
+                node.solid_ref = match get_attr(c, "ref") {
+                    Some(r) => r,
+                    None if open => reader.read_text(c.name())?.trim().to_string(),
+                    None => String::new(),
                 }
             }
-            Ok(Event::End(ref e)) if e.local_name().as_ref() == b"scaledSolid" => break,
-            Ok(Event::Eof) => break,
+            b"position" => node.position = Some(PlacementPos::Inline(position_from(c))),
+            b"positionref" => node.position = Some(PlacementPos::Ref(ref_attr(c))),
+            b"rotation" => node.rotation = Some(PlacementRot::Inline(rotation_from(c))),
+            b"rotationref" => node.rotation = Some(PlacementRot::Ref(ref_attr(c))),
             _ => {}
         }
-    }
+        Ok(())
+    })?;
+    Ok(node)
+}
 
-    Ok(ScaledSolidDef {
-        name,
-        solid_ref,
-        scale_x,
-        scale_y,
-        scale_z,
-        scale_ref,
-        scale_name,
-    })
+fn read_scaled_solid_body(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+) -> Result<ScaledSolidDef> {
+    let mut s = ScaledSolidDef {
+        name: get_attr(e, "name").unwrap_or_default(),
+        solid_ref: String::new(),
+        scale_x: "1".to_string(),
+        scale_y: "1".to_string(),
+        scale_z: "1".to_string(),
+        scale_ref: None,
+        scale_name: None,
+    };
+    for_each_child(reader, e, open, |_, c, _| {
+        match c.local_name().as_ref() {
+            b"solidref" => s.solid_ref = ref_attr(c),
+            b"scale" => {
+                s.scale_x = get_attr_or(c, "x", "1");
+                s.scale_y = get_attr_or(c, "y", "1");
+                s.scale_z = get_attr_or(c, "z", "1");
+                s.scale_name = get_attr(c, "name");
+            }
+            // Geant4 accepts a reference to a named <scale> here just as
+            // it does an inline one.
+            b"scaleref" => s.scale_ref = get_attr(c, "ref"),
+            _ => {}
+        }
+        Ok(())
+    })?;
+    Ok(s)
 }
 
 fn read_boolean_solid_body(
     reader: &mut Reader<&[u8]>,
-    name: String,
+    e: &BytesStart,
+    open: bool,
     operation: BooleanOp,
 ) -> Result<BooleanSolid> {
-    let mut first_ref = String::new();
-    let mut second_ref = String::new();
-    let mut position = None;
-    let mut rotation = None;
-    let mut first_position = None;
-    let mut first_rotation = None;
-    let mut buf = Vec::new();
-
-    let end_tag: &[u8] = match operation {
-        BooleanOp::Subtraction => b"subtraction",
-        BooleanOp::Union => b"union",
-        BooleanOp::Intersection => b"intersection",
+    let mut b = BooleanSolid {
+        name: get_attr(e, "name").unwrap_or_default(),
+        operation,
+        first_ref: String::new(),
+        second_ref: String::new(),
+        position: None,
+        rotation: None,
+        first_position: None,
+        first_rotation: None,
     };
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"first" => {
-                        first_ref = get_attr(inner, "ref").unwrap_or_default();
-                    }
-                    b"second" => {
-                        second_ref = get_attr(inner, "ref").unwrap_or_default();
-                    }
-                    b"position" => {
-                        position = Some(PlacementPos::Inline(Position {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                    }
-                    b"positionref" => {
-                        position = Some(PlacementPos::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                    }
-                    b"rotation" => {
-                        rotation = Some(PlacementRot::Inline(Rotation {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                    }
-                    b"rotationref" => {
-                        rotation = Some(PlacementRot::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                    }
-                    b"firstposition" => {
-                        first_position = Some(PlacementPos::Inline(Position {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                    }
-                    b"firstpositionref" => {
-                        first_position = Some(PlacementPos::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                    }
-                    b"firstrotation" => {
-                        first_rotation = Some(PlacementRot::Inline(Rotation {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                    }
-                    b"firstrotationref" => {
-                        first_rotation = Some(PlacementRot::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::Start(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"first" => {
-                        first_ref = get_attr(inner, "ref").unwrap_or_default();
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"second" => {
-                        second_ref = get_attr(inner, "ref").unwrap_or_default();
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"position" => {
-                        position = Some(PlacementPos::Inline(Position {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"positionref" => {
-                        position = Some(PlacementPos::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"rotation" => {
-                        rotation = Some(PlacementRot::Inline(Rotation {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"rotationref" => {
-                        rotation = Some(PlacementRot::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"firstposition" => {
-                        first_position = Some(PlacementPos::Inline(Position {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"firstpositionref" => {
-                        first_position = Some(PlacementPos::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"firstrotation" => {
-                        first_rotation = Some(PlacementRot::Inline(Rotation {
-                            name: get_attr(inner, "name").unwrap_or_default(),
-                            x: get_attr(inner, "x"),
-                            y: get_attr(inner, "y"),
-                            z: get_attr(inner, "z"),
-                            unit: get_attr(inner, "unit"),
-                        }));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"firstrotationref" => {
-                        first_rotation = Some(PlacementRot::Ref(
-                            get_attr(inner, "ref").unwrap_or_default(),
-                        ));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == end_tag {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in boolean solid: {}", e)),
+    for_each_child(reader, e, open, |_, c, _| {
+        match c.local_name().as_ref() {
+            b"first" => b.first_ref = ref_attr(c),
+            b"second" => b.second_ref = ref_attr(c),
+            b"position" => b.position = Some(PlacementPos::Inline(position_from(c))),
+            b"positionref" => b.position = Some(PlacementPos::Ref(ref_attr(c))),
+            b"rotation" => b.rotation = Some(PlacementRot::Inline(rotation_from(c))),
+            b"rotationref" => b.rotation = Some(PlacementRot::Ref(ref_attr(c))),
+            b"firstposition" => b.first_position = Some(PlacementPos::Inline(position_from(c))),
+            b"firstpositionref" => b.first_position = Some(PlacementPos::Ref(ref_attr(c))),
+            b"firstrotation" => b.first_rotation = Some(PlacementRot::Inline(rotation_from(c))),
+            b"firstrotationref" => b.first_rotation = Some(PlacementRot::Ref(ref_attr(c))),
             _ => {}
         }
-    }
-
-    Ok(BooleanSolid {
-        name,
-        operation,
-        first_ref,
-        second_ref,
-        position,
-        rotation,
-        first_position,
-        first_rotation,
-    })
+        Ok(())
+    })?;
+    Ok(b)
 }
 
 // ─── Replicavol parser ──────────────────────────────────────────────────────
 
-fn read_replicavol_body(reader: &mut Reader<&[u8]>, number: String) -> Result<ReplicaVol> {
-    let mut volume_ref = String::new();
-    let mut direction = [None, None, None];
-    let mut curvilinear_axis = None;
-    let mut width = String::new();
-    let mut width_unit = None;
-    let mut offset = String::new();
-    let mut offset_unit = None;
-    let mut buf = Vec::new();
-    let mut in_replicate = false;
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"volumeref" => {
-                        volume_ref = get_attr(inner, "ref").unwrap_or_default();
-                    }
-                    b"direction" if in_replicate => {
-                        direction[0] = get_attr(inner, "x");
-                        direction[1] = get_attr(inner, "y");
-                        direction[2] = get_attr(inner, "z");
-                        curvilinear_axis = get_attr(inner, "rho")
+fn read_replicavol_body(
+    reader: &mut Reader<&[u8]>,
+    e: &BytesStart,
+    open: bool,
+) -> Result<ReplicaVol> {
+    let mut r = ReplicaVol {
+        volume_ref: String::new(),
+        number: get_attr(e, "number").unwrap_or_else(|| "0".to_string()),
+        direction: [None, None, None],
+        curvilinear_axis: None,
+        width: String::new(),
+        width_unit: None,
+        offset: String::new(),
+        offset_unit: None,
+    };
+    for_each_child(reader, e, open, |reader, c, open| {
+        match c.local_name().as_ref() {
+            b"volumeref" => r.volume_ref = ref_attr(c),
+            b"replicate_along_axis" => for_each_child(reader, c, open, |_, c, _| {
+                match c.local_name().as_ref() {
+                    b"direction" => {
+                        r.direction = [get_attr(c, "x"), get_attr(c, "y"), get_attr(c, "z")];
+                        r.curvilinear_axis = get_attr(c, "rho")
                             .map(|_| "rho".to_string())
-                            .or_else(|| get_attr(inner, "phi").map(|_| "phi".to_string()));
+                            .or_else(|| get_attr(c, "phi").map(|_| "phi".to_string()));
                     }
-                    b"width" if in_replicate => {
-                        width = get_attr(inner, "value").unwrap_or_default();
-                        width_unit = get_attr(inner, "unit");
+                    b"width" => {
+                        r.width = get_attr(c, "value").unwrap_or_default();
+                        r.width_unit = get_attr(c, "unit");
                     }
-                    b"offset" if in_replicate => {
-                        offset = get_attr(inner, "value").unwrap_or_default();
-                        offset_unit = get_attr(inner, "unit");
-                    }
-                    _ => {}
-                }
-            }
-            Ok(Event::Start(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"volumeref" => {
-                        volume_ref = get_attr(inner, "ref").unwrap_or_default();
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"replicate_along_axis" => {
-                        in_replicate = true;
-                    }
-                    b"direction" if in_replicate => {
-                        direction[0] = get_attr(inner, "x");
-                        direction[1] = get_attr(inner, "y");
-                        direction[2] = get_attr(inner, "z");
-                        curvilinear_axis = get_attr(inner, "rho")
-                            .map(|_| "rho".to_string())
-                            .or_else(|| get_attr(inner, "phi").map(|_| "phi".to_string()));
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"width" if in_replicate => {
-                        width = get_attr(inner, "value").unwrap_or_default();
-                        width_unit = get_attr(inner, "unit");
-                        reader.read_to_end(inner.to_end().name())?;
-                    }
-                    b"offset" if in_replicate => {
-                        offset = get_attr(inner, "value").unwrap_or_default();
-                        offset_unit = get_attr(inner, "unit");
-                        reader.read_to_end(inner.to_end().name())?;
+                    b"offset" => {
+                        r.offset = get_attr(c, "value").unwrap_or_default();
+                        r.offset_unit = get_attr(c, "unit");
                     }
                     _ => {}
                 }
-            }
-            Ok(Event::End(ref inner)) => {
-                let tag = inner.local_name();
-                match tag.as_ref() {
-                    b"replicate_along_axis" => {
-                        in_replicate = false;
-                    }
-                    b"replicavol" => break,
-                    _ => {}
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in replicavol: {}", e)),
+                Ok(())
+            })?,
             _ => {}
         }
-    }
-
-    Ok(ReplicaVol {
-        volume_ref,
-        number,
-        direction,
-        curvilinear_axis,
-        width,
-        width_unit,
-        offset,
-        offset_unit,
-    })
-}
-
-// ─── Setup parser ────────────────────────────────────────────────────────────
-
-fn read_setup_body(reader: &mut Reader<&[u8]>) -> Result<String> {
-    let mut world_ref = String::new();
-    let mut buf = Vec::new();
-
-    loop {
-        buf.clear();
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(ref inner)) => {
-                if inner.local_name().as_ref() == b"world" {
-                    world_ref = get_attr(inner, "ref").unwrap_or_default();
-                }
-            }
-            Ok(Event::Start(ref inner)) => {
-                if inner.local_name().as_ref() == b"world" {
-                    world_ref = get_attr(inner, "ref").unwrap_or_default();
-                    reader.read_to_end(inner.to_end().name())?;
-                }
-            }
-            Ok(Event::End(ref inner)) => {
-                if inner.local_name().as_ref() == b"setup" {
-                    break;
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(anyhow::anyhow!("XML error in setup: {}", e)),
-            _ => {}
-        }
-    }
-
-    Ok(world_ref)
+        Ok(())
+    })?;
+    Ok(r)
 }

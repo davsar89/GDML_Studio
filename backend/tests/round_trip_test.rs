@@ -976,3 +976,40 @@ fn a_loop_inside_a_volume_survives_a_save() {
     assert_eq!(mother2.loops.len(), 1);
     assert!(mother2.physvols.is_empty());
 }
+
+#[test]
+fn malformed_multiunion_is_a_parse_error() {
+    // The multiUnion readers matched `_ => {}` on every event, errors included,
+    // and discarded `read_to_end` failures. A mismatched end tag inside a node
+    // loaded without a word -- in the second case as a node whose solid
+    // reference is silently empty. Geant4's XML parser rejects both files.
+    for node in [
+        r#"<solid ref="WorldBox"/><position name="p" x="1"></rotation>"#,
+        r#"<solid>WorldBox</solidx><position name="p" x="1"/>"#,
+    ] {
+        let src = doc_with(
+            &format!(
+                r#"    <multiUnion name="mu"><multiUnionNode name="n">{node}</multiUnionNode></multiUnion>"#
+            ),
+            "",
+        );
+        parse_gdml_from_bytes(src.as_bytes(), "mu.gdml".to_string())
+            .expect_err("malformed <multiUnion> loaded without error");
+    }
+}
+
+#[test]
+fn malformed_scaled_solid_is_a_parse_error() {
+    // Same swallowing in the scaledSolid reader: `</scal>` closing `<scale>`
+    // loaded as a valid 2x scaled box.
+    let src = doc_with(
+        r#"    <scaledSolid name="s"><solidref ref="WorldBox"/><scale name="sc" x="2" y="2" z="2"></scal></scaledSolid>"#,
+        "",
+    );
+    let err = parse_gdml_from_bytes(src.as_bytes(), "scaled.gdml".to_string())
+        .expect_err("malformed <scaledSolid> loaded without error");
+    assert!(
+        err.to_string().contains("scaledSolid"),
+        "error does not locate the problem: {err}"
+    );
+}
