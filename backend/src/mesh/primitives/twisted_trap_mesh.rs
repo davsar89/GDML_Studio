@@ -52,7 +52,7 @@ pub fn tessellate_twisted_trap(
         let dx_lo = dx1 + t * (dx3 - dx1); // x at -y edge
         let dx_hi = dx2 + t * (dx4 - dx2); // x at +y edge
 
-        // 4 corners (same formula as trap_mesh.rs), about the slice centre
+        // 4 corners (as in arb8_mesh::tessellate_trap), about the slice centre
         let corners = [
             [-dy * tan_a - dx_lo, -dy],
             [-dy * tan_a + dx_lo, -dy],
