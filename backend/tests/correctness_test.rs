@@ -1190,3 +1190,48 @@ async fn update_element_rejects_fractional_z() {
         [("Hyd".to_string(), Some("1".to_string()))]
     );
 }
+
+#[tokio::test]
+async fn material_without_composition_is_rejected() {
+    // With no <fraction> or <composite>, MaterialRead builds the material from
+    // Z and <atom> (G4GDMLReadMaterials.cc:673-676), and G4Element refuses
+    // Z < 1. The Materials "+" stored exactly that: a name and a density.
+    let state = load(&document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "")).await;
+    let mut empty = state
+        .read()
+        .await
+        .loaded
+        .as_ref()
+        .unwrap()
+        .document
+        .materials
+        .materials[0]
+        .clone();
+    empty.z = None;
+    empty.atom_value = None;
+    let added = add_material(
+        State(state.clone()),
+        Json(AddMaterialRequest {
+            material: Material {
+                name: "Empty".into(),
+                ..empty.clone()
+            },
+            elements: vec![],
+        }),
+    )
+    .await;
+    assert_eq!(added.err().map(|e| e.status.as_u16()), Some(400));
+    let updated = update_material(
+        State(state.clone()),
+        Json(UpdateMaterialRequest {
+            name: "M".into(),
+            material: empty,
+            elements: vec![],
+        }),
+    )
+    .await;
+    assert_eq!(updated.err().map(|e| e.status.as_u16()), Some(400));
+    let saved = export(&state).await;
+    assert_eq!(material_names(&saved), ["M", "N"]);
+    assert!(saved.contains(r#"<material name="M" Z="1">"#), "{saved}");
+}

@@ -323,6 +323,14 @@ fn validate_material_components(
     material: &Material,
     excluding_material: Option<&str>,
 ) -> Result<(), ApiError> {
+    // MaterialRead builds a material without components from Z and atom, and
+    // G4Element refuses Z < 1.
+    if material.components.is_empty() && (material.z.is_none() || material.atom_value.is_none()) {
+        return Err(ApiError::bad_request(&format!(
+            "Material '{}' needs atomic number and mass, or components",
+            material.name
+        )));
+    }
     for component in &material.components {
         let ref_name = match component {
             MaterialComponent::Fraction { ref_name, .. }
@@ -1803,7 +1811,7 @@ mod tests {
         Material {
             name: name.to_string(),
             formula: None,
-            z: None,
+            z: Some("1".to_string()),
             state: None,
             density: None,
             density_ref: None,
@@ -1813,7 +1821,7 @@ mod tests {
             rl: None,
             al: None,
             properties: Vec::new(),
-            atom_value: None,
+            atom_value: Some("1".to_string()),
             atom_unit: None,
             atom_type: None,
             components: Vec::new(),
