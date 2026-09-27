@@ -1,71 +1,37 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { Fragment, useState, useRef, useEffect } from 'react';
 import type { MaterialInfo, NistMaterial } from '../store/types';
-import * as api from '../api/client';
+import { useNistSearch } from '../utils/useNistSearch';
 
 interface SearchableComboboxProps {
   value: string;
   materials: MaterialInfo[];
-  onChange: (materialName: string, isNist: boolean, nistData?: NistMaterial) => void;
-  inputRef?: React.RefObject<HTMLInputElement | null>;
+  /** `nist` is set when the pick is a catalog material not yet in the document. */
+  onChange: (materialName: string, nist?: NistMaterial) => void;
 }
 
-export default function SearchableCombobox({ value, materials, onChange, inputRef }: SearchableComboboxProps) {
+export default function SearchableCombobox({ value, materials, onChange }: SearchableComboboxProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
-  const [nistResults, setNistResults] = useState<NistMaterial[]>([]);
   const [activeIdx, setActiveIdx] = useState(-1);
-  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const localInputRef = useRef<HTMLInputElement>(null);
-  const effectiveRef = inputRef || localInputRef;
 
   const docMatches = materials.filter(
     (m) => !query || m.name.toUpperCase().includes(query.toUpperCase()),
   );
-
-  const fetchNist = useCallback((q: string) => {
-    if (searchTimeout.current) clearTimeout(searchTimeout.current);
-    if (!q) {
-      setNistResults([]);
-      return;
-    }
-    searchTimeout.current = setTimeout(async () => {
-      try {
-        const data = await api.getNistMaterials(q);
-        // Filter out materials already in the document
-        const docNames = new Set(materials.map((m) => m.name));
-        setNistResults(data.materials.filter((n) => !docNames.has(n.name)).slice(0, 15));
-      } catch {
-        setNistResults([]);
-      }
-    }, 200);
-  }, [materials]);
-
-  const handleInputChange = (val: string) => {
-    setQuery(val);
-    setOpen(true);
-    setActiveIdx(-1);
-    fetchNist(val);
-  };
-
-  const allItems: { label: string; isNist: boolean; nist?: NistMaterial; detail?: string }[] = [
-    ...docMatches.map((m) => ({
-      label: m.name,
-      isNist: false,
-      detail: m.density ? `${m.density.value} ${m.density.unit || 'g/cm3'}` : undefined,
-    })),
-    ...nistResults.map((n) => ({
-      label: n.name,
-      isNist: true,
-      nist: n,
-      detail: `${n.density} g/cm3 (NIST)`,
-    })),
+  // Catalog materials already in the document are listed once, under Document.
+  const nistResults = useNistSearch(query || null).results
+    .filter((n) => !materials.some((m) => m.name === n.name)).slice(0, 15);
+  const allItems = [
+    ...docMatches.map((m, i) => ({ name: m.name, nist: undefined, header: i === 0 ? 'Document' : undefined,
+      detail: m.density ? `${m.density.value} ${m.density.unit || 'g/cm3'}` : undefined })),
+    ...nistResults.map((n, i) => ({ name: n.name, nist: n, header: i === 0 ? 'NIST Database' : undefined,
+      detail: `${n.density} g/cm3` })),
   ];
 
   const handleSelect = (item: typeof allItems[number]) => {
     setQuery('');
     setOpen(false);
-    onChange(item.label, item.isNist, item.nist);
+    onChange(item.name, item.nist);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -106,9 +72,8 @@ export default function SearchableCombobox({ value, materials, onChange, inputRe
   return (
     <div ref={containerRef} style={{ position: 'relative', flex: 1 }}>
       <input
-        ref={effectiveRef as React.RefObject<HTMLInputElement>}
         value={open ? query : value}
-        onChange={(e) => handleInputChange(e.target.value)}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); setActiveIdx(-1); }}
         onFocus={() => { setOpen(true); setQuery(''); }}
         onKeyDown={handleKeyDown}
         placeholder="Search materials..."
@@ -138,63 +103,32 @@ export default function SearchableCombobox({ value, materials, onChange, inputRe
           maxHeight: 200,
           overflow: 'auto',
         }}>
-          {docMatches.length > 0 && (
-            <div style={{ fontSize: 9, color: '#556', padding: '2px 4px', fontWeight: 700 }}>
-              Document
-            </div>
-          )}
-          {docMatches.map((m, i) => (
-            <div
-              key={m.name}
-              onMouseDown={() => handleSelect(allItems[i])}
-              style={{
-                fontSize: 10,
-                fontFamily: 'monospace',
-                color: '#b0b8c0',
-                padding: '2px 4px',
-                cursor: 'pointer',
-                background: activeIdx === i ? '#0f3460' : 'transparent',
-              }}
-              onMouseOver={(e) => { e.currentTarget.style.background = '#0f3460'; setActiveIdx(i); }}
-              onMouseOut={(e) => { if (activeIdx !== i) e.currentTarget.style.background = 'transparent'; }}
-            >
-              <span style={{ color: '#56d6c8' }}>{m.name}</span>
-              {m.density && (
-                <span style={{ color: '#666', marginLeft: 6 }}>
-                  {m.density.value} {m.density.unit || 'g/cm3'}
-                </span>
+          {allItems.map((item, i) => (
+            <Fragment key={`${item.nist ? 'nist' : 'doc'}-${item.name}`}>
+              {item.header && (
+                <div style={{ fontSize: 9, color: '#556', padding: '2px 4px', fontWeight: 700, borderTop: item.nist ? '1px solid #0f3460' : undefined }}>
+                  {item.header}
+                </div>
               )}
-            </div>
-          ))}
-          {nistResults.length > 0 && (
-            <div style={{ fontSize: 9, color: '#556', padding: '2px 4px', fontWeight: 700, borderTop: '1px solid #0f3460' }}>
-              NIST Database
-            </div>
-          )}
-          {nistResults.map((n, j) => {
-            const idx = docMatches.length + j;
-            return (
               <div
-                key={n.name}
-                onMouseDown={() => handleSelect(allItems[idx])}
+                onMouseDown={() => handleSelect(item)}
+                onMouseEnter={() => setActiveIdx(i)}
                 style={{
                   fontSize: 10,
                   fontFamily: 'monospace',
                   color: '#b0b8c0',
                   padding: '2px 4px',
                   cursor: 'pointer',
-                  background: activeIdx === idx ? '#0f3460' : 'transparent',
+                  background: activeIdx === i ? '#0f3460' : 'transparent',
                 }}
-                onMouseOver={(e) => { e.currentTarget.style.background = '#0f3460'; setActiveIdx(idx); }}
-                onMouseOut={(e) => { if (activeIdx !== idx) e.currentTarget.style.background = 'transparent'; }}
               >
-                <span style={{ color: '#56d6c8' }}>{n.name}</span>
-                {n.formula && <span style={{ color: '#8899aa', marginLeft: 4 }}>{n.formula}</span>}
-                <span style={{ color: '#666', marginLeft: 6 }}>{n.density} g/cm3</span>
-                <span style={{ color: '#e94560', marginLeft: 4, fontSize: 9 }}>NIST</span>
+                <span style={{ color: '#56d6c8' }}>{item.name}</span>
+                {item.nist?.formula && <span style={{ color: '#8899aa', marginLeft: 4 }}>{item.nist.formula}</span>}
+                {item.detail && <span style={{ color: '#666', marginLeft: 6 }}>{item.detail}</span>}
+                {item.nist && <span style={{ color: '#e94560', marginLeft: 4, fontSize: 9 }}>NIST</span>}
               </div>
-            );
-          })}
+            </Fragment>
+          ))}
         </div>
       )}
     </div>

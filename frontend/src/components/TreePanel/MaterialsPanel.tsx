@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState } from 'react';
 import { useAppStore } from '../../store';
 import type { MaterialInfo, ElementInfo, MaterialComponent, NistMaterial } from '../../store/types';
 import * as api from '../../api/client';
 import { emptyMaterial, prepareNistMaterial } from '../../utils/nistImport';
 import { refreshMaterials } from '../../utils/refresh';
+import { useNistSearch } from '../../utils/useNistSearch';
 import { applyMaterialDraft, confirmAction, resolveMaterialDraft, runDocumentAction } from '../../utils/documentActions';
 
 export default function MaterialsPanel() {
@@ -284,27 +285,7 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
-  const [results, setResults] = useState<NistMaterial[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const doSearch = useCallback(async (q: string, cat: string) => {
-    setLoading(true);
-    try {
-      const data = await api.getNistMaterials(q, cat || undefined);
-      setResults(data.materials);
-    } catch {
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    // Debounce so we don't fire an API request on every keystroke.
-    const t = setTimeout(() => doSearch(search, category), 250);
-    return () => clearTimeout(t);
-  }, [open, search, category, doSearch]);
+  const { results, loading } = useNistSearch(open ? search : null, category);
 
   const handleApply = (nist: NistMaterial) => runDocumentAction(async () => {
     const prepared = await prepareNistMaterial(nist);
@@ -382,29 +363,8 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
   const [newName, setNewName] = useState('');
   const [newZ, setNewZ] = useState('');
   const [newAtom, setNewAtom] = useState('');
-  const [elSuggestions, setElSuggestions] = useState<NistMaterial[]>([]);
   const [showElSuggestions, setShowElSuggestions] = useState(false);
-  const elSearchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleNameChange = (value: string) => {
-    setNewName(value);
-    if (elSearchTimeout.current) clearTimeout(elSearchTimeout.current);
-    if (value.length >= 1) {
-      elSearchTimeout.current = setTimeout(async () => {
-        try {
-          const data = await api.getNistMaterials(value, 'Elemental');
-          setElSuggestions(data.materials.slice(0, 10));
-          setShowElSuggestions(data.materials.length > 0);
-        } catch {
-          setElSuggestions([]);
-          setShowElSuggestions(false);
-        }
-      }, 200);
-    } else {
-      setElSuggestions([]);
-      setShowElSuggestions(false);
-    }
-  };
+  const elSuggestions = useNistSearch(newName || null, 'Elemental').results.slice(0, 10);
 
   const handleSelectSuggestion = (nist: NistMaterial) => {
     setNewName(nist.name);
@@ -430,7 +390,6 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
       setNewName('');
       setNewZ('');
       setNewAtom('');
-      setElSuggestions([]);
       setShowElSuggestions(false);
     });
   };
@@ -461,14 +420,14 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
               <div style={{ position: 'relative', width: 60 }}>
                 <input
                   value={newName}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  onFocus={() => { if (elSuggestions.length > 0) setShowElSuggestions(true); }}
+                  onChange={(e) => { setNewName(e.target.value); setShowElSuggestions(true); }}
+                  onFocus={() => setShowElSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowElSuggestions(false), 150)}
                   placeholder="Name"
                   style={{ ...inputStyle, width: '100%' }}
                   autoFocus
                 />
-                {showElSuggestions && (
+                {showElSuggestions && elSuggestions.length > 0 && (
                   <div style={{
                     position: 'absolute', top: '100%', left: 0, zIndex: 100,
                     background: '#1a1a2e', border: '1px solid #0f3460', borderRadius: 3,

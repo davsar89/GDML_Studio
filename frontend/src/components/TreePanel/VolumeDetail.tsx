@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { useAppStore } from '../../store';
 import type { NistMaterial } from '../../store/types';
 import * as api from '../../api/client';
@@ -12,7 +11,6 @@ export default function VolumeDetail() {
   const volumes = useAppStore((s) => s.volumes);
   const materials = useAppStore((s) => s.materials);
   const busy = useAppStore((s) => s.documentBusy || s.loading);
-  const comboboxRef = useRef<HTMLInputElement>(null);
 
   if (!selectedVolume) return null;
 
@@ -21,14 +19,14 @@ export default function VolumeDetail() {
 
   const mat = materials.find((m) => m.name === vol.material_ref);
 
-  const handleMaterialSelect = async (name: string, isNist: boolean, nistData?: NistMaterial) => {
+  const handleMaterialSelect = async (name: string, nist?: NistMaterial) => {
     if (name === vol.material_ref) return;
     await runDocumentAction(async () => {
       if (!await resolveMaterialDraft()) return;
       try {
-        if (isNist && nistData) {
+        if (nist) {
           // Auto-import from NIST under its own name, then assign
-          const { material, elements } = await prepareNistMaterial(nistData);
+          const { material, elements } = await prepareNistMaterial(nist);
           await api.addMaterial(material, elements);
         }
         await api.updateVolumeMaterialRef(vol.name, name);
@@ -66,7 +64,6 @@ export default function VolumeDetail() {
             value={vol.material_ref}
             materials={materials}
             onChange={handleMaterialSelect}
-            inputRef={comboboxRef}
           />
         </div>
         {mat && (
