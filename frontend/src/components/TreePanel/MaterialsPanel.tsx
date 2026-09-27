@@ -4,7 +4,7 @@ import type { MaterialInfo, ElementInfo, MaterialComponent, NistMaterial } from 
 import * as api from '../../api/client';
 import { emptyMaterial, prepareNistMaterial } from '../../utils/nistImport';
 import { refreshMaterials } from '../../utils/refresh';
-import { applyMaterialDraft, resolveMaterialDraft, runDocumentAction } from '../../utils/documentActions';
+import { applyMaterialDraft, confirmAction, resolveMaterialDraft, runDocumentAction } from '../../utils/documentActions';
 
 export default function MaterialsPanel() {
   const materials = useAppStore((s) => s.materials);
@@ -62,7 +62,7 @@ function MaterialsList({
     await runDocumentAction(async () => {
       if (!await resolveMaterialDraft()) return;
       const target = selectedMaterial === name ? useAppStore.getState().selectedMaterial ?? name : name;
-      if (!window.confirm(`Delete material "${target}"?`)) return;
+      if (!await confirmAction('Delete material', `Delete material "${target}"?`, 'Delete')) return;
       await api.deleteMaterial(target);
       await refreshMaterials();
       if (selectedMaterial === name) useAppStore.setState({ selectedMaterial: null });
@@ -440,7 +440,7 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
 
   const handleDelete = async (name: string) => {
     await runDocumentAction(async () => {
-      if (!window.confirm(`Delete element "${name}"?`)) return;
+      if (!await confirmAction('Delete element', `Delete element "${name}"?`, 'Delete')) return;
       await api.deleteElement(name);
       await refreshMaterials();
     });

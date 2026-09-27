@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { loadDocument } from '../utils/refresh';
-import { runDocumentAction, resolveMaterialDraft, resolveDocumentReplacement, exportCurrentDocument } from '../utils/documentActions';
+import { runDocumentAction, resolveMaterialDraft, resolveDocumentReplacement, exportCurrentDocument, askFilename } from '../utils/documentActions';
 
 export default function Toolbar() {
   const loading = useAppStore((s) => s.loading);
@@ -44,10 +44,12 @@ export default function Toolbar() {
   };
 
   const handleSaveAs = () => runDocumentAction(async () => {
-    // Cancelling the filename prompt leaves even an unapplied draft intact.
-    const filename = prompt('Save as:', useAppStore.getState().summary?.filename || 'output.gdml');
+    // Cancelling the file name leaves even an unapplied draft intact.
+    const filename = await askFilename(useAppStore.getState().summary?.filename || 'output.gdml');
     if (!filename || !await resolveMaterialDraft()) return;
     await exportCurrentDocument(filename);
+    // The next Save keeps the name chosen here.
+    useAppStore.setState((s) => ({ summary: s.summary && { ...s.summary, filename } }));
   });
 
   const handleSave = () => runDocumentAction(async () => {

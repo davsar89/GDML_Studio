@@ -56,6 +56,12 @@ beforeEach(() => {
       case '/api/document/materials/add':
         serverMaterials.push(JSON.parse(String(init?.body)).material);
         body = { ok: true }; break;
+      case '/api/document/materials/delete':
+        serverMaterials = serverMaterials.filter((m) => m.name !== JSON.parse(String(init?.body)).name);
+        body = { ok: true }; break;
+      case '/api/document/elements/delete':
+        serverElements = serverElements.filter((e) => e.name !== JSON.parse(String(init?.body)).name);
+        body = { ok: true }; break;
       case '/api/document/export':
         exportedDensity = serverMaterials[0].density?.value;
         body = { gdml: `<gdml density="${exportedDensity}"/>`, filename: summary.filename }; break;
@@ -281,10 +287,43 @@ describe('material drafts and document actions', () => {
   });
 
   it('cancelled Save As leaves the draft untouched and does not Apply or export', async () => {
-    const user = mount(); await edit(user); vi.spyOn(window, 'prompt').mockReturnValueOnce(null);
+    const user = mount(); await edit(user);
     await user.click(screen.getByRole('button', { name: 'Save As' }));
+    await choose(user, 'Cancel');
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
     expect(mocked.exportGdml).not.toHaveBeenCalled(); expect(mocked.updateMaterial).not.toHaveBeenCalled();
     expect(densityInput()).toHaveValue('3.25');
+  });
+
+  it('Save As appends .gdml and the next Save reuses it', async () => {
+    const downloads: string[] = [];
+    vi.mocked(HTMLAnchorElement.prototype.click).mockImplementation(function (this: HTMLAnchorElement) { downloads.push(this.download); });
+    const user = mount();
+    await user.click(screen.getByRole('button', { name: 'Save As' }));
+    const name = await screen.findByRole('textbox', { name: 'File name' });
+    expect(name).toHaveValue('original.gdml');
+    await user.clear(name); await user.type(name, 'copy{Enter}');
+    await waitFor(() => expect(downloads).toEqual(['copy.gdml']));
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(downloads).toEqual(['copy.gdml', 'copy.gdml']));
+    expect(useAppStore.getState().summary?.filename).toBe('copy.gdml');
+  });
+
+  it('asks in-app before deleting', async () => {
+    serverElements = [{ name: 'H', formula: null, z: '1', atom_value: '1.008', atom_unit: null, atom_type: null, fractions: [] }];
+    useAppStore.setState({ elements: serverElements });
+    const user = mount();
+    await user.click(screen.getAllByTitle('Delete material')[1]);
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Discard' })).toBeNull();
+    await choose(user, 'Cancel');
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    expect(serverMaterials.map((m) => m.name)).toEqual(['M', 'N']);
+    await user.click(screen.getAllByTitle('Delete material')[1]); await choose(user, 'Delete');
+    await waitFor(() => expect(useAppStore.getState().materials.map((m) => m.name)).toEqual(['M']));
+    await user.click(screen.getByText(/Elements \(1\)/));
+    await user.click(screen.getByTitle('Delete element')); await choose(user, 'Delete');
+    await waitFor(() => expect(useAppStore.getState().elements).toEqual([]));
   });
 
   it('does not clear a newer applied revision when an older export finishes', async () => {

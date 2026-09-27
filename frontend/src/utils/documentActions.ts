@@ -6,19 +6,39 @@ export type DialogChoice = 'primary' | 'discard' | 'cancel';
 export interface DocumentDecision {
   title: string;
   message: string;
-  primaryLabel: 'Apply' | 'Save';
-  resolve: (choice: DialogChoice) => void;
+  primaryLabel: string;
+  canDiscard: boolean;
+  /** Initial text of a one-line input; its final text is passed to `resolve`. */
+  input?: string;
+  resolve: (choice: DialogChoice, text?: string) => void;
 }
 
-export function askDocumentDecision(
-  title: string, message: string, primaryLabel: 'Apply' | 'Save',
-): Promise<DialogChoice> {
+/** Show the in-app dialog. Native prompt/confirm would block the whole tab. */
+function ask(request: Omit<DocumentDecision, 'resolve'>): Promise<{ choice: DialogChoice; text: string }> {
   return new Promise((resolve) => {
     useAppStore.setState({ decision: {
-      title, message, primaryLabel,
-      resolve: (choice) => { useAppStore.setState({ decision: null }); resolve(choice); },
+      ...request,
+      resolve: (choice, text = '') => { useAppStore.setState({ decision: null }); resolve({ choice, text }); },
     } });
   });
+}
+
+export async function askDocumentDecision(
+  title: string, message: string, primaryLabel: 'Apply' | 'Save',
+): Promise<DialogChoice> {
+  return (await ask({ title, message, primaryLabel, canDiscard: true })).choice;
+}
+
+export async function confirmAction(title: string, message: string, primaryLabel: string): Promise<boolean> {
+  return (await ask({ title, message, primaryLabel, canDiscard: false })).choice === 'primary';
+}
+
+/** The file name to save as, with a .gdml extension, or null when cancelled. */
+export async function askFilename(initial: string): Promise<string | null> {
+  const { choice, text } = await ask({ title: 'Save As', message: 'File name', primaryLabel: 'Save', canDiscard: false, input: initial });
+  const name = text.trim();
+  if (choice !== 'primary' || !name) return null;
+  return /\.gdml$/i.test(name) ? name : `${name}.gdml`;
 }
 
 /** One document action at a time, including the dialogs that precede it. */
