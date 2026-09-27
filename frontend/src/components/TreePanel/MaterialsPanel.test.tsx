@@ -7,6 +7,7 @@ import * as api from '../../api/client';
 import { useAppStore } from '../../store';
 import type { MaterialInfo, ElementInfo, DocumentSummary, NistMaterial, SceneNode } from '../../store/types';
 import MaterialsPanel from './MaterialsPanel';
+import VolumeDetail from './VolumeDetail';
 import Toolbar from '../Toolbar';
 import DocumentDialog from '../DocumentDialog';
 
@@ -67,6 +68,8 @@ beforeEach(() => {
         body = { gdml: `<gdml density="${exportedDensity}"/>`, filename: summary.filename }; break;
       case '/api/files/upload-multi': body = { ...summary, filename: JSON.parse(String(init?.body)).main_file }; break;
       case '/api/nist/materials': body = { materials: [nist] }; break;
+      // Assigning a material always fails here, which makes a NIST pick half-done.
+      case '/api/document/structure/material-ref': return new Response(JSON.stringify({ error: 'refused' }), { status: 400 });
       case '/api/nist/material': body = { material: { ...nist, name: 'G4_H', category: 'Elemental', z: 1, atom_value: 1.008, components: [] } }; break;
       default: throw new Error(`Unexpected request: ${path}`);
     }
@@ -337,3 +340,30 @@ describe('material drafts and document actions', () => {
     expect(useAppStore.getState().dirty).toBe(true);
   });
 });
+
+describe('volume material picker', () => {
+  const pick = () => {
+    useAppStore.setState({ volumes: [{ name: 'W', material_ref: 'M', solid_ref: 'S', physvols: [], auxiliaries: [] }],
+      selectedVolume: 'W', materials: [...serverMaterials] });
+    render(<VolumeDetail />);
+    return userEvent.setup();
+  };
+
+  it('re-picking the current material sends no request', async () => {
+    const user = pick();
+    await user.click(screen.getByPlaceholderText('Search materials...'));
+    fireEvent.mouseDown(screen.getByText('M', { exact: true }));
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(useAppStore.getState().dirty).toBe(false);
+  });
+
+  it('refreshes the materials after a half-done NIST pick', async () => {
+    const user = pick();
+    await user.type(screen.getByPlaceholderText('Search materials...'), 'Cat');
+    fireEvent.mouseDown(await screen.findByText('CatalogMaterial'));
+    await waitFor(() => expect(useAppStore.getState().error).toBe('refused'));
+    await waitFor(() => expect(useAppStore.getState().materials.map((m) => m.name)).toContain('CatalogMaterial'));
+  });
+});
+

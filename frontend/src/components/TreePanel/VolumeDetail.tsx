@@ -22,17 +22,20 @@ export default function VolumeDetail() {
   const mat = materials.find((m) => m.name === vol.material_ref);
 
   const handleMaterialSelect = async (name: string, isNist: boolean, nistData?: NistMaterial) => {
+    if (name === vol.material_ref) return;
     await runDocumentAction(async () => {
       if (!await resolveMaterialDraft()) return;
-      if (isNist && nistData) {
-        // Auto-import from NIST, then assign
-        const newMat = await prepareNistMaterial(nistData);
-        await api.addMaterial(newMat.material, newMat.elements);
-        await api.updateVolumeMaterialRef(vol.name, newMat.material.name);
-      } else {
+      try {
+        if (isNist && nistData) {
+          // Auto-import from NIST under its own name, then assign
+          const { material, elements } = await prepareNistMaterial(nistData);
+          await api.addMaterial(material, elements);
+        }
         await api.updateVolumeMaterialRef(vol.name, name);
+      } finally {
+        // Even a half-done NIST pick may have added the material.
+        await refreshMaterialsAndScene();
       }
-      await refreshMaterialsAndScene();
     });
   };
 
