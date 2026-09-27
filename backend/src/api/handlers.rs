@@ -35,33 +35,6 @@ fn definitions_equivalent<T: Serialize>(existing: &T, incoming: &T) -> Result<bo
     Ok(existing == incoming)
 }
 
-fn merge_named_items<T, F>(
-    target: &mut Vec<T>,
-    incoming: &[T],
-    kind: &str,
-    source_name: &str,
-    get_name: F,
-) -> Result<(), ApiError>
-where
-    T: Clone + Serialize,
-    F: Fn(&T) -> &str + Copy,
-{
-    for item in incoming {
-        let name = get_name(item);
-        if let Some(existing) = target.iter().find(|existing| get_name(existing) == name) {
-            if !definitions_equivalent(existing, item)? {
-                return Err(ApiError::bad_request(&format!(
-                    "Conflicting {} '{}' found while merging '{}'",
-                    kind, name, source_name
-                )));
-            }
-            continue;
-        }
-        target.push(item.clone());
-    }
-    Ok(())
-}
-
 /// Append child items whose names are not already taken, warning when a name is
 /// taken by a *different* definition.
 ///
@@ -104,7 +77,7 @@ fn merge_child_into_main(
     file_ref_name: &str,
     volname: &Option<String>,
     warnings: &mut Vec<String>,
-) -> Result<(), ApiError> {
+) {
     // Determine the child's target volume (volname or its world_ref)
     let child_world = volname
         .as_deref()
@@ -116,60 +89,67 @@ fn merge_child_into_main(
             "Child file '{}' has no world reference and no volname specified",
             file_ref_name
         ));
-        return Ok(());
+        return;
     }
 
-    // Merge defines (constants, quantities, variables, expressions, positions, rotations)
-    merge_named_items(
+    // Known gap: Geant4 gives each file its own evaluator, so modules may define
+    // one name differently; a single namespace keeps the main file's value.
+    merge_by_name(
         &mut main_doc.defines.constants,
         &child_doc.defines.constants,
+        |d| d.name.as_str(),
         "constant",
         file_ref_name,
-        |item| item.name.as_str(),
-    )?;
-    merge_named_items(
+        warnings,
+    );
+    merge_by_name(
         &mut main_doc.defines.quantities,
         &child_doc.defines.quantities,
+        |d| d.name.as_str(),
         "quantity",
         file_ref_name,
-        |item| item.name.as_str(),
-    )?;
-    merge_named_items(
+        warnings,
+    );
+    merge_by_name(
         &mut main_doc.defines.variables,
         &child_doc.defines.variables,
+        |d| d.name.as_str(),
         "variable",
         file_ref_name,
-        |item| item.name.as_str(),
-    )?;
-    merge_named_items(
+        warnings,
+    );
+    merge_by_name(
         &mut main_doc.defines.expressions,
         &child_doc.defines.expressions,
+        |d| d.name.as_str(),
         "expression",
         file_ref_name,
-        |item| item.name.as_str(),
-    )?;
-    merge_named_items(
+        warnings,
+    );
+    merge_by_name(
         &mut main_doc.defines.positions,
         &child_doc.defines.positions,
+        |d| d.name.as_str(),
         "position",
         file_ref_name,
-        |item| item.name.as_str(),
-    )?;
-    merge_named_items(
+        warnings,
+    );
+    merge_by_name(
         &mut main_doc.defines.rotations,
         &child_doc.defines.rotations,
+        |d| d.name.as_str(),
         "rotation",
         file_ref_name,
-        |item| item.name.as_str(),
-    )?;
-
-    merge_named_items(
+        warnings,
+    );
+    merge_by_name(
         &mut main_doc.defines.scales,
         &child_doc.defines.scales,
+        |d| d.name.as_str(),
         "scale",
         file_ref_name,
-        |item| item.name.as_str(),
-    )?;
+        warnings,
+    );
     // Append only new slots, in the child's declaration order. Collection order
     // alone is insufficient: a constant can depend on an earlier quantity.
     for slot in &child_doc.order.define_slots {
@@ -262,7 +242,6 @@ fn merge_child_into_main(
             }
         }
     }
-    Ok(())
 }
 
 /// Collect all file references from a parsed document.
@@ -283,7 +262,7 @@ fn collect_file_refs(doc: &GdmlDocument) -> Vec<(String, Option<String>)> {
 fn resolve_all_file_refs(
     main_doc: &mut GdmlDocument,
     child_docs: &HashMap<String, GdmlDocument>,
-) -> Result<Vec<String>, ApiError> {
+) -> Vec<String> {
     let mut warnings = Vec::new();
     let mut pending = VecDeque::new();
     let mut queued: HashSet<(String, Option<String>)> = HashSet::new();
@@ -303,7 +282,7 @@ fn resolve_all_file_refs(
         }
 
         if let Some(child_doc) = child_docs.get(&ref_name) {
-            merge_child_into_main(main_doc, child_doc, &ref_name, &volname, &mut warnings)?;
+            merge_child_into_main(main_doc, child_doc, &ref_name, &volname, &mut warnings);
         } else {
             warnings.push(format!(
                 "Referenced file '{}' was not provided in the upload",
@@ -322,7 +301,7 @@ fn resolve_all_file_refs(
         }
     }
 
-    Ok(warnings)
+    warnings
 }
 
 /// A volume may name a document material or a NIST one: Geant4's GetMaterial
@@ -539,7 +518,7 @@ pub async fn upload_files(
     }
 
     // Resolve file references: merge child documents into main (including nested refs)
-    let merge_warnings = resolve_all_file_refs(&mut main_doc, &child_docs)?;
+    let merge_warnings = resolve_all_file_refs(&mut main_doc, &child_docs);
 
     // Evaluate expressions on the merged document
     let mut engine = EvalEngine::new();
@@ -1876,10 +1855,7 @@ mod tests {
         child_docs.insert("child.gdml".to_string(), child);
         child_docs.insert("grand.gdml".to_string(), grand);
 
-        let warnings = match resolve_all_file_refs(&mut main, &child_docs) {
-            Ok(warnings) => warnings,
-            Err(err) => panic!("resolve_all_file_refs should succeed: {}", err.message),
-        };
+        let warnings = resolve_all_file_refs(&mut main, &child_docs);
         assert!(warnings.is_empty());
         assert!(collect_file_refs(&main).is_empty());
 
@@ -2165,16 +2141,16 @@ mod tests {
         let mut child_docs = HashMap::new();
         child_docs.insert("child.gdml".to_string(), child);
 
-        let warnings = match resolve_all_file_refs(&mut main, &child_docs) {
-            Ok(warnings) => warnings,
-            Err(err) => panic!("resolve_all_file_refs should succeed: {}", err.message),
-        };
+        let warnings = resolve_all_file_refs(&mut main, &child_docs);
         assert!(warnings.is_empty());
         assert_eq!(main.defines.constants.len(), 1);
     }
 
     #[test]
-    fn resolve_all_file_refs_rejects_conflicting_define_names() {
+    fn resolve_all_file_refs_warns_on_conflicting_define_names() {
+        // Geant4 loads such a pair: each module file gets its own evaluator. One
+        // namespace cannot hold both values, so the main file's is kept and the
+        // clash reported, instead of refusing the whole upload.
         let mut main = base_doc("main.gdml", "MainWorld");
         let mut main_world = volume("MainWorld", "Vacuum");
         main_world
@@ -2196,11 +2172,17 @@ mod tests {
         let mut child_docs = HashMap::new();
         child_docs.insert("child.gdml".to_string(), child);
 
-        let err = match resolve_all_file_refs(&mut main, &child_docs) {
-            Ok(_) => panic!("resolve_all_file_refs should reject conflicting defines"),
-            Err(err) => err,
-        };
-        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        let warnings = resolve_all_file_refs(&mut main, &child_docs);
+        assert!(
+            warnings.iter().any(|w| w.contains("constant \"A\"")),
+            "{warnings:?}"
+        );
+        assert_eq!(main.defines.constants.len(), 1);
+        assert_eq!(main.defines.constants[0].value, "1");
+        assert!(
+            collect_file_refs(&main).is_empty(),
+            "the child was not merged"
+        );
     }
 
     #[test]
