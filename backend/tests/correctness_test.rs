@@ -1534,3 +1534,28 @@ async fn loop_bounds_near_i64_max_do_not_overflow() {
     let children = scene["scene_graph"]["children"].as_array().unwrap();
     assert_eq!(children.len(), 1, "{scene}");
 }
+
+#[tokio::test]
+async fn replica_width_errors_reach_the_scene_warnings() {
+    // Replicas are evaluated while the scene is built, after the upload has
+    // collected the evaluator's warnings, so a width that failed to evaluate
+    // was drawn as 0 without a word.
+    let state = load(&document(
+        "",
+        r#"<box name="B" x="10" y="10" z="10"/>"#,
+        &format!(
+            r#"<volume name="A"><materialref ref="M"/><solidref ref="B"/></volume>
+            <volume name="W"><materialref ref="M"/><solidref ref="B"/>{}</volume>"#,
+            replica_of("A", "2").replace(r#"value="1""#, r#"value="bogus""#)
+        ),
+    ))
+    .await;
+    let scene = get_scene(State(state)).await.unwrap().0;
+    assert!(
+        scene["warnings"]
+            .to_string()
+            .contains(r#"Could not evaluate expression \"bogus\""#),
+        "{}",
+        scene["warnings"]
+    );
+}

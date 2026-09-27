@@ -914,6 +914,9 @@ fn build_scene_graph(
         ));
     }
 
+    // Replica counts, widths and inline placements are first evaluated here,
+    // so their evaluation warnings are collected here too.
+    warnings.extend(engine.take_warnings());
     dedupe_warnings(warnings);
     root
 }
