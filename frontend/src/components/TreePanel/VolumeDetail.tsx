@@ -38,69 +38,23 @@ export default function VolumeDetail() {
   };
 
   return (
-    <fieldset disabled={busy}
-      style={{
-        margin: 0, padding: 0, border: 0, minWidth: 0,
-        borderTop: '1px solid #0f3460',
-        marginTop: 8,
-        paddingTop: 6,
-      }}
-    >
-      <div style={{ fontSize: 11, fontWeight: 700, color: '#8899aa', marginBottom: 4 }}>
-        Volume Detail
-      </div>
-      <div style={{ fontSize: 10, fontFamily: 'monospace', color: '#b0b8c0' }}>
-        <div style={{ marginBottom: 2 }}>
-          <span style={{ color: '#8899aa' }}>Name: </span>
-          <span style={{ color: '#56d6c8' }}>{vol.name}</span>
-        </div>
-        <div style={{ marginBottom: 2 }}>
-          <span style={{ color: '#8899aa' }}>Solid: </span>
-          <span>{vol.solid_ref}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ color: '#8899aa', flexShrink: 0 }}>Material: </span>
-          <SearchableCombobox
-            value={vol.material_ref}
-            materials={materials}
-            onChange={handleMaterialSelect}
-          />
-        </div>
-        {mat && (
-          <div
-            style={{
-              marginTop: 4,
-              padding: '3px 6px',
-              background: '#1a1a2e',
-              borderRadius: 3,
-              color: '#8899aa',
-              fontSize: 10,
-              lineHeight: 1.5,
-            }}
-          >
-            {mat.density != null && (
-              <div>
-                <span style={{ color: '#7a8a9a' }}>Density: </span>
-                <span style={{ color: '#b0b8c0' }}>
-                  {mat.density.value}{mat.density.unit ? ` ${mat.density.unit}` : ' g/cm3'}
-                </span>
-              </div>
-            )}
-            {mat.formula && (
-              <div>
-                <span style={{ color: '#7a8a9a' }}>Formula: </span>
-                <span style={{ color: '#b0b8c0' }}>{mat.formula}</span>
-              </div>
-            )}
-            {mat.z != null && (
-              <div>
-                <span style={{ color: '#7a8a9a' }}>Z: </span>
-                <span style={{ color: '#b0b8c0' }}>{mat.z}</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+    <fieldset disabled={busy}>
+      <h3 className="editor-title">{vol.name}</h3>
+      <dl className="properties">
+        <dt>Solid</dt><dd>{vol.solid_ref || 'Assembly'}</dd>
+      </dl>
+      <SearchableCombobox value={vol.material_ref} materials={materials} onChange={handleMaterialSelect} />
+      {mat && <div className="material-summary">
+        <dl className="properties">
+          {mat.density != null && <><dt>Density</dt><dd>{mat.density.value} {mat.density.unit || 'g/cm3'}</dd></>}
+          {mat.formula && <><dt>Formula</dt><dd>{mat.formula}</dd></>}
+          {mat.z != null && <><dt>Atomic number</dt><dd>{mat.z}</dd></>}
+        </dl>
+        <button onClick={() => {
+          useAppStore.getState().setSelectedMaterial(vol.material_ref);
+          useAppStore.getState().setActiveTreeTab('materials');
+        }}>Edit material</button>
+      </div>}
     </fieldset>
   );
 }

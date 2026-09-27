@@ -38,24 +38,14 @@ export default class ErrorBoundary extends Component<Props, State> {
     const { error } = this.state;
     if (error) {
       return (
-        <div
-          style={{
-            padding: 24,
-            color: '#ff8080',
-            fontFamily: 'monospace',
-            background: '#1a1a1f',
-            height: '100vh',
-            boxSizing: 'border-box',
-            overflow: 'auto',
-          }}
-        >
-          <h2 style={{ marginTop: 0 }}>Something went wrong</h2>
-          <p style={{ whiteSpace: 'pre-wrap' }}>{error.message}</p>
-          <p style={{ color: '#8899aa' }}>
+        <div className="fatal-error" role="alert">
+          <h2>Something went wrong</h2>
+          <p className="validation-error">{error.message}</p>
+          <p className="muted">
             &ldquo;Try again&rdquo; closes the current document and returns to the
             empty view. Any unsaved edits are lost.
           </p>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <div className="actions">
             <button onClick={this.handleRetry}>Try again</button>
             {/* Fallback for an error in code `reset()` cannot clear. */}
             <button onClick={() => window.location.reload()}>Reload page</button>

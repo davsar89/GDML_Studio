@@ -4,7 +4,7 @@ import { useAppStore } from '../../store';
 // Windowed list of the scalar defines, bounding the DOM for files with thousands of them.
 // Rows have a pinned height so the scroll offset maps exactly to a row index;
 // OVERSCAN extra rows above and below keep a fast scroll from showing a gap.
-const ROW_HEIGHT = 16;
+const ROW_HEIGHT = 32;
 const OVERSCAN = 8;
 
 export default function DefinesTree() {
@@ -27,7 +27,7 @@ export default function DefinesTree() {
   }, [hasRows]);
 
   if (!hasRows) {
-    return <div style={{ color: '#666', fontSize: 12, padding: 8 }}>{loaded ? 'No defines' : 'No file loaded'}</div>;
+    return <div className="empty-state">{loaded ? 'No defines' : 'No file loaded'}</div>;
   }
 
   const total = defines.length;
@@ -42,7 +42,7 @@ export default function DefinesTree() {
     <div
       ref={scrollRef}
       onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-      style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 8 }}
+      className="panel-scroll"
       data-testid="defines-scroll"
     >
       {/* One tall spacer holds the scrollbar; only `rows` are ever mounted. */}
@@ -51,27 +51,16 @@ export default function DefinesTree() {
           {rows.map((d) => (
             <div
               key={d.name}
-              style={{
-                height: ROW_HEIGHT,
-                lineHeight: `${ROW_HEIGHT - 2}px`,
-                boxSizing: 'border-box',
-                fontSize: 11,
-                fontFamily: 'monospace',
-                padding: '1px 4px',
-                color: '#b0b8c0',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
+              className="define-row"
+              style={{ height: ROW_HEIGHT }}
               title={`${d.name} = ${d.expression} => ${d.evaluated}`}
             >
-              <span style={{ color: '#e94560' }}>{d.name}</span>
-              <span style={{ color: '#666' }}> = </span>
-              <span style={{ color: '#4fc3f7' }}>
+              <span className="truncate">{d.name}</span>
+              <span className="define-value">
                 {/* Six significant digits: fixed decimals would show 1e-9 as 0. */}
                 {d.evaluated !== null ? String(Number(d.evaluated.toPrecision(6))) : '?'}
               </span>
-              {d.unit && <span style={{ color: '#666' }}> {d.unit}</span>}
+              {d.unit && <span className="muted">{d.unit}</span>}
             </div>
           ))}
         </div>

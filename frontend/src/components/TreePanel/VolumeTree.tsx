@@ -6,7 +6,7 @@ export default function VolumeTree() {
   const sceneGraph = useAppStore((s) => s.sceneGraph);
 
   if (!sceneGraph) {
-    return <div style={{ color: '#666', fontSize: 12 }}>No file loaded</div>;
+    return <div className="empty-state">No file loaded</div>;
   }
 
   return <VolumeNode node={sceneGraph} depth={0} />;
@@ -30,44 +30,27 @@ const VolumeNode = memo(({ node, depth }: { node: SceneNode; depth: number }) =>
             { label: 'Change Material', action: () => { setSelectedVolume(node.volume_name); } },
           ]);
         }}
-        style={{
-          paddingLeft: depth * 12 + 4,
-          paddingTop: 2,
-          paddingBottom: 2,
-          fontSize: 11,
-          fontFamily: 'monospace',
-          background: isSelected ? '#0f3460' : 'transparent',
-          color: isHidden ? '#555' : isSelected ? '#e94560' : '#b0b8c0',
-          borderRadius: 2,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          display: 'flex',
-          alignItems: 'center',
-        }}
+        className="tree-row" data-selected={isSelected} data-hidden={isHidden}
+        style={{ paddingLeft: depth * 12 }}
         title={`${node.volume_name} [${node.solid_name}] (${node.material_name})`}
       >
         <button
-          className="plain"
+          className="quiet icon-button"
           onClick={() => toggleInstanceVisibility(node.instance_id)}
           aria-label={`${isHidden ? 'Show' : 'Hide'} ${node.name}`}
-          style={{
-            marginRight: 4,
-            fontSize: 10,
-            opacity: isHidden ? 0.4 : 0.8,
-            flexShrink: 0,
-          }}
           title={isHidden ? 'Show volume' : 'Hide volume'}
         >
-          {isHidden ? '\u{1F441}\u{200D}\u{1F5E8}' : '\u{1F441}'}
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />
+            {isHidden && <path d="m3 3 18 18" />}
+          </svg>
         </button>
-        <button className="plain" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}
+        <button className="quiet icon-button" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}
           aria-label={`${expanded ? 'Collapse' : 'Expand'} ${node.name}`}
-          style={{ width: '2ch', flexShrink: 0, visibility: node.children.length > 0 ? 'visible' : 'hidden' }}>
-          {expanded ? '\u25BC' : '\u25B6'}
+          style={{ visibility: node.children.length > 0 ? 'visible' : 'hidden' }}>
+          <span aria-hidden>{expanded ? '▾' : '▸'}</span>
         </button>
-        <button className="plain" onClick={() => setSelectedVolume(node.volume_name)}
-          style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <button className="plain row-name" onClick={() => setSelectedVolume(node.volume_name)} aria-pressed={isSelected}>
           {node.name}
         </button>
       </div>

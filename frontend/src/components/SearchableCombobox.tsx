@@ -1,4 +1,4 @@
-import { Fragment, useState, useRef, useEffect } from 'react';
+import { Fragment, useState, useRef, useEffect, useId } from 'react';
 import type { MaterialInfo, NistMaterial } from '../store/types';
 import { useNistSearch } from '../utils/useNistSearch';
 
@@ -14,10 +14,8 @@ export default function SearchableCombobox({ value, materials, onChange }: Searc
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  const docMatches = materials.filter(
-    (m) => !query || m.name.toUpperCase().includes(query.toUpperCase()),
-  );
+  const listId = useId();
+  const docMatches = materials.filter((m) => !query || m.name.toUpperCase().includes(query.toUpperCase()));
   // Catalog materials already in the document are listed once, under Document.
   const nistResults = useNistSearch(query || null).results
     .filter((n) => !materials.some((m) => m.name === n.name)).slice(0, 15);
@@ -28,18 +26,11 @@ export default function SearchableCombobox({ value, materials, onChange }: Searc
       detail: `${n.density} g/cm3` })),
   ];
 
-  const handleSelect = (item: typeof allItems[number]) => {
-    setQuery('');
-    setOpen(false);
-    onChange(item.name, item.nist);
-  };
-
+  const close = () => { setOpen(false); setQuery(''); setActiveIdx(-1); };
+  const handleSelect = (item: typeof allItems[number]) => { close(); onChange(item.name, item.nist); };
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!open) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter') {
-        setOpen(true);
-        e.preventDefault();
-      }
+      if (e.key === 'ArrowDown' || e.key === 'Enter') { setOpen(true); e.preventDefault(); }
       return;
     }
     if (e.key === 'ArrowDown') {
@@ -51,86 +42,36 @@ export default function SearchableCombobox({ value, materials, onChange }: Searc
     } else if (e.key === 'Enter' && activeIdx >= 0 && activeIdx < allItems.length) {
       handleSelect(allItems[activeIdx]);
       e.preventDefault();
-    } else if (e.key === 'Escape') {
-      setOpen(false);
-      setQuery('');
-    }
+    } else if (e.key === 'Escape') close();
   };
 
-  // Close on click outside
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery('');
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+    if (open && activeIdx >= 0) containerRef.current?.querySelectorAll('[role="option"]')[activeIdx]?.scrollIntoView({ block: 'nearest' });
+  }, [activeIdx, open]);
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', flex: 1 }}>
-      <input
-        value={open ? query : value}
-        onChange={(e) => { setQuery(e.target.value); setOpen(true); setActiveIdx(-1); }}
-        onFocus={() => { setOpen(true); setQuery(''); }}
-        onKeyDown={handleKeyDown}
-        placeholder="Search materials..."
-        style={{
-          background: '#1a1a2e',
-          color: '#e0e0e0',
-          border: '1px solid #0f3460',
-          borderRadius: 3,
-          padding: '1px 4px',
-          fontSize: 10,
-          fontFamily: 'monospace',
-          outline: 'none',
-          width: '100%',
-          boxSizing: 'border-box',
-        }}
-      />
-      {open && allItems.length > 0 && (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: 0,
-          right: 0,
-          zIndex: 200,
-          background: '#1a1a2e',
-          border: '1px solid #0f3460',
-          borderRadius: 3,
-          maxHeight: 200,
-          overflow: 'auto',
-        }}>
-          {allItems.map((item, i) => (
-            <Fragment key={`${item.nist ? 'nist' : 'doc'}-${item.name}`}>
-              {item.header && (
-                <div style={{ fontSize: 9, color: '#556', padding: '2px 4px', fontWeight: 700, borderTop: item.nist ? '1px solid #0f3460' : undefined }}>
-                  {item.header}
-                </div>
-              )}
-              <div
-                onMouseDown={() => handleSelect(item)}
-                onMouseEnter={() => setActiveIdx(i)}
-                style={{
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                  color: '#b0b8c0',
-                  padding: '2px 4px',
-                  cursor: 'pointer',
-                  background: activeIdx === i ? '#0f3460' : 'transparent',
-                }}
-              >
-                <span style={{ color: '#56d6c8' }}>{item.name}</span>
-                {item.nist?.formula && <span style={{ color: '#8899aa', marginLeft: 4 }}>{item.nist.formula}</span>}
-                {item.detail && <span style={{ color: '#666', marginLeft: 6 }}>{item.detail}</span>}
-                {item.nist && <span style={{ color: '#e94560', marginLeft: 4, fontSize: 9 }}>NIST</span>}
-              </div>
-            </Fragment>
-          ))}
-        </div>
-      )}
+    <div ref={containerRef} className="popover-anchor" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) close(); }}>
+      <label className="field">Material
+        <input role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
+          aria-activedescendant={open && activeIdx >= 0 ? `${listId}-${activeIdx}` : undefined}
+          value={open ? query : value} autoComplete="off"
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); setActiveIdx(-1); }}
+          onFocus={() => { setOpen(true); setQuery(''); setActiveIdx(-1); }}
+          onKeyDown={handleKeyDown} placeholder="Search materials..." />
+      </label>
+      {open && <div className="popover" role="listbox" id={listId} aria-label="Materials">
+        {allItems.map((item, i) => (
+          <Fragment key={`${item.nist ? 'nist' : 'doc'}-${item.name}`}>
+            {item.header && <div className="popover-heading" role="presentation">{item.header}</div>}
+            <div role="option" id={`${listId}-${i}`} aria-selected={activeIdx === i}
+              onMouseDown={(e) => e.preventDefault()} onClick={() => handleSelect(item)} onMouseEnter={() => setActiveIdx(i)}>
+              <span className="mono">{item.name}</span>{' '}
+              <span className="muted">{item.nist?.formula && `${item.nist.formula} · `}{item.detail}{item.nist && ' · NIST'}</span>
+            </div>
+          </Fragment>
+        ))}
+        {allItems.length === 0 && <div className="popover-heading" role="presentation">No matching materials</div>}
+      </div>}
     </div>
   );
 }

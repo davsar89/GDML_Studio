@@ -83,8 +83,8 @@ describe('DefinesTree', () => {
     vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(2000);
     render(<DefinesTree />);
     act(() => useAppStore.setState({ defines: makeDefines(HUGE) }));
-    // 2000 px shows 125 rows; the unmeasured fallback of 600 px would stop near d53.
-    expect(screen.getByText('d130')).toBeInTheDocument();
+    // At 32 px per row, the measured viewport reaches past the 600 px fallback.
+    expect(screen.getByText('d70')).toBeInTheDocument();
   });
 
   it("shows 'No defines' for a loaded document without defines", () => {

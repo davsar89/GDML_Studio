@@ -15,42 +15,18 @@ export default function MaterialsPanel() {
   const setSelectedMaterial = useAppStore((s) => s.setSelectedMaterial);
   const loaded = useAppStore((s) => s.summary !== null);
 
-  if (!loaded) {
-    return <div style={{ color: '#666', fontSize: 12 }}>No file loaded</div>;
-  }
-
+  if (!loaded) return <div className="empty-state">No file loaded</div>;
   return (
-    <fieldset disabled={busy} style={{ display: 'flex', flexDirection: 'column', gap: 8, border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-      <MaterialsList
-        materials={materials}
-        selectedMaterial={selectedMaterial}
-        onSelect={setSelectedMaterial}
-      />
-      {selectedMaterial && (
-        // Keyed so the NIST lookup and pickers start fresh for each material.
-        <MaterialEditor key={selectedMaterial}
-          materialName={selectedMaterial}
-          materials={materials}
-          elements={elements}
-        />
-      )}
+    <fieldset disabled={busy}>
+      <MaterialsList materials={materials} selectedMaterial={selectedMaterial} onSelect={setSelectedMaterial} />
       <ElementsList elements={elements} />
     </fieldset>
   );
 }
 
-// ─── Materials List ─────────────────────────────────────────────────────────
-
-function MaterialsList({
-  materials,
-  selectedMaterial,
-  onSelect,
-}: {
-  materials: MaterialInfo[];
-  selectedMaterial: string | null;
-  onSelect: (name: string | null) => void;
+function MaterialsList({ materials, selectedMaterial, onSelect }: {
+  materials: MaterialInfo[]; selectedMaterial: string | null; onSelect: (name: string | null) => void;
 }) {
-  // A material added with "+" is listed, as unapplied, until Apply or Cancel.
   const draft = useAppStore((s) => s.materialDraft);
   const newDraft = draft && !materials.some((m) => m.name === draft.original.name) ? draft.material : null;
   // Only a local draft: the material reaches the document on Apply.
@@ -76,67 +52,38 @@ function MaterialsList({
   };
 
   return (
-    <div>
-      <div style={{ ...sectionHeader, marginBottom: 4 }}>
-        <span>Materials ({materials.length})</span>
-        <button aria-label="Add material" onClick={handleAdd} style={smallBtn}>+</button>
+    <section className="form-section">
+      <div className="section-heading">
+        <h3>Materials ({materials.length})</h3>
+        <button className="quiet icon-button" aria-label="Add material" onClick={handleAdd}>+</button>
       </div>
-      <div style={{ maxHeight: 160, overflow: 'auto' }}>
+      <div className="material-list">
         {materials.map((m) => (
-          <div
-            key={m.name}
+          <div key={m.name} className="list-row" data-selected={m.name === selectedMaterial}
             onContextMenu={(e) => {
               e.preventDefault();
               useAppStore.getState().openContextMenu(e.clientX, e.clientY, [
                 { label: 'Edit', action: () => onSelect(m.name) },
                 { label: 'Delete', action: () => handleDelete(m.name) },
               ]);
-            }}
-            style={{
-              padding: '2px 4px',
-              fontSize: 11,
-              fontFamily: 'monospace',
-              background: m.name === selectedMaterial ? '#0f3460' : 'transparent',
-              color: m.name === selectedMaterial ? '#e94560' : '#b0b8c0',
-              borderRadius: 2,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <button className="plain" onClick={() => onSelect(m.name === selectedMaterial ? null : m.name)}
-              style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            }}>
+            <button className="plain row-name mono" aria-pressed={m.name === selectedMaterial}
+              title={m.name} onClick={() => onSelect(m.name === selectedMaterial ? null : m.name)}>
               {m.name}
-              {m.density && (
-                <span style={{ color: '#666', marginLeft: 6 }}>
-                  {m.density.value} {m.density.unit || 'g/cm3'}
-                </span>
-              )}
+              {m.density && <small>{m.density.value} {m.density.unit || 'g/cm3'}</small>}
             </button>
-            <button
-              className="plain"
-              onClick={() => handleDelete(m.name)}
-              aria-label={`Delete material ${m.name}`}
-              style={{ color: '#e94560', fontSize: 10, opacity: 0.6, flexShrink: 0, marginLeft: 4 }}
-              title="Delete material"
-            >
-              x
-            </button>
+            <button className="quiet icon-button danger" onClick={() => handleDelete(m.name)}
+              aria-label={`Delete material ${m.name}`} title="Delete material">×</button>
           </div>
         ))}
-        {newDraft && (
-          <div style={{ padding: '2px 4px', fontSize: 11, fontFamily: 'monospace', fontStyle: 'italic', color: '#e94560', background: '#0f3460', borderRadius: 2 }}>
-            {newDraft.name} <span style={{ color: '#8899aa' }}>unapplied</span>
-          </div>
-        )}
+        {newDraft && <div className="draft-row mono">{newDraft.name} <span>unapplied</span></div>}
       </div>
-    </div>
+    </section>
   );
 }
 
-// ─── Material Editor ────────────────────────────────────────────────────────
-
-function MaterialEditor({ materialName, materials, elements }: {
+// Mounted in the inspector, keyed by material so the catalog and pickers start fresh.
+export function MaterialEditor({ materialName, materials, elements }: {
   materialName: string; materials: MaterialInfo[]; elements: ElementInfo[];
 }) {
   const draft = useAppStore((s) => s.materialDraft);
@@ -147,18 +94,20 @@ function MaterialEditor({ materialName, materials, elements }: {
   if (!material) return null;
   const availableElements = [...elements, ...(draft?.elements ?? []).filter((el) => !elements.some((existing) => existing.name === el.name))];
   return (
-    <div style={{ borderTop: '1px solid #0f3460', paddingTop: 6 }}>
-      <div style={sectionHeader}>Edit: {materialName}</div>
-      <FieldRow label="Name">
-        <input aria-label="Material name" value={material.name} onChange={(e) => update({ name: e.target.value })} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
-      </FieldRow>
-      <MaterialFields material={material} onChange={update} />
+    <div>
+      <h3 className="editor-title">Edit: {materialName}</h3>
+      <section className="form-section">
+        <label className="field">Name
+          <input aria-label="Material name" value={material.name} onChange={(e) => update({ name: e.target.value })} />
+        </label>
+        <MaterialFields material={material} onChange={update} />
+      </section>
       <ComponentsList material={material} materials={materials} elements={availableElements} onChange={update} />
       <NistMaterialPicker material={material} />
-      {draftError && <div role="alert" style={{ color: '#ff9999', fontSize: 12, marginTop: 6 }}>{draftError}</div>}
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-        <button disabled={!draft} onClick={() => runDocumentAction(applyMaterialDraft)} style={smallBtn}>Apply</button>
-        <button disabled={!draft} onClick={() => useAppStore.getState().discardMaterialDraft()} style={smallBtn}>Cancel</button>
+      {draftError && <div role="alert" className="validation-error">{draftError}</div>}
+      <div className="actions editor-actions">
+        <button className="primary" disabled={!draft} onClick={() => runDocumentAction(applyMaterialDraft)}>Apply</button>
+        <button disabled={!draft} onClick={() => useAppStore.getState().discardMaterialDraft()}>Cancel</button>
       </div>
     </div>
   );
@@ -168,51 +117,33 @@ function MaterialFields({ material, onChange }: {
   material: MaterialInfo; onChange: (changes: Partial<MaterialInfo>) => void;
 }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
-      <FieldRow label="Density">
+    <div className="form-grid">
+      <label className="field">Density
         <input aria-label="Density" value={material.density?.value ?? ''}
-          onChange={(e) => onChange({ density: { value: e.target.value, unit: material.density?.unit ?? 'g/cm3' }, density_ref: null })}
-          style={{ ...inputStyle, width: 80 }} />
+          onChange={(e) => onChange({ density: { value: e.target.value, unit: material.density?.unit ?? 'g/cm3' }, density_ref: null })} />
+      </label>
+      <label className="field">Unit
         <select aria-label="Density unit" value={material.density?.unit ?? 'g/cm3'}
-          onChange={(e) => onChange({ density: { value: material.density?.value ?? '', unit: e.target.value }, density_ref: null })}
-          style={{ ...inputStyle, width: 70 }}>
+          onChange={(e) => onChange({ density: { value: material.density?.value ?? '', unit: e.target.value }, density_ref: null })}>
           <option value="g/cm3">g/cm3</option><option value="kg/m3">kg/m3</option><option value="mg/cm3">mg/cm3</option>
         </select>
-      </FieldRow>
-      <FieldRow label="Formula">
-        <input aria-label="Formula" value={material.formula ?? ''} onChange={(e) => onChange({ formula: e.target.value || null })} style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
-      </FieldRow>
-      <FieldRow label="Z">
-        <input aria-label="Atomic number" value={material.z ?? ''} onChange={(e) => onChange({ z: e.target.value || null })} style={{ ...inputStyle, width: 50 }} />
-        <span style={{ fontSize: 10, color: '#8899aa' }}>A</span>
-        <input aria-label="Atomic mass" value={material.atom_value ?? ''} onChange={(e) => onChange({ atom_value: e.target.value || null })} style={{ ...inputStyle, width: 60 }} />
-        <span style={{ fontSize: 10, color: '#8899aa' }}>{material.atom_unit ?? 'g/mole'}</span>
-      </FieldRow>
+      </label>
+      <label className="field full-width">Formula
+        <input aria-label="Formula" value={material.formula ?? ''} onChange={(e) => onChange({ formula: e.target.value || null })} />
+      </label>
+      <label className="field">Atomic number (Z)
+        <input aria-label="Atomic number" value={material.z ?? ''} onChange={(e) => onChange({ z: e.target.value || null })} />
+      </label>
+      <label className="field">Atomic mass (A)
+        <input aria-label="Atomic mass" value={material.atom_value ?? ''} onChange={(e) => onChange({ atom_value: e.target.value || null })} />
+        <span className="field-hint">{material.atom_unit ?? 'g/mole'}</span>
+      </label>
     </div>
   );
 }
 
-function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-      <span style={{ fontSize: 10, color: '#8899aa', width: 50, flexShrink: 0 }}>{label}</span>
-      {children}
-    </div>
-  );
-}
-
-// ─── Components List ────────────────────────────────────────────────────────
-
-function ComponentsList({
-  material,
-  materials,
-  elements,
-  onChange,
-}: {
-  material: MaterialInfo;
-  materials: MaterialInfo[];
-  elements: ElementInfo[];
-  onChange: (changes: Partial<MaterialInfo>) => void;
+function ComponentsList({ material, materials, elements, onChange }: {
+  material: MaterialInfo; materials: MaterialInfo[]; elements: ElementInfo[]; onChange: (changes: Partial<MaterialInfo>) => void;
 }) {
   const [addingComp, setAddingComp] = useState(false);
   const [compType, setCompType] = useState<'Fraction' | 'Composite'>('Fraction');
@@ -221,10 +152,8 @@ function ComponentsList({
 
   const handleAddComponent = () => {
     if (!compRef || !compN) return;
-    const newComp: MaterialComponent =
-      compType === 'Fraction'
-        ? { Fraction: { n: compN, ref_name: compRef } }
-        : { Composite: { n: compN, ref_name: compRef } };
+    const newComp: MaterialComponent = compType === 'Fraction'
+      ? { Fraction: { n: compN, ref_name: compRef } } : { Composite: { n: compN, ref_name: compRef } };
     onChange({ components: [...material.components, newComp] });
     setAddingComp(false);
     setCompRef('');
@@ -232,63 +161,46 @@ function ComponentsList({
   };
 
   return (
-    <div style={{ marginTop: 4 }}>
-      <div style={{ ...sectionHeader, fontSize: 10 }}>
-        <span>Components ({material.components.length})</span>
-        <button onClick={() => setAddingComp(!addingComp)} style={smallBtn}>+</button>
+    <section className="form-section">
+      <div className="section-heading">
+        <h3>Components ({material.components.length})</h3>
+        <button className="quiet icon-button" aria-label="Add component" aria-expanded={addingComp} onClick={() => setAddingComp(!addingComp)}>+</button>
       </div>
       {material.components.map((c, i) => {
         const { n, ref_name: ref } = (c.Fraction ?? c.Composite)!;
         return (
-          <div key={i} style={{ fontSize: 10, fontFamily: 'monospace', color: '#b0b8c0', display: 'flex', gap: 4, alignItems: 'center' }}>
-            <span style={{ color: '#56d6c8' }}>{ref}</span>
-            <span style={{ color: '#666' }}>{c.Fraction ? `mass ${n}` : `${n} atom${n === '1' ? '' : 's'}`}</span>
-            <button aria-label={`Remove component ${ref}`}
-              onClick={() => onChange({ components: material.components.filter((_, index) => index !== i) })}
-              style={{ background: 'none', border: 0, cursor: 'pointer', color: '#e94560', fontSize: 9, opacity: 0.6 }}
-            >
-              x
-            </button>
+          <div key={i} className="component-row">
+            <span className="mono">{ref}</span>
+            <span className="muted">{c.Fraction ? `mass ${n}` : `${n} atom${n === '1' ? '' : 's'}`}</span>
+            <button className="quiet icon-button danger" aria-label={`Remove component ${ref}`}
+              onClick={() => onChange({ components: material.components.filter((_, index) => index !== i) })}>×</button>
           </div>
         );
       })}
       {addingComp && (
-        <div style={{ display: 'flex', gap: 3, marginTop: 2, flexWrap: 'wrap' }}>
-          <select value={compType} onChange={(e) => setCompType(e.target.value as 'Fraction' | 'Composite')} style={{ ...inputStyle, width: 70 }}>
-            <option value="Fraction">Fraction</option>
-            <option value="Composite">Composite</option>
-          </select>
-          <select value={compRef} onChange={(e) => setCompRef(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
-            <option value="">-- ref --</option>
-            <optgroup label="Elements">
-              {elements.map((el) => (
-                <option key={`element-${el.name}`} value={el.name}>{el.name}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Materials">
-              {materials
-                .filter((candidate) => candidate.name !== material.name)
-                .map((candidate) => (
-                  <option key={`material-${candidate.name}`} value={candidate.name}>
-                    {candidate.name}
-                  </option>
-                ))}
-            </optgroup>
-          </select>
-          <input
-            value={compN}
-            onChange={(e) => setCompN(e.target.value)}
-            placeholder="n"
-            style={{ ...inputStyle, width: 40 }}
-          />
-          <button onClick={handleAddComponent} style={smallBtn}>Add</button>
+        <div className="form-grid">
+          <label className="field">Type
+            <select value={compType} onChange={(e) => setCompType(e.target.value as 'Fraction' | 'Composite')}>
+              <option value="Fraction">Fraction</option><option value="Composite">Composite</option>
+            </select>
+          </label>
+          <label className="field">Weight / count
+            <input value={compN} onChange={(e) => setCompN(e.target.value)} placeholder="n" />
+          </label>
+          <label className="field full-width">Reference
+            <select value={compRef} onChange={(e) => setCompRef(e.target.value)}>
+              <option value="">Select a reference</option>
+              <optgroup label="Elements">{elements.map((el) => <option key={`element-${el.name}`} value={el.name}>{el.name}</option>)}</optgroup>
+              <optgroup label="Materials">{materials.filter((candidate) => candidate.name !== material.name)
+                .map((candidate) => <option key={`material-${candidate.name}`} value={candidate.name}>{candidate.name}</option>)}</optgroup>
+            </select>
+          </label>
+          <button onClick={handleAddComponent}>Add</button>
         </div>
       )}
-    </div>
+    </section>
   );
 }
-
-// ─── NIST Material Picker ───────────────────────────────────────────────────
 
 function NistMaterialPicker({ material }: { material: MaterialInfo }) {
   const [open, setOpen] = useState(false);
@@ -307,64 +219,35 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
   });
 
   return (
-    <div style={{ marginTop: 4 }}>
-      <button onClick={() => setOpen(!open)} style={{ ...smallBtn, fontSize: 10 }}>
-        {open ? 'Close NIST Lookup' : 'NIST Material Lookup'}
-      </button>
-      {open && (
-        <div style={{ marginTop: 4 }}>
-          <div style={{ display: 'flex', gap: 3, marginBottom: 3 }}>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search..."
-              style={{ ...inputStyle, flex: 1 }}
-              autoFocus
-            />
-            <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ ...inputStyle, width: 90 }}>
-              <option value="">All</option>
-              <option value="Elemental">Elemental</option>
-              <option value="Compound">Compound</option>
-              <option value="HEP">HEP</option>
-              <option value="Space">Space</option>
-              <option value="Biochemical">Biochemical</option>
+    <section className="form-section">
+      <button onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Close NIST Lookup' : 'NIST Material Lookup'}</button>
+      {open && <>
+        <div className="form-grid">
+          <label className="field full-width">Search catalog
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search..." autoFocus />
+          </label>
+          <label className="field full-width">Category
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">All</option><option value="Elemental">Elemental</option><option value="Compound">Compound</option>
+              <option value="HEP">HEP</option><option value="Space">Space</option><option value="Biochemical">Biochemical</option>
             </select>
-          </div>
-          <div style={{ maxHeight: 150, overflow: 'auto' }}>
-            {loading && <div style={{ fontSize: 10, color: '#666' }}>Loading...</div>}
-            {results.map((n) => (
-              <button
-                key={n.name}
-                className="plain hover"
-                onClick={() => handleApply(n)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                  color: '#b0b8c0',
-                  padding: '1px 2px',
-                  borderRadius: 2,
-                }}
-                title={`${n.name}${n.formula ? ' (' + n.formula + ')' : ''} - ${n.density} g/cm3 (${n.state}, ${n.category})`}
-              >
-                <span style={{ color: '#56d6c8' }}>{n.name}</span>
-                {n.formula && <span style={{ color: '#8899aa', marginLeft: 4 }}>{n.formula}</span>}
-                <span style={{ color: '#666', marginLeft: 6 }}>{n.density} g/cm3</span>
-                <span style={{ color: '#555', marginLeft: 4 }}>{n.state}</span>
-              </button>
-            ))}
-            {!loading && results.length === 0 && (
-              <div style={{ fontSize: 10, color: '#666' }}>No results</div>
-            )}
-          </div>
+          </label>
         </div>
-      )}
-    </div>
+        <div className="catalog-results">
+          {loading && <div className="muted" role="status">Loading…</div>}
+          {results.map((n) => (
+            <button key={n.name} className="plain catalog-option" onClick={() => handleApply(n)}
+              title={`${n.name}${n.formula ? ' (' + n.formula + ')' : ''} - ${n.density} g/cm3 (${n.state}, ${n.category})`}>
+              <span className="mono">{n.name}</span>
+              <span className="muted">{n.formula && `${n.formula} · `}{n.density} g/cm3 · {n.state}</span>
+            </button>
+          ))}
+          {!loading && results.length === 0 && <div className="muted">No results</div>}
+        </div>
+      </>}
+    </section>
   );
 }
-
-// ─── Elements List ──────────────────────────────────────────────────────────
 
 function ElementsList({ elements }: { elements: ElementInfo[] }) {
   const [expanded, setExpanded] = useState(false);
@@ -384,15 +267,8 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
 
   const handleAdd = async () => {
     await runDocumentAction(async () => {
-      await api.addElement({
-        name: newName.trim(),
-        formula: null,
-        z: newZ || null,
-        atom_value: newAtom || null,
-        atom_unit: null,
-        atom_type: null,
-        fractions: [],
-      });
+      await api.addElement({ name: newName.trim(), formula: null, z: newZ || null, atom_value: newAtom || null,
+        atom_unit: null, atom_type: null, fractions: [] });
       await refreshMaterials();
       setAdding(false);
       setNewName('');
@@ -411,120 +287,45 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
   };
 
   return (
-    <div style={{ borderTop: '1px solid #0f3460', paddingTop: 6 }}>
-      <div style={sectionHeader}>
+    <section className="form-section">
+      <div className="section-heading">
         <button className="plain" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
-          <span aria-hidden>{expanded ? '\u25BC' : '\u25B6'}</span> Elements ({elements.length})
+          <span aria-hidden>{expanded ? '▾' : '▸'}</span> Elements ({elements.length})
         </button>
-        <button aria-label="Add element" onClick={() => { setAdding(!adding); setExpanded(true); }} style={smallBtn}>+</button>
+        <button className="quiet icon-button" aria-label="Add element" onClick={() => { setAdding(!adding); setExpanded(true); }}>+</button>
       </div>
-      {expanded && (
-        <>
-          {adding && (
-            <div style={{ display: 'flex', gap: 3, marginBottom: 3, flexWrap: 'wrap', position: 'relative' }}>
-              {/* Suggestions stay open while focus is in the name or on a suggestion (Tab reaches them). */}
-              <div style={{ position: 'relative', width: 60 }}
-                onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setShowElSuggestions(false); }}>
-                <input
-                  value={newName}
-                  onChange={(e) => { setNewName(e.target.value); setShowElSuggestions(true); }}
-                  onFocus={() => setShowElSuggestions(true)}
-                  placeholder="Name"
-                  style={{ ...inputStyle, width: '100%' }}
-                  autoFocus
-                />
-                {showElSuggestions && elSuggestions.length > 0 && (
-                  // Keeps focus in the name field while a suggestion is clicked.
-                  <div onMouseDown={(e) => e.preventDefault()} style={{
-                    position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                    background: '#1a1a2e', border: '1px solid #0f3460', borderRadius: 3,
-                    maxHeight: 120, overflow: 'auto', width: 180,
-                  }}>
-                    {elSuggestions.map((s) => (
-                      <button
-                        key={s.name}
-                        className="plain hover"
-                        onClick={() => handleSelectSuggestion(s)}
-                        style={{ display: 'block', width: '100%', fontSize: 10, fontFamily: 'monospace', color: '#b0b8c0', padding: '2px 4px' }}
-                      >
-                        <span style={{ color: '#56d6c8' }}>{s.name}</span>
-                        {s.z != null && <span style={{ color: '#666', marginLeft: 4 }}>Z={s.z}</span>}
-                        {s.atom_value != null && <span style={{ color: '#666', marginLeft: 4 }}>A={s.atom_value}</span>}
-                      </button>
-                    ))}
-                  </div>
-                )}
+      {expanded && <>
+        {adding && <div className="form-grid">
+          <div className="popover-anchor full-width" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setShowElSuggestions(false); }}>
+            <label className="field">Name
+              <input value={newName} onChange={(e) => { setNewName(e.target.value); setShowElSuggestions(true); }}
+                onFocus={() => setShowElSuggestions(true)} placeholder="Name" autoFocus />
+            </label>
+            {showElSuggestions && elSuggestions.length > 0 && (
+              <div className="popover" onMouseDown={(e) => e.preventDefault()}>
+                {elSuggestions.map((s) => <button key={s.name} className="plain catalog-option" onClick={() => handleSelectSuggestion(s)}>
+                  <span className="mono">{s.name}</span>
+                  <span className="muted">{s.z != null && `Z=${s.z} `}{s.atom_value != null && `A=${s.atom_value}`}</span>
+                </button>)}
               </div>
-              <input value={newZ} onChange={(e) => setNewZ(e.target.value)} placeholder="Z" style={{ ...inputStyle, width: 30 }} />
-              <input value={newAtom} onChange={(e) => setNewAtom(e.target.value)} placeholder="Atom" style={{ ...inputStyle, width: 50 }} />
-              <button onClick={handleAdd} disabled={!newName.trim() || !newZ.trim() || !newAtom.trim()} style={smallBtn}>Add</button>
-            </div>
-          )}
-          <div style={{ maxHeight: 120, overflow: 'auto' }}>
-            {elements.map((el) => (
-              <div
-                key={el.name}
-                style={{
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                  color: '#b0b8c0',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '1px 0',
-                }}
-              >
-                <span>
-                  <span style={{ color: '#56d6c8' }}>{el.name}</span>
-                  {el.z && <span style={{ color: '#666', marginLeft: 4 }}>Z={el.z}</span>}
-                  {el.atom_value && <span style={{ color: '#666', marginLeft: 4 }}>A={el.atom_value}</span>}
-                </span>
-                <button
-                  className="plain"
-                  onClick={() => handleDelete(el.name)}
-                  aria-label={`Delete element ${el.name}`}
-                  style={{ color: '#e94560', fontSize: 9, opacity: 0.6 }}
-                  title="Delete element"
-                >
-                  x
-                </button>
-              </div>
-            ))}
+            )}
           </div>
-        </>
-      )}
-    </div>
+          <label className="field">Atomic number
+            <input value={newZ} onChange={(e) => setNewZ(e.target.value)} placeholder="Z" />
+          </label>
+          <label className="field">Atomic mass
+            <input value={newAtom} onChange={(e) => setNewAtom(e.target.value)} placeholder="Atom" />
+          </label>
+          <button onClick={handleAdd} disabled={!newName.trim() || !newZ.trim() || !newAtom.trim()}>Add</button>
+        </div>}
+        {elements.map((el) => <div key={el.name} className="list-row">
+          <span className="row-name" title={el.name}>
+            <span className="mono">{el.name}</span>{' '}
+            <span className="field-hint">{el.z && `Z=${el.z} `}{el.atom_value && `A=${el.atom_value}`}</span>
+          </span>
+          <button className="quiet icon-button danger" onClick={() => handleDelete(el.name)} aria-label={`Delete element ${el.name}`} title="Delete element">×</button>
+        </div>)}
+      </>}
+    </section>
   );
 }
-
-// ─── Styles ─────────────────────────────────────────────────────────────────
-
-const sectionHeader: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 700,
-  color: '#8899aa',
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-};
-
-const smallBtn: React.CSSProperties = {
-  background: '#0f3460',
-  color: '#e0e0e0',
-  border: '1px solid #1a1a4e',
-  borderRadius: 3,
-  padding: '1px 6px',
-  cursor: 'pointer',
-  fontSize: 11,
-};
-
-const inputStyle: React.CSSProperties = {
-  background: '#1a1a2e',
-  color: '#e0e0e0',
-  border: '1px solid #0f3460',
-  borderRadius: 3,
-  padding: '2px 4px',
-  fontSize: 11,
-  fontFamily: 'monospace',
-  outline: 'none',
-};

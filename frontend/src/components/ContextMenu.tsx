@@ -36,8 +36,8 @@ export default function ContextMenu() {
   if (!contextMenu) return null;
 
   // Clamp position to stay within viewport
-  const menuWidth = 160;
-  const menuItemHeight = 28;
+  const menuWidth = 180;
+  const menuItemHeight = window.matchMedia('(pointer: coarse)').matches ? 44 : 32;
   const menuHeight = contextMenu.items.length * menuItemHeight + 8;
   const left = Math.min(contextMenu.x, window.innerWidth - menuWidth - 4);
   const top = Math.min(contextMenu.y, window.innerHeight - menuHeight - 4);
@@ -45,35 +45,16 @@ export default function ContextMenu() {
   return ReactDOM.createPortal(
     <div
       ref={menuRef}
-      style={{
-        position: 'fixed',
-        top,
-        left,
-        minWidth: menuWidth,
-        background: '#16213e',
-        border: '1px solid #0f3460',
-        borderRadius: 4,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
-        padding: '4px 0',
-        zIndex: 10000,
-        fontFamily: 'monospace',
-        fontSize: 12,
-      }}
+      className="context-menu"
+      style={{ top, left, minWidth: menuWidth }}
     >
       {contextMenu.items.map((item, i) => (
         <button
           key={i}
-          className="plain hover"
+          className="plain"
           onClick={() => {
             item.action();
             closeContextMenu();
-          }}
-          style={{
-            display: 'block',
-            width: '100%',
-            padding: '6px 12px',
-            color: '#b0b8c0',
-            userSelect: 'none',
           }}
         >
           {item.label}

@@ -6,7 +6,8 @@ vi.mock('../Viewport/geometryCache', () => ({ clearAllGeometries: vi.fn() }));
 import * as api from '../../api/client';
 import { useAppStore } from '../../store';
 import type { MaterialInfo, ElementInfo, DocumentSummary, NistMaterial, SceneNode } from '../../store/types';
-import MaterialsPanel from './MaterialsPanel';
+import TreePanel from './TreePanel';
+import Inspector from '../Inspector';
 import VolumeDetail from './VolumeDetail';
 import Toolbar from '../Toolbar';
 import DocumentDialog from '../DocumentDialog';
@@ -35,7 +36,7 @@ beforeEach(() => {
   serverMaterials = [makeMaterial(), makeMaterial('N')];
   serverElements = [];
   exportedDensity = undefined;
-  useAppStore.setState({ summary, materials: serverMaterials, selectedMaterial: 'M' });
+  useAppStore.setState({ summary, materials: serverMaterials, selectedMaterial: 'M', activeTreeTab: 'materials' });
   // Keep the real client: serialization, HTTP errors and dirty tracking must
   // execute in production code, not be reproduced by an API mock.
   for (const name of ['updateMaterial', 'addMaterial', 'addElement', 'exportGdml', 'uploadFiles'] as const) vi.spyOn(api, name);
@@ -87,7 +88,7 @@ beforeEach(() => {
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-function mount() { render(<><Toolbar /><MaterialsPanel /><DocumentDialog /></>); return userEvent.setup(); }
+function mount() { render(<><Toolbar /><TreePanel /><Inspector /><DocumentDialog /></>); return userEvent.setup(); }
 const densityInput = () => screen.getByRole('textbox', { name: 'Density' });
 async function edit(user: ReturnType<typeof userEvent.setup>, value = '3.25') {
   await user.clear(densityInput()); await user.type(densityInput(), value);
@@ -111,6 +112,21 @@ async function chooseFile(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe('material drafts and document actions', () => {
+  it('keeps the material draft when switching between the volume and material inspector', async () => {
+    useAppStore.setState({ selectedVolume: 'W', volumes: [{ name: 'W', material_ref: 'M', solid_ref: 'S', physvols: [], auxiliaries: [] }] });
+    const user = mount();
+    await edit(user);
+    await user.click(screen.getByRole('button', { name: 'Structure' }));
+    const inspector = within(screen.getByRole('complementary', { name: 'Inspector' }));
+    expect(inspector.getByRole('combobox', { name: 'Material' })).toHaveValue('M');
+    expect(inspector.queryByRole('textbox', { name: 'Density' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Defines' }));
+    expect(inspector.getByRole('combobox', { name: 'Material' })).toHaveValue('M');
+    await user.click(screen.getByRole('button', { name: 'Materials' }));
+    expect(inspector.getByRole('textbox', { name: 'Density' })).toHaveValue('3.25');
+    expect(mocked.updateMaterial).not.toHaveBeenCalled();
+  });
+
   it('offers Add for a loaded document without materials', () => {
     useAppStore.setState({ materials: [], selectedMaterial: null });
     mount();
@@ -396,16 +412,40 @@ describe('volume material picker', () => {
   it('re-picking the current material sends no request', async () => {
     const user = pick();
     await user.click(screen.getByPlaceholderText('Search materials...'));
-    fireEvent.mouseDown(screen.getByText('M', { exact: true }));
+    await user.click(screen.getByRole('option', { name: /^M / }));
     await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
     expect(fetch).not.toHaveBeenCalled();
     expect(useAppStore.getState().dirty).toBe(false);
   });
 
+  it('supports keyboard selection and closes the material list on Tab', async () => {
+    const user = pick();
+    const input = screen.getByRole('combobox', { name: 'Material' });
+    await user.click(input);
+    await user.keyboard('{ArrowDown}');
+    const option = screen.getByRole('option', { name: /^M / });
+    expect(input).toHaveAttribute('aria-activedescendant', option.id);
+    await user.keyboard('{Enter}');
+    expect(input).toHaveValue('M');
+    expect(input).toHaveAttribute('aria-expanded', 'false');
+    expect(fetch).not.toHaveBeenCalled();
+    await user.keyboard('{ArrowDown}');
+    await user.tab();
+    expect(input).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('opens the volume’s current material in the inspector', async () => {
+    const user = pick();
+    useAppStore.setState({ selectedMaterial: 'N', activeTreeTab: 'structure' });
+    await user.click(screen.getByRole('button', { name: 'Edit material' }));
+    expect(useAppStore.getState().selectedMaterial).toBe('M');
+    expect(useAppStore.getState().activeTreeTab).toBe('materials');
+  });
+
   it('refreshes the materials after a half-done NIST pick', async () => {
     const user = pick();
     await user.type(screen.getByPlaceholderText('Search materials...'), 'Cat');
-    fireEvent.mouseDown(await screen.findByText('CatalogMaterial'));
+    await user.click(await screen.findByRole('option', { name: /CatalogMaterial/ }));
     await waitFor(() => expect(useAppStore.getState().error).toBe('refused'));
     await waitFor(() => expect(useAppStore.getState().materials.map((m) => m.name)).toContain('CatalogMaterial'));
   });

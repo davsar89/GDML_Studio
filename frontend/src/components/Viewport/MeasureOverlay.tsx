@@ -11,7 +11,7 @@ const SNAP_COLORS: Record<string, number> = {
   face: 0x06b6d4,   // cyan
 };
 
-const LINE_COLOR = 0xe94560;
+const LINE_COLOR = 0x8eb4ff;
 
 function noRaycast() {}
 
@@ -147,19 +147,7 @@ function Segment({ a, b }: { a: [number, number, number]; b: [number, number, nu
     <>
       <DashedLine start={a} end={b} />
       <Html position={a.map((v, i) => (v + b[i]) / 2) as [number, number, number]} center style={{ pointerEvents: 'none' }}>
-        <div
-          style={{
-            background: 'rgba(22,33,62,0.92)',
-            color: '#e0e0e0',
-            padding: '3px 10px',
-            borderRadius: 10,
-            fontSize: 12,
-            fontFamily: 'monospace',
-            whiteSpace: 'nowrap',
-            border: '1px solid rgba(233,69,96,0.6)',
-            userSelect: 'none',
-          }}
-        >
+        <div className="measurement-label">
           {formatDistance(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]))}
         </div>
       </Html>

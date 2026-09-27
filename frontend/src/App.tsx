@@ -16,29 +16,29 @@ export default function App() {
   useEffect(() => { void runDocumentAction(restoreOpenDocument); }, []);
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', fontFamily: 'system-ui, sans-serif', color: '#e0e0e0', background: '#1a1a2e' }}>
+    <div className="app">
       <Toolbar />
       {error && (
-        <div style={{ background: '#b71c1c', color: '#fff', padding: '8px 16px', fontSize: '13px' }}>
-          Error: {error}
-          <button onClick={() => useAppStore.getState().setError(null)} style={{ marginLeft: 16, background: 'none', border: '1px solid #fff', color: '#fff', cursor: 'pointer', borderRadius: 3, padding: '2px 8px' }}>
+        <div className="notice error-notice" role="alert">
+          <span><strong>Error:</strong> {error}</span>
+          <button className="quiet" onClick={() => useAppStore.getState().setError(null)}>
             Dismiss
           </button>
         </div>
       )}
       {warnings.length > 0 && (
-        <div style={{ background: '#6b4f1d', color: '#fff3d6', padding: '8px 16px', fontSize: '13px', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-          <div style={{ flex: 1 }}>
-            <strong style={{ display: 'block', marginBottom: 4 }}>Warnings</strong>
-            <ul style={{ margin: 0, paddingLeft: 18 }}>
+        <div className="notice warning-notice">
+          <details>
+            <summary><strong>Geometry warnings ({warnings.length})</strong><span className="warning-preview">{warnings[0]}</span></summary>
+            <ul>
               {warnings.map((warning, idx) => (
                 <li key={`${idx}-${warning}`}>{warning}</li>
               ))}
             </ul>
-          </div>
+          </details>
           <button
             onClick={clearWarnings}
-            style={{ background: 'none', border: '1px solid #fff3d6', color: '#fff3d6', cursor: 'pointer', borderRadius: 3, padding: '2px 8px' }}
+            className="quiet"
           >
             Dismiss
           </button>

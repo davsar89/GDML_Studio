@@ -131,22 +131,17 @@ export default function Viewport() {
   const loading = useAppStore((s) => s.loading);
 
   return (
-    <div style={{ width: '100%', height: '100%', background: '#0d1117', position: 'relative' }} onContextMenu={(e) => e.preventDefault()}>
+    <div className="viewport" onContextMenu={(e) => e.preventDefault()}>
       {loading && (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10,
-          color: '#8899aa',
-          fontSize: 18,
-          pointerEvents: 'none',
-        }}>
-          Loading...
+        <div className="viewport-overlay" role="status">
+          Loading geometry…
         </div>
       )}
+      {!sceneGraph && !loading && <div className="viewport-overlay">
+        <strong>Open a GDML geometry</strong>
+        <span>Open a GDML file to explore its structure and materials.</span>
+        <span className="field-hint">For a model split across files, select them together.</span>
+      </div>}
       {/* Renders only on change: R3F commits, store changes, OrbitControls/Gizmo moves, AutoFit. */}
       <Canvas
         flat

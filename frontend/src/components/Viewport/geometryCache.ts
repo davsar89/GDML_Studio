@@ -55,7 +55,7 @@ const materials = new Map<string, THREE.MeshStandardMaterial>();
 export function sharedMaterial(color: string, selected: boolean, opacity: number, depth: number): THREE.MeshStandardMaterial {
   const key = `${color}|${selected}|${opacity}|${depth}`;
   if (!materials.has(key)) materials.set(key, new THREE.MeshStandardMaterial({
-    color: selected ? '#ff6090' : color, emissive: selected ? '#ff2060' : color, emissiveIntensity: selected ? 0.3 : 0.12,
+    color: selected ? '#8eb4ff' : color, emissive: selected ? '#3268b8' : color, emissiveIntensity: selected ? 0.3 : 0.12,
     metalness: 0.15, roughness: 0.45, side: THREE.DoubleSide, transparent: opacity < 1, opacity, depthWrite: opacity >= 1,
     polygonOffset: true, polygonOffsetFactor: -depth, polygonOffsetUnits: -depth,
   }));
