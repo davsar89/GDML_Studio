@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { Canvas, useThree, addEffect } from '@react-three/fiber';
 import { OrbitControls, GizmoHelper, GizmoViewport } from '@react-three/drei';
@@ -85,7 +85,12 @@ function DemandFrames() {
   const clock = useThree((s) => s.clock);
   const invalidate = useThree((s) => s.invalidate);
   // R3F requests a frame when it adds or updates an object but not when it removes one (hide, clear).
-  useEffect(() => useAppStore.subscribe(() => invalidate()), [invalidate]);
+  // Request it after this root commits the store change: a store subscription fires before the
+  // commit, so the frame could draw the removed mesh again (seen with the 3D menu's Hide).
+  useAppStore();
+  useLayoutEffect(() => {
+    invalidate();
+  });
   // A frame after a pause gets the whole pause as its delta, and GizmoHelper's tween would jump.
   useEffect(() => addEffect(() => { clock.oldTime = Math.max(clock.oldTime, performance.now() - 50); }), [clock]);
   return null;
