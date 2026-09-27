@@ -23,7 +23,7 @@ const summary: DocumentSummary = { filename: 'original.gdml', defines_count: 0, 
 const scene: SceneNode = { name: 'W', volume_name: 'W', instance_id: '/W', solid_name: '', material_name: 'M',
   color: null, density: 1, position: [0,0,0], rotation: [0,0,0], is_world: true, children: [] };
 const nist: NistMaterial = { name: 'CatalogMaterial', formula: 'H', density: 0.5, state: 'Gas', category: 'HEP',
-  z: null, atom_value: null, components: [{ type: 'Fraction', ref: 'NewElement', n: 1 }] };
+  z: null, atom_value: null, components: [{ type: 'Fraction', ref: 'G4_H', n: 1 }] };
 let serverMaterials: MaterialInfo[];
 let serverElements: ElementInfo[];
 let exportedDensity: string | undefined;
@@ -61,7 +61,7 @@ beforeEach(() => {
         body = { gdml: `<gdml density="${exportedDensity}"/>`, filename: summary.filename }; break;
       case '/api/files/upload-multi': body = { ...summary, filename: JSON.parse(String(init?.body)).main_file }; break;
       case '/api/nist/materials': body = { materials: [nist] }; break;
-      case '/api/nist/material': body = { material: { ...nist, name: 'NewElement', z: 1, atom_value: 1, components: [] } }; break;
+      case '/api/nist/material': body = { material: { ...nist, name: 'G4_H', category: 'Elemental', z: 1, atom_value: 1.008, components: [] } }; break;
       default: throw new Error(`Unexpected request: ${path}`);
     }
     return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
@@ -217,7 +217,7 @@ describe('material drafts and document actions', () => {
     await user.click(screen.getByRole('button', { name: 'NIST Material Lookup' }));
     await user.click(await screen.findByText('CatalogMaterial', { exact: true }));
     await waitFor(() => expect(screen.getByRole('textbox', { name: 'Material name' })).toHaveValue('CatalogMaterial'));
-    expect(useAppStore.getState().materialDraft?.elements[0].name).toBe('NewElement');
+    expect(useAppStore.getState().materialDraft?.elements[0].name).toBe('H');
     expect(mocked.addElement).not.toHaveBeenCalled(); expect(mocked.updateMaterial).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(useAppStore.getState().materialDraft).toBeNull(); expect(useAppStore.getState().elements).toEqual([]);
@@ -243,9 +243,22 @@ describe('material drafts and document actions', () => {
     expect(mocked.updateMaterial).toHaveBeenCalledTimes(1);
     expect(serverMaterials[0].name).toBe('CatalogMaterial');
     expect(serverMaterials[0].state).toBe('gas');
-    expect(serverElements.map((e) => e.name)).toEqual(['NewElement']);
+    expect(serverElements.map((e) => e.name)).toEqual(['H']);
+    expect(serverMaterials[0].components).toEqual([{ Fraction: { n: '1', ref_name: 'H' } }]);
     expect(mocked.addElement).not.toHaveBeenCalled();
     expect(serverMaterials[0].properties[0].ref_name).toBe('optics');
+  });
+
+  it('reuses an existing element with the same Z', async () => {
+    serverElements = [{ name: 'Hydrogen', formula: null, z: '1', atom_value: '1.008', atom_unit: null, atom_type: null, fractions: [] }];
+    useAppStore.setState({ elements: serverElements });
+    const user = mount();
+    await user.click(screen.getByRole('button', { name: 'NIST Material Lookup' }));
+    await user.click(await screen.findByText('CatalogMaterial', { exact: true }));
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Material name' })).toHaveValue('CatalogMaterial'));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(serverElements.map((e) => e.name)).toEqual(['Hydrogen']);
+    expect(serverMaterials[0].components).toEqual([{ Fraction: { n: '1', ref_name: 'Hydrogen' } }]);
   });
 
   it('keeps the old document when its replacement upload is rejected', async () => {

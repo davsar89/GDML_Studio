@@ -15,23 +15,28 @@ export function emptyMaterial(name: string): MaterialInfo {
 export async function prepareNistMaterial(nist: NistMaterial): Promise<{ material: MaterialInfo; elements: ElementInfo[] }> {
   const existing = useAppStore.getState().elements;
   const elements: ElementInfo[] = [];
-  for (const name of new Set(nist.components.map((comp) => comp.ref))) {
-    if (existing.some((el) => el.name === name)) continue;
-    const { material: refNist } = await api.getNistMaterial(name);
-    elements.push({
-      name: refNist.name, formula: refNist.formula,
-      z: refNist.z != null ? String(refNist.z) : null,
-      atom_value: refNist.atom_value != null ? String(refNist.atom_value) : null,
-      atom_unit: null, atom_type: null, fractions: [],
-    });
+  const elementName = new Map<string, string>();
+  for (const ref of new Set(nist.components.map((comp) => comp.ref))) {
+    const { material: el } = await api.getNistMaterial(ref);
+    const symbol = el.formula ?? ref;
+    // Reuse the document's element for this Z. A new one takes its symbol, as in
+    // Geant4's NIST element table, so it cannot collide with the G4_ material.
+    const match = existing.find((e) => Number(e.z) === el.z) ?? existing.find((e) => e.name === symbol || e.name === ref);
+    elementName.set(ref, match?.name ?? symbol);
+    if (!match) {
+      elements.push({
+        name: symbol, formula: el.formula,
+        z: el.z != null ? String(el.z) : null,
+        atom_value: el.atom_value != null ? String(el.atom_value) : null,
+        atom_unit: null, atom_type: null, fractions: [],
+      });
+    }
   }
 
-  // Build components
-  const components: MaterialComponent[] = nist.components.map((c) =>
-    c.type === 'Fraction'
-      ? { Fraction: { n: String(c.n), ref_name: c.ref } }
-      : { Composite: { n: String(c.n), ref_name: c.ref } },
-  );
+  const components: MaterialComponent[] = nist.components.map((c) => {
+    const part = { n: String(c.n), ref_name: elementName.get(c.ref)! };
+    return c.type === 'Fraction' ? { Fraction: part } : { Composite: part };
+  });
 
   const mat: MaterialInfo = {
     ...emptyMaterial(nist.name),
