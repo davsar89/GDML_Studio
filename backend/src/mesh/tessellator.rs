@@ -458,6 +458,24 @@ fn resolve(engine: &EvalEngine, expr: &str) -> f64 {
     engine.resolve_value(expr)
 }
 
+/// A polyhedra's side count. Geant4 reads a missing `numsides` as 0 and
+/// G4Polyhedra rejects fewer than one side (G4GDMLReadSolids.cc:1404,
+/// G4Polyhedra.cc:81-88), so that is an error, not a guessed hexagon. An
+/// empty expression would evaluate to 0 silently, hence the explicit check.
+fn polyhedra_sides(engine: &EvalEngine, numsides: &str) -> Result<u32> {
+    let n = if numsides.trim().is_empty() {
+        0.0
+    } else {
+        resolve(engine, numsides)
+    };
+    anyhow::ensure!(
+        n >= 1.0,
+        "numsides is missing or below 1, which Geant4 rejects"
+    );
+    // 1 and 2 sides are degenerate here, and an unbounded count blows up memory.
+    Ok((n as u32).clamp(3, 512))
+}
+
 fn resolve_opt(engine: &EvalEngine, expr: &Option<String>) -> f64 {
     match expr {
         Some(s) => engine.resolve_value(s),
@@ -843,8 +861,7 @@ fn tessellate_polyhedra_solid(s: &PolyhedraSolid, engine: &EvalEngine) -> Result
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
-    // Clamp sides: 0/1/2 are degenerate and an unbounded value blows up memory.
-    let numsides = (resolve(engine, &s.numsides) as u32).clamp(3, 512);
+    let numsides = polyhedra_sides(engine, &s.numsides)?;
 
     let planes: Vec<(f64, f64, f64)> = s
         .zplanes
@@ -1122,8 +1139,7 @@ fn tessellate_generic_polyhedra_solid(
     let aunit = s.aunit.as_deref().unwrap_or("rad");
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
-    // Clamp sides: 0/1/2 are degenerate and an unbounded value blows up memory.
-    let numsides = (resolve(engine, &s.numsides) as u32).clamp(3, 512);
+    let numsides = polyhedra_sides(engine, &s.numsides)?;
 
     // As with genericPolycone, the rzpoints are a closed contour, not z-planes.
     // The apothem -> corner radius conversion is kept: whether the generic form

@@ -1047,7 +1047,9 @@ fn write_solids(
                 if let Some(ref v) = gp.deltaphi {
                     elem.push_attribute(("deltaphi", v.as_str()));
                 }
-                elem.push_attribute(("numsides", gp.numsides.as_str()));
+                if !gp.numsides.is_empty() {
+                    elem.push_attribute(("numsides", gp.numsides.as_str()));
+                }
                 if let Some(ref u) = gp.aunit {
                     elem.push_attribute(("aunit", u.as_str()));
                 }
@@ -1164,7 +1166,9 @@ fn write_solids(
                 if let Some(ref v) = ph.deltaphi {
                     elem.push_attribute(("deltaphi", v.as_str()));
                 }
-                elem.push_attribute(("numsides", ph.numsides.as_str()));
+                if !ph.numsides.is_empty() {
+                    elem.push_attribute(("numsides", ph.numsides.as_str()));
+                }
                 if let Some(ref u) = ph.aunit {
                     elem.push_attribute(("aunit", u.as_str()));
                 }

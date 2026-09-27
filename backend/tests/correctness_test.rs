@@ -973,3 +973,61 @@ async fn xtru_sections_follow_document_order_not_zorder() {
     .await;
     assert!((volume(&x) / 2000.0 - 1.0).abs() < 1e-3, "{}", volume(&x));
 }
+
+#[tokio::test]
+async fn nist_material_ref_is_accepted() {
+    // Geant4's GetMaterial falls back to G4NistManager::FindOrBuildMaterial, so
+    // a volume may name G4_WATER without the document defining it.
+    let state = load(&document(
+        "",
+        r#"<box name="B" x="1" y="1" z="1"/>"#,
+        r#"<volume name="W"><materialref ref="M"/><solidref ref="B"/></volume>"#,
+    ))
+    .await;
+    let _ = update_volume_material_ref(
+        State(state.clone()),
+        Json(UpdateMaterialRefRequest {
+            volume_name: "W".into(),
+            material_ref: "G4_WATER".into(),
+        }),
+    )
+    .await
+    .expect("a NIST material was refused");
+    assert!(export(&state)
+        .await
+        .contains(r#"<materialref ref="G4_WATER"/>"#));
+}
+
+#[tokio::test]
+async fn polyhedra_without_numsides_is_reported_not_invented() {
+    // G4GDMLReadSolids defaults numsides to 0 and G4Polyhedra refuses it. The
+    // parser invented numsides="6": the preview drew a hexagonal prism Geant4
+    // never builds, and the save wrote the invented value into the file.
+    let xml = document(
+        "",
+        r#"<box name="B" x="100" y="100" z="100"/><polyhedra name="P" startphi="0" deltaphi="360" aunit="deg">
+        <zplane z="-5" rmax="10"/><zplane z="5" rmax="10"/></polyhedra>"#,
+        r#"<volume name="W"><materialref ref="M"/><solidref ref="B"/></volume>"#,
+    );
+    let state = load(&xml).await;
+    {
+        let guard = state.read().await;
+        let loaded = guard.loaded.as_ref().unwrap();
+        assert!(
+            !loaded.meshes.contains_key("P"),
+            "a sideless polyhedra was drawn"
+        );
+        assert!(
+            loaded
+                .warnings
+                .iter()
+                .any(|w| w.contains("'P'") && w.contains("numsides")),
+            "{:?}",
+            loaded.warnings
+        );
+    }
+    assert!(
+        !export(&state).await.contains("numsides"),
+        "numsides was invented on save"
+    );
+}

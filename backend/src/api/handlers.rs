@@ -325,8 +325,11 @@ fn resolve_all_file_refs(
     Ok(warnings)
 }
 
+/// A volume may name a document material or a NIST one: Geant4's GetMaterial
+/// falls back to G4NistManager::FindOrBuildMaterial.
 fn ensure_material_ref_exists(doc: &GdmlDocument, candidate: &str) -> Result<(), ApiError> {
-    let exists = doc.materials.materials.iter().any(|m| m.name == candidate);
+    let exists = doc.materials.materials.iter().any(|m| m.name == candidate)
+        || nist::find_nist_material(candidate).is_some();
     if !exists {
         return Err(ApiError::bad_request(&format!(
             "Material '{}' does not exist",
