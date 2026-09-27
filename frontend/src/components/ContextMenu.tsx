@@ -20,6 +20,8 @@ export default function ContextMenu() {
       }
     };
 
+    // Put the items in reach of the keyboard; the menu renders at the end of the page.
+    menuRef.current?.querySelector('button')?.focus();
     document.addEventListener('mousedown', handleMouseDown);
     document.addEventListener('keydown', handleKey);
     window.addEventListener('scroll', dismiss, true);
@@ -59,23 +61,23 @@ export default function ContextMenu() {
       }}
     >
       {contextMenu.items.map((item, i) => (
-        <div
+        <button
           key={i}
+          className="plain hover"
           onClick={() => {
             item.action();
             closeContextMenu();
           }}
           style={{
+            display: 'block',
+            width: '100%',
             padding: '6px 12px',
-            cursor: 'pointer',
             color: '#b0b8c0',
             userSelect: 'none',
           }}
-          onMouseOver={(e) => (e.currentTarget.style.background = '#0f3460')}
-          onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
         >
           {item.label}
-        </div>
+        </button>
       ))}
     </div>,
     document.body,

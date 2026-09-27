@@ -23,7 +23,6 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
   return (
     <div>
       <div
-        onClick={() => setSelectedVolume(node.volume_name)}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -37,7 +36,6 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
           paddingLeft: depth * 12 + 4,
           paddingTop: 2,
           paddingBottom: 2,
-          cursor: 'pointer',
           fontSize: 11,
           fontFamily: 'monospace',
           background: isSelected ? '#0f3460' : 'transparent',
@@ -51,13 +49,11 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
         }}
         title={`${node.volume_name} [${node.solid_name}] (${node.material_name})`}
       >
-        <span
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleInstanceVisibility(node.instance_id);
-          }}
+        <button
+          className="plain"
+          onClick={() => toggleInstanceVisibility(node.instance_id)}
+          aria-label={`${isHidden ? 'Show' : 'Hide'} ${node.name}`}
           style={{
-            cursor: 'pointer',
             marginRight: 4,
             fontSize: 10,
             opacity: isHidden ? 0.4 : 0.8,
@@ -66,11 +62,12 @@ function VolumeNode({ node, depth }: { node: SceneNode; depth: number }) {
           title={isHidden ? 'Show volume' : 'Hide volume'}
         >
           {isHidden ? '\u{1F441}\u{200D}\u{1F5E8}' : '\u{1F441}'}
-        </span>
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        </button>
+        <button className="plain" onClick={() => setSelectedVolume(node.volume_name)}
+          style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {node.children.length > 0 ? '\u25B6 ' : '  '}
           {node.name}
-        </span>
+        </button>
       </div>
       {node.children.map((child, i) => (
         <VolumeNode key={child.instance_id || `${child.volume_name}-${i}`} node={child} depth={depth + 1} />

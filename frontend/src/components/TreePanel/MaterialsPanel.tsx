@@ -82,7 +82,6 @@ function MaterialsList({
         {materials.map((m) => (
           <div
             key={m.name}
-            onClick={() => onSelect(m.name === selectedMaterial ? null : m.name)}
             onContextMenu={(e) => {
               e.preventDefault();
               useAppStore.getState().openContextMenu(e.clientX, e.clientY, [
@@ -92,7 +91,6 @@ function MaterialsList({
             }}
             style={{
               padding: '2px 4px',
-              cursor: 'pointer',
               fontSize: 11,
               fontFamily: 'monospace',
               background: m.name === selectedMaterial ? '#0f3460' : 'transparent',
@@ -103,21 +101,24 @@ function MaterialsList({
               alignItems: 'center',
             }}
           >
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <button className="plain" onClick={() => onSelect(m.name === selectedMaterial ? null : m.name)}
+              style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {m.name}
               {m.density && (
                 <span style={{ color: '#666', marginLeft: 6 }}>
                   {m.density.value} {m.density.unit || 'g/cm3'}
                 </span>
               )}
-            </span>
-            <span
-              onClick={(e) => { e.stopPropagation(); handleDelete(m.name); }}
-              style={{ cursor: 'pointer', color: '#e94560', fontSize: 10, opacity: 0.6, flexShrink: 0, marginLeft: 4 }}
+            </button>
+            <button
+              className="plain"
+              onClick={() => handleDelete(m.name)}
+              aria-label={`Delete material ${m.name}`}
+              style={{ color: '#e94560', fontSize: 10, opacity: 0.6, flexShrink: 0, marginLeft: 4 }}
               title="Delete material"
             >
               x
-            </span>
+            </button>
           </div>
         ))}
       </div>
@@ -324,26 +325,26 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
           <div style={{ maxHeight: 150, overflow: 'auto' }}>
             {loading && <div style={{ fontSize: 10, color: '#666' }}>Loading...</div>}
             {results.map((n) => (
-              <div
+              <button
                 key={n.name}
+                className="plain hover"
                 onClick={() => handleApply(n)}
                 style={{
+                  display: 'block',
+                  width: '100%',
                   fontSize: 10,
                   fontFamily: 'monospace',
                   color: '#b0b8c0',
-                  cursor: 'pointer',
                   padding: '1px 2px',
                   borderRadius: 2,
                 }}
-                onMouseOver={(e) => (e.currentTarget.style.background = '#0f3460')}
-                onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
                 title={`${n.name}${n.formula ? ' (' + n.formula + ')' : ''} - ${n.density} g/cm3 (${n.state}, ${n.category})`}
               >
                 <span style={{ color: '#56d6c8' }}>{n.name}</span>
                 {n.formula && <span style={{ color: '#8899aa', marginLeft: 4 }}>{n.formula}</span>}
                 <span style={{ color: '#666', marginLeft: 6 }}>{n.density} g/cm3</span>
                 <span style={{ color: '#555', marginLeft: 4 }}>{n.state}</span>
-              </div>
+              </button>
             ))}
             {!loading && results.length === 0 && (
               <div style={{ fontSize: 10, color: '#666' }}>No results</div>
@@ -404,49 +405,44 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
   return (
     <div style={{ borderTop: '1px solid #0f3460', paddingTop: 6 }}>
       <div style={sectionHeader}>
-        <span
-          onClick={() => setExpanded(!expanded)}
-          style={{ cursor: 'pointer' }}
-        >
-          {expanded ? '\u25BC' : '\u25B6'} Elements ({elements.length})
-        </span>
-        <button onClick={() => { setAdding(!adding); setExpanded(true); }} style={smallBtn}>+</button>
+        <button className="plain" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+          <span aria-hidden>{expanded ? '\u25BC' : '\u25B6'}</span> Elements ({elements.length})
+        </button>
+        <button aria-label="Add element" onClick={() => { setAdding(!adding); setExpanded(true); }} style={smallBtn}>+</button>
       </div>
       {expanded && (
         <>
           {adding && (
             <div style={{ display: 'flex', gap: 3, marginBottom: 3, flexWrap: 'wrap', position: 'relative' }}>
-              <div style={{ position: 'relative', width: 60 }}>
+              {/* Suggestions stay open while focus is in the name or on a suggestion (Tab reaches them). */}
+              <div style={{ position: 'relative', width: 60 }}
+                onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setShowElSuggestions(false); }}>
                 <input
                   value={newName}
                   onChange={(e) => { setNewName(e.target.value); setShowElSuggestions(true); }}
                   onFocus={() => setShowElSuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowElSuggestions(false), 150)}
                   placeholder="Name"
                   style={{ ...inputStyle, width: '100%' }}
                   autoFocus
                 />
                 {showElSuggestions && elSuggestions.length > 0 && (
-                  <div style={{
+                  // Keeps focus in the name field while a suggestion is clicked.
+                  <div onMouseDown={(e) => e.preventDefault()} style={{
                     position: 'absolute', top: '100%', left: 0, zIndex: 100,
                     background: '#1a1a2e', border: '1px solid #0f3460', borderRadius: 3,
                     maxHeight: 120, overflow: 'auto', width: 180,
                   }}>
                     {elSuggestions.map((s) => (
-                      <div
+                      <button
                         key={s.name}
-                        onMouseDown={() => handleSelectSuggestion(s)}
-                        style={{
-                          fontSize: 10, fontFamily: 'monospace', color: '#b0b8c0',
-                          padding: '2px 4px', cursor: 'pointer',
-                        }}
-                        onMouseOver={(e) => (e.currentTarget.style.background = '#0f3460')}
-                        onMouseOut={(e) => (e.currentTarget.style.background = 'transparent')}
+                        className="plain hover"
+                        onClick={() => handleSelectSuggestion(s)}
+                        style={{ display: 'block', width: '100%', fontSize: 10, fontFamily: 'monospace', color: '#b0b8c0', padding: '2px 4px' }}
                       >
                         <span style={{ color: '#56d6c8' }}>{s.name}</span>
                         {s.z != null && <span style={{ color: '#666', marginLeft: 4 }}>Z={s.z}</span>}
                         {s.atom_value != null && <span style={{ color: '#666', marginLeft: 4 }}>A={s.atom_value}</span>}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -475,13 +471,15 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
                   {el.z && <span style={{ color: '#666', marginLeft: 4 }}>Z={el.z}</span>}
                   {el.atom_value && <span style={{ color: '#666', marginLeft: 4 }}>A={el.atom_value}</span>}
                 </span>
-                <span
+                <button
+                  className="plain"
                   onClick={() => handleDelete(el.name)}
-                  style={{ cursor: 'pointer', color: '#e94560', fontSize: 9, opacity: 0.6 }}
+                  aria-label={`Delete element ${el.name}`}
+                  style={{ color: '#e94560', fontSize: 9, opacity: 0.6 }}
                   title="Delete element"
                 >
                   x
-                </span>
+                </button>
               </div>
             ))}
           </div>

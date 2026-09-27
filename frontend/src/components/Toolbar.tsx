@@ -116,16 +116,18 @@ export default function Toolbar() {
             {summary.solids_count} solids, {summary.volumes_count} volumes, {summary.meshes_count} meshes
           </span>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <label style={{ fontSize: 11, color: '#8899aa' }}>Opacity</label>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={meshOpacity}
-              onChange={(e) => setMeshOpacity(Number(e.target.value))}
-              style={{ width: 100, accentColor: '#e94560' }}
-            />
+            <label style={{ fontSize: 11, color: '#8899aa', display: 'flex', alignItems: 'center', gap: 6 }}>
+              Opacity
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={meshOpacity}
+                onChange={(e) => setMeshOpacity(Number(e.target.value))}
+                style={{ width: 100, accentColor: '#e94560' }}
+              />
+            </label>
             <span style={{ fontSize: 11, color: '#b0b8c0', minWidth: 32, textAlign: 'right' }}>
               {Math.round(meshOpacity * 100)}%
             </span>

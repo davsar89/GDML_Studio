@@ -345,6 +345,19 @@ describe('material drafts and document actions', () => {
     await waitFor(() => expect(useAppStore.getState().elements).toEqual([]));
   });
 
+  it('reaches element suggestions from the keyboard and adds only complete elements', async () => {
+    const user = mount();
+    await user.click(screen.getByRole('button', { name: 'Add element' }));
+    await user.type(screen.getByPlaceholderText('Name'), 'Cat');
+    await screen.findByRole('button', { name: /CatalogMaterial/ });
+    await user.tab(); await user.keyboard('{Enter}');
+    expect(screen.getByPlaceholderText('Name')).toHaveValue('CatalogMaterial');
+    const add = screen.getByRole('button', { name: 'Add' });
+    expect(add).toBeDisabled();
+    await user.type(screen.getByPlaceholderText('Z'), '1'); await user.type(screen.getByPlaceholderText('Atom'), '1.008');
+    expect(add).toBeEnabled();
+  });
+
   it('does not clear a newer applied revision when an older export finishes', async () => {
     const user = mount(); act(() => useAppStore.getState().markDirty());
     let finish!: (value: { gdml: string; filename: string }) => void;
