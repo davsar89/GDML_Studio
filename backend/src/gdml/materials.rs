@@ -281,6 +281,7 @@ fn write_define_items(
         (DefineKind::Position, defines.positions.len()),
         (DefineKind::Rotation, defines.rotations.len()),
         (DefineKind::Scale, defines.scales.len()),
+        (DefineKind::Matrix, defines.matrices.len()),
     ];
     // The manifest is appended alongside the collections, one entry per item in
     // the same relative order, so a per-kind cursor walks the two in step.
@@ -333,6 +334,7 @@ fn define_name(defines: &DefineSection, kind: DefineKind, n: usize) -> Option<&S
         DefineKind::Position => defines.positions.get(n).map(|x| &x.name),
         DefineKind::Rotation => defines.rotations.get(n).map(|x| &x.name),
         DefineKind::Scale => defines.scales.get(n).map(|x| &x.name),
+        DefineKind::Matrix => defines.matrices.get(n).map(|x| &x.name),
     }
 }
 
@@ -386,6 +388,14 @@ fn write_define(
         DefineKind::Scale => {
             let s = &defines.scales[n];
             write_xyz(writer, "scale", &s.name, [&s.x, &s.y, &s.z], &None)?;
+        }
+        DefineKind::Matrix => {
+            let m = &defines.matrices[n];
+            let mut elem = BytesStart::new("matrix");
+            elem.push_attribute(("name", m.name.as_str()));
+            elem.push_attribute(("coldim", m.coldim.as_str()));
+            elem.push_attribute(("values", m.values.as_str()));
+            writer.write_event(Event::Empty(elem))?;
         }
     }
     Ok(())
@@ -459,8 +469,15 @@ fn write_materials(
         if let Some(ref d) = mat.density {
             write_value(writer, "D", &d.value, &d.unit, &None)?;
         }
-        if let Some(ref dr) = mat.density_ref {
-            write_ref(writer, "Dref", dr)?;
+        for (tag, quantity) in [
+            ("Dref", &mat.density_ref),
+            ("Tref", &mat.temperature_ref),
+            ("Pref", &mat.pressure_ref),
+            ("MEEref", &mat.mee_ref),
+        ] {
+            if let Some(quantity) = quantity {
+                write_ref(writer, tag, quantity)?;
+            }
         }
         for (tag, property) in [
             ("T", &mat.temperature),
@@ -1158,7 +1175,6 @@ pub fn material_order(materials: &MaterialSection) -> Result<Vec<usize>> {
 }
 
 /// Stable dependency order: Geant4 resolves a volumeref while reading its parent.
-/// Assemblies are not volumes here; they are written where they were declared.
 fn ordered_volumes(structure: &StructureSection) -> Result<Vec<&Volume>> {
     let volumes = &structure.volumes;
     let index: HashMap<&str, usize> = volumes
@@ -1177,9 +1193,9 @@ fn ordered_volumes(structure: &StructureSection) -> Result<Vec<&Volume>> {
         if let Some(replica) = &volume.replica {
             refs.push(replica.volume_ref.clone());
         }
-        // A placement inside a preserved loop has the same dependency as a
-        // direct physvol, even though the loop itself must not be expanded here.
-        for raw in &volume.loops {
+        // A placement inside a preserved element has the same dependency as a
+        // direct physvol, even though a loop must not be expanded here.
+        for raw in &volume.preserved {
             let mut reader = quick_xml::Reader::from_str(&raw.xml);
             loop {
                 match reader.read_event()? {
@@ -1222,7 +1238,8 @@ fn write_structure(
 
     for vol in ordered_volumes(structure)? {
         write_comments(writer, order, "structure", Some(&vol.name))?;
-        let mut elem = BytesStart::new("volume");
+        let tag = if vol.assembly { "assembly" } else { "volume" };
+        let mut elem = BytesStart::new(tag);
         elem.push_attribute(("name", vol.name.as_str()));
         writer.write_event(Event::Start(elem))?;
 
@@ -1230,8 +1247,10 @@ fn write_structure(
             writer.write_event(Event::Comment(BytesText::from_escaped(text)))?;
         }
 
-        write_ref(writer, "materialref", &vol.material_ref)?;
-        write_ref(writer, "solidref", &vol.solid_ref)?;
+        if !vol.assembly {
+            write_ref(writer, "materialref", &vol.material_ref)?;
+            write_ref(writer, "solidref", &vol.solid_ref)?;
+        }
 
         for pv in &vol.physvols {
             let mut pv_elem = BytesStart::new("physvol");
@@ -1249,6 +1268,13 @@ fn write_structure(
             }
             write_placement_pos(writer, &pv.position, "position")?;
             write_placement_rot(writer, &pv.rotation, "rotation")?;
+            match &pv.scale {
+                Some(PlacementScale::Inline(s)) => {
+                    write_xyz(writer, "scale", &s.name, [&s.x, &s.y, &s.z], &None)?
+                }
+                Some(PlacementScale::Ref(name)) => write_ref(writer, "scaleref", name)?,
+                None => {}
+            }
 
             writer.write_event(Event::End(BytesEnd::new("physvol")))?;
         }
@@ -1285,11 +1311,11 @@ fn write_structure(
         // Verbatim, after the physvols. GDML places no ordering constraint
         // between placements, and Geant4 reads them in one pass, so the
         // interleaving with <physvol> is not preserved -- the elements are.
-        for raw in &vol.loops {
+        for raw in &vol.preserved {
             write_raw(writer, raw)?;
         }
 
-        writer.write_event(Event::End(BytesEnd::new("volume")))?;
+        writer.write_event(Event::End(BytesEnd::new(tag)))?;
         write_raws(writer, raws, |after| after == Some(vol.name.as_str()))?;
     }
     write_raws(writer, raws, |_| true)?;

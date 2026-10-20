@@ -1,10 +1,13 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use evalexpr::{Context as _, *};
 use std::collections::HashMap;
 use std::f64::consts::PI;
+use std::ops::Range;
 
 use super::dependency::{dependency_order, extract_identifiers};
-use crate::gdml::model::{DefineSection, PlacementPos, PlacementRot, Position, Rotation};
+use crate::gdml::model::{
+    DefineSection, Matrix, PlacementPos, PlacementRot, PlacementScale, Position, Rotation, Scale,
+};
 use crate::gdml::units;
 
 pub struct EvalEngine {
@@ -21,22 +24,16 @@ pub struct EvalEngine {
 }
 
 /// Names seeded below that G4GDMLEvaluator does not predefine, so a file may
-/// define them: CLHEP's twopi and halfpi, the perCent family, unit plurals, and
-/// symbols only G4UnitsTable or this viewer knows.
+/// define them: CLHEP's twopi and halfpi, the perCent family, and symbols only
+/// G4UnitsTable knows.
 const NOT_GEANT4_NAMES: &[&str] = &[
     "twopi",
     "halfpi",
     "perCent",
     "perThousand",
     "perMillion",
-    "radians",
-    "degrees",
     "Ang",
     "fm",
-    "inch",
-    "in",
-    "foot",
-    "ft",
 ];
 
 impl Default for EvalEngine {
@@ -60,7 +57,7 @@ impl EvalEngine {
         let constants = [
             ("pi", PI),
             ("e", std::f64::consts::E),
-            ("gamma", 0.577_215_664_901_532_9),
+            ("gamma", std::f64::consts::EULER_GAMMA),
             ("twopi", 2.0 * PI),
             ("halfpi", PI / 2.0),
         ];
@@ -85,6 +82,23 @@ impl EvalEngine {
         // Rebuild derived state from scratch for the current document.
         *self = Self::new();
 
+        // Matrix cells are defines too; `cells_of` locates each matrix's.
+        let mut cells: Vec<(String, &str)> = Vec::new();
+        let mut cells_of: HashMap<&str, Range<usize>> = HashMap::new();
+        for m in &defines.matrices {
+            match self.matrix_cells(m) {
+                Ok(named) => {
+                    let start = cells.len();
+                    cells.extend(named);
+                    cells_of.insert(m.name.as_str(), start..cells.len());
+                }
+                Err(e) => self.record_warning(format!(
+                    "Could not read matrix \"{}\": {e}. Expressions using it evaluate as 0.",
+                    m.name
+                )),
+            }
+        }
+
         // Name, expression and, for a quantity, its unit.
         let entries: Vec<(&str, &str, Option<&str>)> = defines
             .constants
@@ -108,9 +122,15 @@ impl EvalEngine {
                     .iter()
                     .map(|e| (e.name.as_str(), e.value.as_str(), None)),
             )
+            .chain(
+                cells
+                    .iter()
+                    .map(|(name, value)| (name.as_str(), *value, None)),
+            )
             .collect();
+        let first_cell = entries.len() - cells.len();
         // A name that is also a builtin unit or constant is still a dependency:
-        // the define is the value used.
+        // the define is the value used. A matrix's name stands for its cells.
         let index: HashMap<&str, usize> =
             entries.iter().enumerate().map(|(i, e)| (e.0, i)).collect();
         let deps: Vec<Vec<usize>> = entries
@@ -119,7 +139,11 @@ impl EvalEngine {
             .map(|(i, e)| {
                 extract_identifiers(e.1)
                     .iter()
-                    .filter_map(|name| index.get(name.as_str()).copied())
+                    .flat_map(|name| {
+                        let define = index.get(name.as_str()).copied();
+                        let cells = cells_of.get(name.as_str()).cloned().unwrap_or_default();
+                        define.into_iter().chain(cells.map(|k| first_cell + k))
+                    })
                     .filter(|&j| j != i)
                     .collect()
             })
@@ -190,16 +214,63 @@ impl EvalEngine {
             }
         }
 
-        // Evaluate named <scale> defines. Dimensionless, so no unit handling.
         for sc in &defines.scales {
-            let comp = |e: &Option<String>| -> f64 {
-                e.as_deref().map(|x| self.resolve_value(x)).unwrap_or(1.0)
-            };
-            let values = [comp(&sc.x), comp(&sc.y), comp(&sc.z)];
+            let values = self.eval_scale(sc);
             self.scale_values.insert(sc.name.clone(), values);
         }
 
         Ok(())
+    }
+
+    /// The cells of `m` as (name, expression), named as
+    /// `G4GDMLEvaluator::DefineMatrix` does: `m_k` for a single row or column,
+    /// else `m_i_j`. `coldim` is read with built-ins only, since the names must
+    /// exist before the defines are sorted.
+    fn matrix_cells<'a>(&self, m: &'a Matrix) -> Result<Vec<(String, &'a str)>> {
+        let values: Vec<&str> = m.values.split_whitespace().collect();
+        let n = values.len();
+        let coldim = self.eval_expr(&m.coldim)?;
+        anyhow::ensure!(
+            coldim >= 1.0 && coldim.fract() == 0.0 && n > 0 && n.is_multiple_of(coldim as usize),
+            "{n} values do not fill rows of {coldim}"
+        );
+        let coldim = coldim as usize;
+        Ok(values
+            .into_iter()
+            .enumerate()
+            .map(|(k, value)| {
+                let name = if n == coldim || coldim == 1 {
+                    format!("{}_{k}", m.name)
+                } else {
+                    format!("{}_{}_{}", m.name, k / coldim, k % coldim)
+                };
+                (name, value)
+            })
+            .collect())
+    }
+
+    /// `G4GDMLEvaluator::SolveBrackets`: `m[i]` -> `m_<i-1>` and `m[i,j]` ->
+    /// `m_<i-1>_<j-1>`. The `- 1` is Geant4's: a file indexes from 1, the
+    /// names count from 0.
+    pub fn solve_brackets(&self, name: &str) -> Result<String> {
+        let mut out = String::with_capacity(name.len());
+        let mut rest = name;
+        while let Some(open) = rest.find('[') {
+            let Some(close_rel) = rest[open + 1..].find(']') else {
+                bail!("Bracket mismatch in '{name}'");
+            };
+            let close = open + 1 + close_rel;
+            out.push_str(&rest[..open]);
+            for part in rest[open + 1..close].split(',') {
+                let idx = (self.eval_expr(part.trim())?.round() as i64).saturating_sub(1);
+                out.push('_');
+                out.push_str(&idx.to_string());
+            }
+            rest = &rest[close + 1..];
+        }
+        anyhow::ensure!(!rest.contains(']'), "Bracket mismatch in '{name}'");
+        out.push_str(rest);
+        Ok(out)
     }
 
     pub fn eval_expr(&self, expr: &str) -> Result<f64> {
@@ -212,6 +283,15 @@ impl EvalEngine {
         if let Ok(v) = expr.parse::<f64>() {
             return finite_value(v);
         }
+
+        // Evaluate solves brackets first, so `m[i,j]` reads a matrix cell.
+        let solved;
+        let expr = if expr.contains('[') {
+            solved = self.solve_brackets(expr)?;
+            solved.as_str()
+        } else {
+            expr
+        };
 
         // Try direct variable lookup
         if let Some(v) = self.get(expr) {
@@ -323,6 +403,23 @@ impl EvalEngine {
             Some(PlacementPos::Inline(p)) => self.eval_position(p),
             Some(PlacementPos::Ref(name)) => self.named_position(name),
             None => Ok([0.0; 3]),
+        }
+    }
+
+    /// A named or inline `<scale>`; an absent component is 1.
+    fn eval_scale(&self, s: &Scale) -> [f64; 3] {
+        [&s.x, &s.y, &s.z].map(|c| c.as_deref().map_or(1.0, |e| self.resolve_value(e)))
+    }
+
+    pub fn resolve_scale(&self, scale: &Option<PlacementScale>) -> Result<[f64; 3]> {
+        match scale {
+            Some(PlacementScale::Inline(s)) => Ok(self.eval_scale(s)),
+            Some(PlacementScale::Ref(name)) => self
+                .scale_values
+                .get(name)
+                .copied()
+                .ok_or_else(|| anyhow::anyhow!("Undefined scale '{name}'")),
+            None => Ok([1.0; 3]),
         }
     }
 

@@ -147,7 +147,7 @@ fn scale_mesh(mesh: &TriangleMesh, sx: f64, sy: f64, sz: f64) -> TriangleMesh {
     let neg_count = [sx, sy, sz].iter().filter(|&&v| v < 0.0).count();
     let mut indices = mesh.indices.clone();
     if neg_count % 2 == 1 {
-        for tri in indices.chunks_exact_mut(3) {
+        for tri in indices.as_chunks_mut::<3>().0 {
             tri.swap(1, 2);
         }
     }
@@ -452,12 +452,15 @@ fn tessellate_sphere_solid(
     let startphi = resolve_opt_with_aunit(engine, &s.startphi, aunit);
     let deltaphi = csg_delta_phi(engine, &s.deltaphi, aunit)?;
     let starttheta = resolve_opt_with_aunit(engine, &s.starttheta, aunit);
-    // The polar range stops at the -z pole (G4Sphere::CheckThetaAngles).
-    let deltatheta = match &s.deltatheta {
-        Some(expr) => resolve_with_aunit(engine, expr, aunit),
-        None => PI,
-    }
-    .min(PI - starttheta);
+    // G4Sphere::CheckThetaAngles: the polar range stops at the -z pole and,
+    // short of it, must be positive; a missing deltatheta reads as 0.
+    let deltatheta = resolve_opt_with_aunit(engine, &s.deltatheta, aunit);
+    anyhow::ensure!(
+        (0.0..=PI).contains(&starttheta) && (deltatheta > 0.0 || starttheta + deltatheta >= PI),
+        "starttheta {starttheta} rad, deltatheta {deltatheta} rad; Geant4 refuses \
+         a polar range that is empty or outside 0..pi (\"Invalid dTheta\")"
+    );
+    let deltatheta = deltatheta.min(PI - starttheta);
     Ok(sphere(
         rmin, rmax, startphi, deltaphi, starttheta, deltatheta, segments,
     ))

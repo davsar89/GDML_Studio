@@ -16,14 +16,14 @@ const mocked = vi.mocked(api);
 const NativeURL = URL;
 const makeMaterial = (name = 'M'): MaterialInfo => ({
   name, formula: null, z: null, state: 'liquid', density: { value: '1.0', unit: 'g/cm3' },
-  density_ref: null, temperature: null, pressure: null, mee: { value: '75', unit: 'eV' },
+  density_ref: null, temperature: null, temperature_ref: null, pressure: null, pressure_ref: null, mee_ref: null, mee: { value: '75', unit: 'eV' },
   rl: null, al: null, properties: [{ name: 'RINDEX', ref_name: 'optics', values: null }],
   atom_value: null, atom_unit: null, atom_type: null, components: [],
 });
 const summary: DocumentSummary = { filename: 'original.gdml', defines_count: 0, positions_count: 0, rotations_count: 0,
-  materials_count: 2, elements_count: 0, solids_count: 0, volumes_count: 0, meshes_count: 0, world_ref: 'W', warnings: [] };
+  materials_count: 2, elements_count: 0, solids_count: 0, volumes_count: 0, meshes_count: 0, world_ref: 'W', warnings: [], unsaved: false };
 const scene: SceneNode = { name: 'W', volume_name: 'W', instance_id: '/W', solid_name: '', material_name: 'M',
-  color: null, density: 1, position: [0,0,0], rotation: [0,0,0], is_world: true, children: [] };
+  color: null, density: 1, position: [0,0,0], rotation: [0,0,0], scale: [1,1,1], is_world: true, children: [] };
 const nist: NistMaterial = { name: 'CatalogMaterial', formula: 'H', density: 0.5, state: 'Gas', category: 'HEP',
   z: null, atom_value: null, components: [{ type: 'Fraction', ref: 'G4_H', n: 1 }] };
 let serverMaterials: MaterialInfo[];
@@ -382,7 +382,8 @@ describe('material drafts and document actions', () => {
     await user.type(screen.getByPlaceholderText('Name'), 'Cat');
     await screen.findByRole('button', { name: /CatalogMaterial/ });
     await user.tab(); await user.keyboard('{Enter}');
-    expect(screen.getByPlaceholderText('Name')).toHaveValue('CatalogMaterial');
+    // Named by symbol, as the NIST import names elements.
+    expect(screen.getByPlaceholderText('Name')).toHaveValue('H');
     const add = screen.getByRole('button', { name: 'Add' });
     expect(add).toBeDisabled();
     await user.type(screen.getByPlaceholderText('Z'), '1'); await user.type(screen.getByPlaceholderText('Atom'), '1.008');

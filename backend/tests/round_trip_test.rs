@@ -434,6 +434,9 @@ fn optical_material_properties_survive() {
     <element name="Hyd"><atom value="1.008" unit="g/mole"/></element>
     <material name="Glass" state="solid">
       <D value="2.5"/>
+      <Tref ref="roomT"/>
+      <Pref ref="roomP"/>
+      <MEEref ref="glassI"/>
       <MEE value="85.7" unit="eV"/>
       <RL value="12.3" unit="cm"/>
       <AL value="45.6" unit="cm"/>
@@ -549,7 +552,9 @@ fn scaleref_is_resolved_and_not_rewritten() {
     let big = meshes.get("Big").expect("scaled solid not tessellated");
     let extent = big
         .positions
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|v| v[0].abs())
         .fold(0.0f32, f32::max);
     assert!(
@@ -941,7 +946,7 @@ fn a_loop_inside_a_volume_survives_a_save() {
         .find(|v| v.name == "Mother")
         .expect("Mother volume missing");
 
-    assert_eq!(mother.loops.len(), 1, "the <loop> was not captured");
+    assert_eq!(mother.preserved.len(), 1, "the <loop> was not captured");
     assert!(
         mother.physvols.is_empty(),
         "the loop body leaked into the volume as a bare physvol: {:?}",
@@ -967,7 +972,7 @@ fn a_loop_inside_a_volume_survives_a_save() {
         .iter()
         .find(|v| v.name == "Mother")
         .unwrap();
-    assert_eq!(mother2.loops.len(), 1);
+    assert_eq!(mother2.preserved.len(), 1);
     assert!(mother2.physvols.is_empty());
 }
 

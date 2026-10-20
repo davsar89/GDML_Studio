@@ -211,9 +211,9 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
   const handleApply = (nist: NistMaterial) => runDocumentAction(async () => {
     const prepared = await prepareNistMaterial(nist);
     // The catalog supplies composition and density, not these GDML properties.
-    const { temperature, pressure, mee, rl, al, properties } = material;
+    const { temperature, temperature_ref, pressure, pressure_ref, mee, mee_ref, rl, al, properties } = material;
     useAppStore.getState().updateMaterialDraft({
-      ...prepared.material, temperature, pressure, mee, rl, al, properties,
+      ...prepared.material, temperature, temperature_ref, pressure, pressure_ref, mee, mee_ref, rl, al, properties,
     }, prepared.elements);
     setOpen(false);
   });
@@ -259,7 +259,7 @@ function ElementsList({ elements }: { elements: ElementInfo[] }) {
   const elSuggestions = useNistSearch(newName || null, 'Elemental').results.slice(0, 10);
 
   const handleSelectSuggestion = (nist: NistMaterial) => {
-    setNewName(nist.name);
+    setNewName(nist.formula ?? nist.name);
     if (nist.z != null) setNewZ(String(nist.z));
     if (nist.atom_value != null) setNewAtom(String(nist.atom_value));
     setShowElSuggestions(false);

@@ -20,6 +20,8 @@ pub struct LoadedDocument {
     pub engine: EvalEngine,
     pub meshes: HashMap<String, TriangleMesh>,
     pub warnings: Vec<String>,
+    /// Edits applied since the load or the last export.
+    pub unsaved: bool,
 }
 
 impl LoadedDocument {
@@ -30,12 +32,15 @@ impl LoadedDocument {
     }
 
     /// Every element export writes back verbatim: the preserved top-level ones
-    /// and the `<loop>`s inside volumes.
+    /// and those inside volumes.
     fn preserved_xml_mut(&mut self) -> impl Iterator<Item = &mut RawElement> {
         let doc = &mut self.document;
-        doc.raw_unknown
-            .iter_mut()
-            .chain(doc.structure.volumes.iter_mut().flat_map(|v| &mut v.loops))
+        doc.raw_unknown.iter_mut().chain(
+            doc.structure
+                .volumes
+                .iter_mut()
+                .flat_map(|v| &mut v.preserved),
+        )
     }
 
     /// Whether preserved XML names `material` in a `<materialref>`, e.g. a

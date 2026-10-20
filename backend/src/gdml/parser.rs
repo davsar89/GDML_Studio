@@ -58,13 +58,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                 // they survive a load -> save round-trip (and warn the user).
                 let preserved = matches!(
                     tag,
-                    b"opticalsurface"
-                        | b"skinsurface"
-                        | b"bordersurface"
-                        | b"userinfo"
-                        | b"loop"
-                        | b"assembly"
-                        | b"matrix"
+                    b"opticalsurface" | b"skinsurface" | b"bordersurface" | b"userinfo" | b"loop"
                 );
                 if !preserved {
                     anchor_pending_comments(&mut pending_comments, &mut order, section, e, tag);
@@ -119,7 +113,12 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     }
                     b"position" if in_define => defines.positions.push(position_from(e)),
                     b"rotation" if in_define => defines.rotations.push(rotation_from(e)),
-                    b"scale" if in_define => parse_scale(e, &mut defines),
+                    b"scale" if in_define => defines.scales.push(scale_from(e)),
+                    b"matrix" if in_define => defines.matrices.push(Matrix {
+                        name: get_attr(e, "name").unwrap_or_default(),
+                        coldim: get_attr(e, "coldim").unwrap_or_default(),
+                        values: get_attr(e, "values").unwrap_or_default(),
+                    }),
                     b"isotope" if in_materials => {
                         read_isotope(&mut reader, e, open, &mut materials)?;
                     }
@@ -192,7 +191,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                         let solid = read_boolean_solid_body(&mut reader, e, open, op)?;
                         solids.solids.push(Solid::Boolean(solid));
                     }
-                    b"volume" if section == Section::Structure => {
+                    b"volume" | b"assembly" if section == Section::Structure => {
                         let volume =
                             read_volume_body(&mut reader, e, open, &mut skipped_unsupported)?;
                         structure.volumes.push(volume);
@@ -475,6 +474,7 @@ fn note_define(
         b"position" => DefineKind::Position,
         b"rotation" => DefineKind::Rotation,
         b"scale" => DefineKind::Scale,
+        b"matrix" => DefineKind::Matrix,
         _ => return,
     };
     let Some(name) = get_attr(e, "name") else {
@@ -595,13 +595,14 @@ fn parse_variable(e: &BytesStart, defines: &mut DefineSection) {
     });
 }
 
-fn parse_scale(e: &BytesStart, defines: &mut DefineSection) {
-    defines.scales.push(Scale {
+/// A `<scale>`, whether a define or inline in a placement.
+fn scale_from(e: &BytesStart) -> Scale {
+    Scale {
         name: get_attr(e, "name").unwrap_or_default(),
         x: get_attr(e, "x"),
         y: get_attr(e, "y"),
         z: get_attr(e, "z"),
-    });
+    }
 }
 
 /// A `<position>`, whether a define or inline in a placement.
@@ -707,8 +708,11 @@ fn read_material(
         density: None,
         density_ref: None,
         temperature: None,
+        temperature_ref: None,
         pressure: None,
+        pressure_ref: None,
         mee: None,
+        mee_ref: None,
         atom_value: None,
         atom_unit: None,
         atom_type: None,
@@ -730,6 +734,9 @@ fn read_material(
                 })
             }
             b"Dref" => m.density_ref = get_attr(c, "ref"),
+            b"Tref" => m.temperature_ref = get_attr(c, "ref"),
+            b"Pref" => m.pressure_ref = get_attr(c, "ref"),
+            b"MEEref" => m.mee_ref = get_attr(c, "ref"),
             b"T" => m.temperature = Some(value()),
             b"P" => m.pressure = Some(value()),
             b"MEE" => m.mee = Some(value()),
@@ -1230,13 +1237,14 @@ fn read_volume_body(
 ) -> Result<Volume> {
     let mut vol = Volume {
         name: get_attr(e, "name").unwrap_or_default(),
+        assembly: e.local_name().as_ref() == b"assembly",
         material_ref: String::new(),
         solid_ref: String::new(),
         physvols: Vec::new(),
         auxiliaries: Vec::new(),
         replica: None,
         body_comments: Vec::new(),
-        loops: Vec::new(),
+        preserved: Vec::new(),
     };
     if !open {
         return Ok(vol);
@@ -1252,40 +1260,29 @@ fn read_volume_body(
                 b"materialref" => vol.material_ref = ref_attr(c),
                 b"solidref" => vol.solid_ref = ref_attr(c),
                 b"auxiliary" => vol.auxiliaries.push(read_auxiliary(reader, c, open)?),
-                b"physvol" => {
-                    let pv = read_physvol_body(reader, c, open, &vol.name, skipped)?;
-                    vol.physvols.push(pv);
-                }
+                b"physvol" => vol.physvols.push(read_physvol_body(reader, c, open)?),
                 b"replicavol" => vol.replica = Some(read_replicavol_body(reader, c, open)?),
-                // Capture the whole subtree. Falling through to the
-                // catch-all meant the <loop> start tag was ignored and its
-                // children were read as direct children of the volume, so
-                // the wrapper vanished on save and N placements became one.
-                b"loop" => {
-                    let xml = capture_raw(reader, c, open)?;
-                    vol.loops.push(RawElement {
-                        tag: "loop".to_string(),
+                // Kept whole for the export. Falling through to the catch-all
+                // read a loop's children as the volume's own, so the wrapper
+                // vanished on save and N placements became one.
+                tag @ (b"loop" | b"divisionvol" | b"paramvol") => {
+                    let tag = String::from_utf8_lossy(tag).to_string();
+                    if tag != "loop" {
+                        skipped.push(format!(
+                            "volume '{}': <{tag}> is not drawn; it is kept as written on save.",
+                            vol.name
+                        ));
+                    }
+                    vol.preserved.push(RawElement {
+                        xml: capture_raw(reader, c, open)?,
+                        tag,
                         section: "structure".to_string(),
                         after: None,
-                        xml,
                     });
-                }
-                // Unsupported placement constructs: skip the whole subtree so
-                // their children can't leak into this volume, and warn.
-                b"divisionvol" | b"paramvol" => {
-                    skipped.push(format!(
-                        "volume '{}': <{}> is not supported; its placements are not \
-                         rendered and it will be MISSING from a save.",
-                        vol.name,
-                        String::from_utf8_lossy(c.local_name().as_ref())
-                    ));
-                    if open {
-                        reader.read_to_end(c.to_end().name())?;
-                    }
                 }
                 _ => {}
             },
-            Ok(Event::End(ref c)) if c.local_name().as_ref() == b"volume" => return Ok(vol),
+            Ok(Event::End(ref c)) if c.local_name() == e.local_name() => return Ok(vol),
             Ok(Event::Comment(ref c)) => {
                 vol.body_comments
                     .push(String::from_utf8_lossy(c).to_string());
@@ -1320,13 +1317,7 @@ fn read_auxiliary(reader: &mut Reader<&[u8]>, e: &BytesStart, open: bool) -> Res
     Ok(aux)
 }
 
-fn read_physvol_body(
-    reader: &mut Reader<&[u8]>,
-    e: &BytesStart,
-    open: bool,
-    parent_vol: &str,
-    skipped: &mut Vec<String>,
-) -> Result<PhysVol> {
+fn read_physvol_body(reader: &mut Reader<&[u8]>, e: &BytesStart, open: bool) -> Result<PhysVol> {
     let mut pv = PhysVol {
         name: get_attr(e, "name"),
         volume_ref: String::new(),
@@ -1334,6 +1325,7 @@ fn read_physvol_body(
         file_ref: None,
         position: None,
         rotation: None,
+        scale: None,
     };
     for_each_child(reader, e, open, |_, c, _| {
         match c.local_name().as_ref() {
@@ -1348,12 +1340,8 @@ fn read_physvol_body(
             b"positionref" => pv.position = Some(PlacementPos::Ref(ref_attr(c))),
             b"rotation" => pv.rotation = Some(PlacementRot::Inline(rotation_from(c))),
             b"rotationref" => pv.rotation = Some(PlacementRot::Ref(ref_attr(c))),
-            b"scale" | b"scaleref" => skipped.push(format!(
-                "volume '{}': physvol <scale> (reflection) is not supported; \
-                 the placement is rendered unmirrored and the scale will be \
-                 MISSING from a save.",
-                parent_vol
-            )),
+            b"scale" => pv.scale = Some(PlacementScale::Inline(scale_from(c))),
+            b"scaleref" => pv.scale = Some(PlacementScale::Ref(ref_attr(c))),
             _ => {}
         }
         Ok(())

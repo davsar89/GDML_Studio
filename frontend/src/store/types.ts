@@ -8,6 +8,7 @@ export interface SceneNode {
   density: number | null;
   position: [number, number, number];
   rotation: [number, number, number];
+  scale: [number, number, number];
   is_world: boolean;
   children: SceneNode[];
 }
@@ -30,6 +31,8 @@ export interface DocumentSummary {
   meshes_count: number;
   world_ref: string;
   warnings: string[];
+  /** Edits applied since the load or the last export. */
+  unsaved: boolean;
 }
 
 export interface DefineValue {
@@ -86,9 +89,12 @@ export interface MaterialInfo {
   density: PropertyValue | null;
   density_ref: string | null;
   temperature: PropertyValue | null;
+  temperature_ref: string | null;
   pressure: PropertyValue | null;
+  pressure_ref: string | null;
   /** `<MEE>` mean excitation energy. */
   mee: PropertyValue | null;
+  mee_ref: string | null;
   /** `<RL>` radiation length. */
   rl: PropertyValue | null;
   /** `<AL>` absorption length. */

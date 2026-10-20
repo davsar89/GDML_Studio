@@ -417,7 +417,7 @@ fn raw_elements_round_trip_into_correct_sections() {
 
     let doc = parse_gdml_from_bytes(gdml.as_bytes(), "t.gdml".to_string()).unwrap();
     let tags: Vec<&str> = doc.raw_unknown.iter().map(|r| r.tag.as_str()).collect();
-    for expected in ["matrix", "opticalsurface", "assembly", "skinsurface"] {
+    for expected in ["opticalsurface", "skinsurface"] {
         assert!(
             tags.contains(&expected),
             "expected '{}' preserved, got {:?}",
@@ -461,7 +461,7 @@ fn raw_elements_round_trip_into_correct_sections() {
 }
 
 #[test]
-fn unsupported_volume_constructs_produce_warnings() {
+fn division_and_reflection_survive_a_save() {
     let gdml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gdml>
   <materials>
@@ -499,10 +499,11 @@ fn unsupported_volume_constructs_produce_warnings() {
         "expected divisionvol warning, got {:?}",
         doc.skipped_unsupported
     );
+    let xml = gdml_studio_backend::gdml::materials::serialize_gdml(&doc).unwrap();
+    assert!(xml.contains("<divisionvol"), "divisionvol lost:\n{xml}");
     assert!(
-        doc.skipped_unsupported.iter().any(|w| w.contains("scale")),
-        "expected physvol scale warning, got {:?}",
-        doc.skipped_unsupported
+        xml.contains(r#"<scale name="mirror" x="-1" y="1" z="1"/>"#),
+        "physvol scale lost:\n{xml}"
     );
     // The divisionvol's volumeref must not leak into the volume as a solidref
     // or physvol entry.

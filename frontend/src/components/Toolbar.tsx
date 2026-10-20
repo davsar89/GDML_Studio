@@ -12,7 +12,7 @@ export default function Toolbar() {
   const documentBusy = useAppStore((s) => s.documentBusy);
 
   // A draft lives only in this tab and applied edits only in the backend's memory;
-  // a reload restores the applied ones, without the unsaved flag. Nothing else warns about that.
+  // a reload restores the applied ones but loses the draft.
   useEffect(() => {
     if (!dirty && !hasDraft) return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();

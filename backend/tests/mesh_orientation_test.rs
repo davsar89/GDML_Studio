@@ -144,7 +144,9 @@ fn assert_closed(m: &TriangleMesh, name: &str) {
     let mut welded: Vec<[f64; 3]> = Vec::new();
     let id: Vec<usize> = m
         .positions
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|p| {
             let p = [0, 1, 2].map(|k| p[k] as f64);
             let cell = p.map(|c| (c / TOL).round() as i64);
@@ -161,7 +163,7 @@ fn assert_closed(m: &TriangleMesh, name: &str) {
         })
         .collect();
     let mut edges: HashMap<(usize, usize), u32> = HashMap::new();
-    for t in m.indices.chunks_exact(3) {
+    for t in m.indices.as_chunks::<3>().0.iter() {
         let v = [0, 1, 2].map(|k| id[t[k] as usize]);
         // A triangle collapsed onto an edge by the weld has no area.
         if v[0] != v[1] && v[1] != v[2] && v[2] != v[0] {
@@ -186,7 +188,7 @@ fn assert_closed(m: &TriangleMesh, name: &str) {
 fn assert_unit_normals(m: &TriangleMesh, name: &str) {
     let p = |i: u32| [0, 1, 2].map(|k| m.positions[i as usize * 3 + k] as f64);
     let n = |i: u32| [0, 1, 2].map(|k| m.normals[i as usize * 3 + k] as f64);
-    for tri in m.indices.chunks_exact(3) {
+    for tri in m.indices.as_chunks::<3>().0.iter() {
         let (a, b, c) = (p(tri[0]), p(tri[1]), p(tri[2]));
         let (u, v) = (
             [0, 1, 2].map(|k| b[k] - a[k]),
@@ -447,7 +449,7 @@ fn a_curve_ending_on_the_axis_shades_smooth_there() {
 
 #[test]
 fn parameters_geant4_rejects_are_reported() {
-    let (no_volume, dphi) = ("describe no volume", "Invalid dphi");
+    let (no_volume, dphi, dtheta) = ("describe no volume", "Invalid dphi", "Invalid dTheta");
     for (xml, reason) in [
         // G4Tubs: rmin >= rmax.
         (
@@ -456,8 +458,13 @@ fn parameters_geant4_rejects_are_reported() {
         ),
         // G4Sphere: rmin >= rmax.
         (
-            r#"<sphere name="S" rmin="10" rmax="5" deltaphi="360" aunit="deg"/>"#,
+            r#"<sphere name="S" rmin="10" rmax="5" deltaphi="360" deltatheta="180" aunit="deg"/>"#,
             no_volume,
+        ),
+        // G4Sphere: a missing deltatheta is 0.
+        (
+            r#"<sphere name="S" rmax="5" deltaphi="360" aunit="deg"/>"#,
+            dtheta,
         ),
         // G4Hype: rmin >= rmax. G4Paraboloid: rhi <= rlo.
         (r#"<hype name="S" rmin="6" rmax="3" z="20"/>"#, no_volume),

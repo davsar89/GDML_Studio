@@ -40,9 +40,9 @@ pub struct GdmlDocument {
     /// from, letting the writer put it back. `None` means the source had no
     /// nested block; `Some(vec![])` means it had an empty one.
     pub materials_define: Option<Vec<String>>,
-    /// Human-readable notes about unsupported constructs the parser had to
-    /// skip entirely (e.g. `<divisionvol>` inside a volume). Surfaced as load
-    /// warnings: these are NOT preserved and will be missing from a save.
+    /// Human-readable notes about constructs the parser cannot interpret
+    /// (e.g. a `<divisionvol>`, which is kept but not drawn). Surfaced as load
+    /// warnings.
     #[serde(default)]
     pub skipped_unsupported: Vec<String>,
 }
@@ -115,6 +115,7 @@ pub enum DefineKind {
     Position,
     Rotation,
     Scale,
+    Matrix,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,9 +133,9 @@ pub struct RawElement {
     pub section: String,
     /// The define, material, solid or volume this element followed in its section
     /// (`None`: it opened the section), so the writer can put it back there.
-    /// Geant4 reads each section in one pass, so a `<loop>` or `<assembly>`
-    /// moved to the end of `<structure>` lands after the volume that places
-    /// it, and the file no longer loads.
+    /// Geant4 reads each section in one pass, so a `<loop>` moved to the end
+    /// of `<structure>` lands after the volume that places it, and the file no
+    /// longer loads.
     pub after: Option<String>,
     pub tag: String,
     pub xml: String,
@@ -155,6 +156,8 @@ pub struct DefineSection {
     /// against.
     #[serde(default)]
     pub scales: Vec<Scale>,
+    #[serde(default)]
+    pub matrices: Vec<Matrix>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,6 +205,14 @@ pub struct Scale {
     pub x: Option<String>,
     pub y: Option<String>,
     pub z: Option<String>,
+}
+
+/// A `<matrix>`: `values` holds `coldim` columns per row, as written.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Matrix {
+    pub name: String,
+    pub coldim: String,
+    pub values: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -281,9 +292,12 @@ pub struct Material {
     pub density: Option<Density>,
     pub density_ref: Option<String>,
     pub temperature: Option<PropertyValue>,
+    pub temperature_ref: Option<String>,
     pub pressure: Option<PropertyValue>,
+    pub pressure_ref: Option<String>,
     /// Mean excitation energy (`<MEE value=".." unit=".."/>`).
     pub mee: Option<PropertyValue>,
+    pub mee_ref: Option<String>,
     pub atom_value: Option<String>,
     pub atom_unit: Option<String>,
     pub atom_type: Option<String>,
@@ -891,6 +905,9 @@ pub struct StructureSection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Volume {
     pub name: String,
+    /// An `<assembly>`: physvols only, no material or solid.
+    #[serde(default)]
+    pub assembly: bool,
     pub material_ref: String,
     pub solid_ref: String,
     pub physvols: Vec<PhysVol>,
@@ -905,16 +922,12 @@ pub struct Volume {
     /// and section banners, for which that is adequate.
     #[serde(default)]
     pub body_comments: Vec<String>,
-    /// `<loop>` elements in this volume's body, captured verbatim.
-    ///
-    /// A loop here used to be unhandled entirely: the parser ignored the
-    /// `<loop>` start tag and read its children as if they were direct
-    /// children of the volume, so the wrapper was gone on save and N
-    /// placements collapsed to one. Keeping the subtree makes the export
-    /// faithful; expansion for the preview is a separate step that builds a
-    /// render document and leaves this untouched.
+    /// `<loop>`, `<divisionvol>` and `<paramvol>` children, captured verbatim
+    /// so the export is faithful. Loops are expanded for the preview in a
+    /// separate render document that leaves these untouched; divisions and
+    /// parameterisations are not drawn.
     #[serde(default)]
-    pub loops: Vec<RawElement>,
+    pub preserved: Vec<RawElement>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -952,6 +965,8 @@ pub struct PhysVol {
     pub file_ref: Option<FileRef>,
     pub position: Option<PlacementPos>,
     pub rotation: Option<PlacementRot>,
+    /// `<scale>`: Geant4 places a reflection here (G4ReflectionFactory).
+    pub scale: Option<PlacementScale>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -963,6 +978,12 @@ pub enum PlacementPos {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PlacementRot {
     Inline(Rotation),
+    Ref(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum PlacementScale {
+    Inline(Scale),
     Ref(String),
 }
 
@@ -1000,6 +1021,7 @@ pub struct SceneNode {
     pub density: Option<f64>,
     pub position: [f64; 3],
     pub rotation: [f64; 3],
+    pub scale: [f64; 3],
     pub is_world: bool,
     pub children: Vec<SceneNode>,
 }

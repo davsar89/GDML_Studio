@@ -20,6 +20,8 @@ export async function loadDocument(upload: () => Promise<DocumentSummary>, what:
     clearAllGeometries();
     useAppStore.setState({
       ...emptyDocument(),
+      // A reloaded page restores the backend's unsaved edits and their flag.
+      dirty: summary.unsaved,
       summary, warnings: [...(summary.warnings ?? []), ...(meshData.warnings ?? [])],
       meshes: meshData.meshes, sceneGraph: meshData.scene_graph,
       defines: defData.defines, volumes: structData.volumes,

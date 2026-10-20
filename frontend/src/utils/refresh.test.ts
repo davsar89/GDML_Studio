@@ -21,7 +21,7 @@ import type { DocumentSummary, ElementInfo, SceneNode, VolumeInfo } from '../sto
 const mocked = vi.mocked(api);
 const elements: ElementInfo[] = [{ name: 'H', formula: 'H', z: '1', atom_value: '1', atom_unit: null, atom_type: null, fractions: [] }];
 const scene: SceneNode = { name: 'World', instance_id: '/World', volume_name: 'World', solid_name: 'B', material_name: 'NewMaterial',
-  density: 2, color: null, position: [0, 0, 0], rotation: [0, 0, 0], is_world: true, children: [] };
+  density: 2, color: null, position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1], is_world: true, children: [] };
 const volumes: VolumeInfo[] = [{ name: 'World', material_ref: 'NewMaterial', solid_ref: 'B', physvols: [], auxiliaries: [] }];
 
 beforeEach(() => {
@@ -67,8 +67,8 @@ describe('loadDocument', () => {
 });
 
 describe('restoreOpenDocument', () => {
-  it('restores the backend document on startup', async () => {
-    const summary = { filename: 'kept.gdml', warnings: ['from load'] } as DocumentSummary;
+  it('restores the backend document and its unsaved edits on startup', async () => {
+    const summary = { filename: 'kept.gdml', warnings: ['from load'], unsaved: true } as DocumentSummary;
     mocked.getSummary.mockResolvedValue(summary);
     mocked.getMeshes.mockResolvedValue({ meshes: {}, scene_graph: scene, warnings: ['from scene'] });
     mocked.getDefines.mockResolvedValue({ defines: [] });
@@ -78,6 +78,7 @@ describe('restoreOpenDocument', () => {
     expect(state.sceneGraph).toEqual(scene);
     expect(state.volumes).toEqual(volumes);
     expect(state.warnings).toEqual(['from load', 'from scene']);
+    expect(state.dirty).toBe(true);
     expect(state.error).toBeNull();
   });
 

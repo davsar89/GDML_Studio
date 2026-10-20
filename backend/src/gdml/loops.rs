@@ -79,35 +79,6 @@ fn substitute_identifier(expr: &str, var: &str, value: i64) -> String {
     out
 }
 
-/// `G4GDMLEvaluator::SolveBrackets`: `Slice[i]` -> `Slice_<int(i) - 1>`.
-///
-/// The `- 1` is Geant4's, not a typo: a name indexed from 1 in the file becomes
-/// a suffix counting from 0.
-fn solve_brackets(name: &str, engine: &EvalEngine) -> Result<String> {
-    if !name.contains('[') {
-        return Ok(name.to_string());
-    }
-    let mut out = String::with_capacity(name.len());
-    let mut rest = name;
-    while let Some(open) = rest.find('[') {
-        let Some(close_rel) = rest[open + 1..].find(']') else {
-            // Unbalanced: leave the remainder alone rather than mangle it.
-            out.push_str(rest);
-            return Ok(out);
-        };
-        let close = open + 1 + close_rel;
-        out.push_str(&rest[..open]);
-        for part in rest[open + 1..close].split(',') {
-            let idx = (engine.eval_expr(part.trim())?.round() as i64).saturating_sub(1);
-            out.push('_');
-            out.push_str(&idx.to_string());
-        }
-        rest = &rest[close + 1..];
-    }
-    out.push_str(rest);
-    Ok(out)
-}
-
 /// The values a loop's variable takes, in order. A step past `i64::MAX` ends
 /// the loop; the expansion budget bounds how many are used.
 fn iterations(from: i64, to: i64, step: i64) -> Result<impl Iterator<Item = i64>> {
@@ -154,7 +125,7 @@ fn rewrite_element(
         // `name` and `ref` go through GenerateName in Geant4, which is where
         // SolveBrackets is applied; value attributes only need the variable.
         let final_value = if key == "name" || key == "ref" {
-            solve_brackets(&substituted, engine)?
+            engine.solve_brackets(&substituted)?
         } else {
             substituted
         };

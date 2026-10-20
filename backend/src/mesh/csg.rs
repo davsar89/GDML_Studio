@@ -748,7 +748,7 @@ mod tests {
     /// of the object.
     fn signed_volume(mesh: &TriangleMesh) -> f64 {
         let (mut lo, mut hi) = ([f64::MAX; 3], [f64::MIN; 3]);
-        for v in mesh.positions.chunks_exact(3) {
+        for v in mesh.positions.as_chunks::<3>().0.iter() {
             for k in 0..3 {
                 lo[k] = lo[k].min(v[k] as f64);
                 hi[k] = hi[k].max(v[k] as f64);

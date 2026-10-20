@@ -2,7 +2,7 @@ use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 use super::errors::ApiError;
 use crate::config;
@@ -59,28 +59,14 @@ fn merge_by_name<T, F>(
     }
 }
 
-/// Merge a child GdmlDocument into the main document, resolving file_ref physvols.
+/// Merge a child module's definitions into the main document. Runs once per
+/// module, however many physvols place it.
 fn merge_child_into_main(
     main_doc: &mut GdmlDocument,
     child_doc: &GdmlDocument,
     file_ref_name: &str,
-    volname: &Option<String>,
     warnings: &mut Vec<String>,
 ) {
-    // Determine the child's target volume (volname or its world_ref)
-    let child_world = volname
-        .as_deref()
-        .unwrap_or(&child_doc.setup.world_ref)
-        .to_string();
-
-    if child_world.is_empty() {
-        warnings.push(format!(
-            "Child file '{}' has no world reference and no volname specified",
-            file_ref_name
-        ));
-        return;
-    }
-
     // Known gap: Geant4 gives each file its own evaluator, so modules may define
     // one name differently; a single namespace keeps the main file's value.
     merge_by_name(
@@ -136,6 +122,14 @@ fn merge_child_into_main(
         &child_doc.defines.scales,
         |d| d.name.as_str(),
         "scale",
+        file_ref_name,
+        warnings,
+    );
+    merge_by_name(
+        &mut main_doc.defines.matrices,
+        &child_doc.defines.matrices,
+        |d| d.name.as_str(),
+        "matrix",
         file_ref_name,
         warnings,
     );
@@ -219,18 +213,47 @@ fn merge_child_into_main(
     main_doc
         .skipped_unsupported
         .extend(child_doc.skipped_unsupported.iter().cloned());
+}
 
-    // Now resolve file_ref physvols: replace file_ref with volume_ref pointing to child_world
+/// Point the physvols that place `name`/`volname` at the child's volume of
+/// that name, or at its world. False when there is none, or nothing to place.
+fn resolve_file_physvols(
+    main_doc: &mut GdmlDocument,
+    child_doc: &GdmlDocument,
+    name: &str,
+    volname: &Option<String>,
+) -> bool {
+    let target = volname.as_deref().unwrap_or(&child_doc.setup.world_ref);
+    if target.is_empty() {
+        return false;
+    }
+    let mut resolved = false;
     for vol in &mut main_doc.structure.volumes {
         for pv in &mut vol.physvols {
-            if let Some(ref fref) = pv.file_ref {
-                if fref.name == file_ref_name && &fref.volname == volname {
-                    pv.volume_ref = child_world.clone();
-                    pv.file_ref = None;
-                }
+            if pv
+                .file_ref
+                .as_ref()
+                .is_some_and(|f| f.name == name && &f.volname == volname)
+            {
+                pv.volume_ref = target.to_string();
+                pv.file_ref = None;
+                resolved = true;
             }
         }
     }
+    resolved
+}
+
+/// The uploaded module a `<file name>` names: by that name, else by its
+/// basename, since a browser uploads files without their directories.
+fn find_module<'a>(
+    child_docs: &'a HashMap<String, GdmlDocument>,
+    name: &str,
+) -> Option<(&'a String, &'a GdmlDocument)> {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    child_docs
+        .get_key_value(name)
+        .or_else(|| child_docs.get_key_value(base))
 }
 
 /// Collect all file references from a parsed document.
@@ -246,51 +269,45 @@ fn collect_file_refs(doc: &GdmlDocument) -> Vec<(String, Option<String>)> {
     refs
 }
 
-/// Resolve all file references recursively in breadth-first order.
-/// Newly discovered file_ref nodes from merged children are also processed.
+/// Resolve every file reference, including those merged modules bring in.
 fn resolve_all_file_refs(
     main_doc: &mut GdmlDocument,
     child_docs: &HashMap<String, GdmlDocument>,
 ) -> Vec<String> {
     let mut warnings = Vec::new();
-    let mut pending = VecDeque::new();
-    let mut queued: HashSet<(String, Option<String>)> = HashSet::new();
-    let mut processed: HashSet<(String, Option<String>)> = HashSet::new();
-
-    for fref in collect_file_refs(main_doc) {
-        if queued.insert(fref.clone()) {
-            pending.push_back(fref);
-        }
-    }
-
-    while let Some((ref_name, volname)) = pending.pop_front() {
-        let key = (ref_name.clone(), volname.clone());
-        queued.remove(&key);
-        if !processed.insert(key.clone()) {
-            continue;
-        }
-
-        if let Some(child_doc) = child_docs.get(&ref_name) {
-            merge_child_into_main(main_doc, child_doc, &ref_name, &volname, &mut warnings);
-        } else {
-            warnings.push(format!(
-                "Referenced file '{}' was not provided in the upload; select all GDML \
-                 files together to resolve it.",
-                ref_name
-            ));
-        }
-
-        // A merge may introduce more unresolved file_ref nodes.
-        for discovered in collect_file_refs(main_doc) {
-            if processed.contains(&discovered) {
+    let mut merged = HashSet::new();
+    // A pass that resolves nothing ends the loop. Each module is merged once,
+    // so the references merging adds run out.
+    loop {
+        let mut progress = false;
+        for (name, volname) in collect_file_refs(main_doc) {
+            let Some((file, child_doc)) = find_module(child_docs, &name) else {
                 continue;
+            };
+            if merged.insert(file) {
+                merge_child_into_main(main_doc, child_doc, file, &mut warnings);
             }
-            if queued.insert(discovered.clone()) {
-                pending.push_back(discovered);
-            }
+            progress |= resolve_file_physvols(main_doc, child_doc, &name, &volname);
+        }
+        if !progress {
+            break;
         }
     }
 
+    let mut unresolved = collect_file_refs(main_doc);
+    unresolved.sort();
+    unresolved.dedup();
+    for (name, _) in unresolved {
+        warnings.push(match find_module(child_docs, &name) {
+            None => format!(
+                "Referenced file '{name}' was not provided in the upload; select all GDML \
+                 files together to resolve it."
+            ),
+            Some(_) => {
+                format!("Child file '{name}' has no world reference and no volname specified")
+            }
+        });
+    }
     warnings
 }
 
@@ -317,6 +334,15 @@ fn validate_material_components(
     if material.components.is_empty() && (material.z.is_none() || material.atom_value.is_none()) {
         return Err(ApiError::bad_request(&format!(
             "Material '{}' needs atomic number and mass, or components",
+            material.name
+        )));
+    }
+    // G4Material takes its components all by mass fraction or all by atom
+    // count; mixing the two is fatal (mat031).
+    let atoms = |c: &MaterialComponent| matches!(c, MaterialComponent::Composite { .. });
+    if material.components.iter().any(atoms) && !material.components.iter().all(atoms) {
+        return Err(ApiError::bad_request(&format!(
+            "Material '{}' mixes composite (atom count) and fraction (mass) components, which Geant4 refuses",
             material.name
         )));
     }
@@ -374,8 +400,7 @@ fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
     let mut tags: Vec<&str> = doc.raw_unknown.iter().map(|r| r.tag.as_str()).collect();
     tags.sort_unstable();
     tags.dedup();
-    let mut warnings: Vec<String> = tags
-        .into_iter()
+    tags.into_iter()
         .map(|t| match t {
             // <loop> is a special case: unlike the other preserved tags it is
             // expanded and drawn. Expansion feeds a separate render document,
@@ -389,9 +414,7 @@ fn raw_unknown_warnings(doc: &GdmlDocument) -> Vec<String> {
                 other
             ),
         })
-        .collect();
-    warnings.extend(doc.skipped_unsupported.iter().cloned());
-    warnings
+        .collect()
 }
 
 pub async fn upload_files(
@@ -416,7 +439,7 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
         main_file,
         segments,
     } = req;
-    if !main_file.ends_with(".gdml") {
+    if !main_file.to_ascii_lowercase().ends_with(".gdml") {
         return Err(ApiError::bad_request("Only .gdml files are supported"));
     }
     let main_content = files
@@ -452,6 +475,7 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
                 quantities: doc.defines.quantities.clone(),
                 variables: doc.defines.variables.clone(),
                 expressions: doc.defines.expressions.clone(),
+                matrices: doc.defines.matrices.clone(),
                 ..DefineSection::default()
             };
             engine
@@ -496,6 +520,8 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
     // Surface non-fatal expression-evaluation failures (treated as 0) to the user.
     warnings.extend(engine.take_warnings());
     warnings.extend(raw_unknown_warnings(&doc));
+    // The geometry document, so warnings from inside an expanded <loop> count.
+    warnings.extend(geometry.skipped_unsupported.iter().cloned());
     if doc.setup.world_ref.is_empty() {
         warnings.push("No world volume reference found (<setup>/<world> missing or empty); the geometry may not display.".to_string());
     }
@@ -507,6 +533,7 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
         engine,
         meshes,
         warnings,
+        unsaved: false,
     })
 }
 
@@ -526,6 +553,7 @@ fn summary_json(loaded: &LoadedDocument) -> Value {
         "meshes_count": placed_meshes(loaded).len(),
         "world_ref": doc.setup.world_ref,
         "warnings": loaded.warnings,
+        "unsaved": loaded.unsaved,
     })
 }
 
@@ -551,6 +579,13 @@ pub async fn get_summary(State(state): State<SharedState>) -> Result<Json<Value>
 /// The loaded document, or 404 when there is none.
 fn loaded<T>(doc: Option<T>) -> Result<T, ApiError> {
     doc.ok_or_else(|| ApiError::not_found("No document loaded"))
+}
+
+/// The reply to an edit that went through. The document now differs from any
+/// export, which a reloaded page reads back from the summary.
+fn edited(loaded: &mut LoadedDocument) -> Json<Value> {
+    loaded.unsaved = true;
+    Json(json!({ "ok": true }))
 }
 
 /// Run `f` on the loaded document on a blocking thread. Building a large scene
@@ -794,6 +829,7 @@ fn build_scene_graph(
             density: None,
             position: [0.0; 3],
             rotation: [0.0; 3],
+            scale: [1.0; 3],
             is_world: true,
             children: Vec::new(),
         });
@@ -935,7 +971,7 @@ fn build_volume_node(
     let color = vol
         .auxiliaries
         .iter()
-        .find(|a| a.auxtype == "color")
+        .find(|a| a.auxtype.eq_ignore_ascii_case("color"))
         .map(|a| a.auxvalue.clone());
 
     let density = density_map.get(vol.material_ref.as_str()).copied();
@@ -949,18 +985,18 @@ fn build_volume_node(
                 Some(v) => v,
                 None => {
                     warnings.push(format!(
-                        "volume '{}': physvol references undefined volume '{}' \
-                         (possibly an unsupported <assembly>); skipping it.",
+                        "volume '{}': physvol references undefined volume '{}'; skipping it.",
                         vol.name, pv.volume_ref
                     ));
                     return None;
                 }
             };
 
-            let placement = engine
-                .resolve_position(&pv.position)
-                .and_then(|pos| engine.resolve_rotation(&pv.rotation).map(|rot| (pos, rot)));
-            let (pos, rot) = match placement {
+            let placement = engine.resolve_position(&pv.position).and_then(|pos| {
+                let rot = engine.resolve_rotation(&pv.rotation)?;
+                Ok((pos, rot, engine.resolve_scale(&pv.scale)?))
+            });
+            let (pos, rot, scale) = match placement {
                 Ok(transform) => transform,
                 Err(e) => {
                     warnings.push(format!(
@@ -977,6 +1013,15 @@ fn build_volume_node(
                 _ => format!("/physvol[{}]:{}", idx, pv.volume_ref),
             };
 
+            // G4ReflectionFactory::Place keeps only a reflection: it drops a
+            // scale that is not one and refuses a reflection that is not ±1.
+            if scale.iter().any(|s| (s.abs() - 1.0).abs() > 1e-9) {
+                warnings.push(format!(
+                    "volume '{}', placement {}: scale {scale:?} is not a reflection, \
+                     which Geant4 does not apply; only its signs are drawn.",
+                    vol.name, idx
+                ));
+            }
             build_volume_node(
                 child_vol,
                 vol_map,
@@ -992,6 +1037,10 @@ fn build_volume_node(
                 depth + 1,
                 budget,
             )
+            .map(|node| SceneNode {
+                scale: scale.map(f64::signum),
+                ..node
+            })
         })
         .collect();
 
@@ -1125,6 +1174,7 @@ fn build_volume_node(
         density,
         position,
         rotation,
+        scale: [1.0; 3],
         is_world,
         children,
     })
@@ -1310,7 +1360,12 @@ fn validate_element(
     Ok(())
 }
 
-fn validate_material_values(material: &Material, engine: &EvalEngine) -> Result<(), ApiError> {
+/// `before` is the material this one replaces, if any.
+fn validate_material_values(
+    material: &Material,
+    before: Option<&Material>,
+    engine: &EvalEngine,
+) -> Result<(), ApiError> {
     let positive = |value: &str, field: &str| -> Result<f64, ApiError> {
         let v = engine
             .eval_expr(value)
@@ -1328,12 +1383,15 @@ fn validate_material_values(material: &Material, engine: &EvalEngine) -> Result<
             return Err(ApiError::bad_request("Atomic number must be an integer"));
         }
     }
+    let mut mass = 0.0;
     for component in &material.components {
         match component {
             MaterialComponent::Fraction { n, .. } => {
-                if positive(n, "Mass fraction")? > 1.0 {
+                let fraction = positive(n, "Mass fraction")?;
+                if fraction > 1.0 {
                     return Err(ApiError::bad_request("Mass fraction cannot exceed 1"));
                 }
+                mass += fraction;
             }
             MaterialComponent::Composite { n, .. } => {
                 if positive(n, "Atom count")?.fract() != 0.0 {
@@ -1341,6 +1399,16 @@ fn validate_material_values(material: &Material, engine: &EvalEngine) -> Result<
                 }
             }
         }
+    }
+    // G4Material renormalises mass fractions that miss 1 by over perThousand,
+    // with only a warning. An edited composition must sum to 1; a loaded one
+    // left as it is loads in Geant4, so it is not judged again.
+    let edited = before.is_none_or(|b| !same_definition(&b.components, &material.components));
+    if edited && mass > 0.0 && (mass - 1.0).abs() > 1e-3 {
+        return Err(ApiError::bad_request(&format!(
+            "Mass fractions of '{}' sum to {mass}, not 1",
+            material.name
+        )));
     }
     Ok(())
 }
@@ -1366,12 +1434,16 @@ pub async fn update_material(
         with_staged_elements(&loaded.document.materials, &req.elements, &loaded.engine)?;
     ensure_material_name_available(&staged, &new_name, Some(&old_name))?;
     validate_material_components(&staged, &req.material, Some(&old_name))?;
-    validate_material_values(&req.material, &loaded.engine)?;
     let index = staged
         .materials
         .iter()
         .position(|m| m.name == old_name)
         .ok_or_else(|| ApiError::not_found(&format!("Material '{}' not found", req.name)))?;
+    validate_material_values(
+        &req.material,
+        Some(&staged.materials[index]),
+        &loaded.engine,
+    )?;
     staged.materials[index] = req.material;
     // A component naming an element of the old name meant that element.
     if !staged.elements.iter().any(|e| e.name == old_name) {
@@ -1385,7 +1457,7 @@ pub async fn update_material(
     }
     loaded.document.materials = staged;
 
-    Ok(Json(json!({ "ok": true })))
+    Ok(edited(loaded))
 }
 
 #[derive(Deserialize)]
@@ -1406,11 +1478,11 @@ pub async fn add_material(
         with_staged_elements(&loaded.document.materials, &req.elements, &loaded.engine)?;
     ensure_material_name_available(&staged, &req.material.name, None)?;
     validate_material_components(&staged, &req.material, None)?;
-    validate_material_values(&req.material, &loaded.engine)?;
+    validate_material_values(&req.material, None, &loaded.engine)?;
     staged.materials.push(req.material);
     ensure_material_order(&staged)?;
     loaded.document.materials = staged;
-    Ok(Json(json!({ "ok": true })))
+    Ok(edited(loaded))
 }
 
 #[derive(Deserialize)]
@@ -1472,7 +1544,7 @@ pub async fn delete_material(
         )));
     }
 
-    Ok(Json(json!({ "ok": true })))
+    Ok(edited(loaded))
 }
 
 // ─── Element CRUD ───────────────────────────────────────────────────────────
@@ -1493,7 +1565,7 @@ pub async fn add_element(
     validate_element(&loaded.document.materials, &req.element, &loaded.engine)?;
 
     loaded.document.materials.elements.push(req.element);
-    Ok(Json(json!({ "ok": true })))
+    Ok(edited(loaded))
 }
 
 #[derive(Deserialize)]
@@ -1528,7 +1600,7 @@ pub async fn delete_element(
         )));
     }
 
-    Ok(Json(json!({ "ok": true })))
+    Ok(edited(loaded))
 }
 
 // ─── Volume material ref ────────────────────────────────────────────────────
@@ -1548,29 +1620,35 @@ pub async fn update_volume_material_ref(
 
     ensure_material_ref_exists(&loaded.document, &req.material_ref)?;
 
-    let old = loaded
+    let vol = loaded
         .document
         .structure
         .volumes
         .iter()
         .find(|v| v.name == req.volume_name)
-        .ok_or_else(|| ApiError::not_found(&format!("Volume '{}' not found", req.volume_name)))?
-        .material_ref
-        .clone();
+        .ok_or_else(|| ApiError::not_found(&format!("Volume '{}' not found", req.volume_name)))?;
+    if vol.assembly {
+        return Err(ApiError::bad_request(&format!(
+            "'{}' is an assembly, which has no material",
+            vol.name
+        )));
+    }
+    let old = vol.material_ref.clone();
     loaded
         .change_material_refs(Some(&req.volume_name), &old, &req.material_ref)
         .map_err(|e| ApiError::bad_request(&format!("Cannot assign material: {e}")))?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(edited(loaded))
 }
 
 // ─── Export ─────────────────────────────────────────────────────────────────
 
 pub async fn export_gdml(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
-    let state_r = state.read().await;
-    let loaded = loaded(state_r.loaded.as_ref())?;
+    let mut state_w = state.write().await;
+    let loaded = loaded(state_w.loaded.as_mut())?;
 
     let xml = nist::serialize_gdml(&loaded.document)
         .map_err(|e| ApiError::internal(&format!("Serialization error: {}", e)))?;
+    loaded.unsaved = false;
 
     Ok(Json(json!({
         "gdml": xml,
@@ -1615,6 +1693,7 @@ mod tests {
             engine: EvalEngine::new(),
             meshes: HashMap::new(),
             warnings: Vec::new(),
+            unsaved: false,
         });
         state
     }
@@ -1628,8 +1707,11 @@ mod tests {
             density: None,
             density_ref: None,
             temperature: None,
+            temperature_ref: None,
             pressure: None,
+            pressure_ref: None,
             mee: None,
+            mee_ref: None,
             rl: None,
             al: None,
             properties: Vec::new(),
@@ -1643,13 +1725,14 @@ mod tests {
     fn volume(name: &str, material_ref: &str) -> Volume {
         Volume {
             name: name.to_string(),
+            assembly: false,
             material_ref: material_ref.to_string(),
             solid_ref: "Solid".to_string(),
             physvols: Vec::new(),
             auxiliaries: Vec::new(),
             replica: None,
             body_comments: Vec::new(),
-            loops: Vec::new(),
+            preserved: Vec::new(),
         }
     }
 
@@ -1661,6 +1744,7 @@ mod tests {
             file_ref: None,
             position: None,
             rotation: None,
+            scale: None,
         }
     }
 
@@ -1675,6 +1759,7 @@ mod tests {
             }),
             position: None,
             rotation: None,
+            scale: None,
         }
     }
 

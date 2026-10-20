@@ -6,7 +6,8 @@ import * as api from '../api/client';
 export function emptyMaterial(name: string): MaterialInfo {
   return {
     name, formula: null, z: null, state: null, density: { value: '1.0', unit: 'g/cm3' }, density_ref: null,
-    temperature: null, pressure: null, mee: null, rl: null, al: null, properties: [],
+    temperature: null, temperature_ref: null, pressure: null, pressure_ref: null, mee: null, mee_ref: null,
+    rl: null, al: null, properties: [],
     atom_value: null, atom_unit: null, atom_type: null, components: [],
   };
 }

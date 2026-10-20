@@ -6,6 +6,7 @@ use gdml_studio_backend::{
     mesh::types::TriangleMesh,
     state::app_state::{create_shared_state, SharedState},
 };
+use serde_json::json;
 use std::collections::HashMap;
 
 mod common;
@@ -73,7 +74,9 @@ async fn load(xml: &str) -> SharedState {
 
 fn bounds(mesh: &TriangleMesh, axis: usize) -> (f64, f64) {
     mesh.positions
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| {
             (lo.min(p[axis] as f64), hi.max(p[axis] as f64))
         })
@@ -310,6 +313,7 @@ async fn module_export_preserves_definitions_and_dependency_order() {
         volume_ref: "W".into(),
         position: None,
         rotation: None,
+        scale: None,
     });
     assert!(serialize_gdml(&cyc)
         .unwrap_err()
@@ -424,6 +428,158 @@ async fn material_and_nist_elements_commit_atomically() {
             .value,
         "3.25"
     );
+}
+
+#[tokio::test]
+async fn compositions_geant4_refuses_are_rejected_but_loaded_ones_stay_editable() {
+    // Half's fractions sum to 0.5: Geant4 loads it, renormalising with a warning.
+    let xml = document(
+        "",
+        r#"<box name="B" x="1" y="1" z="1"/>"#,
+        r#"<volume name="W"><materialref ref="Half"/><solidref ref="B"/></volume>"#,
+    )
+    .replace(
+        "</materials>",
+        r#"<material name="Half"><D value="1"/><fraction n="0.5" ref="M"/></material></materials>"#,
+    );
+    let state = load(&xml).await;
+    let unsaved = |state: SharedState| async {
+        get_summary(State(state)).await.unwrap().0["unsaved"].clone()
+    };
+    let update = |material: Material| {
+        update_material(
+            State(state.clone()),
+            Json(UpdateMaterialRequest {
+                name: "Half".into(),
+                material,
+                elements: vec![],
+            }),
+        )
+    };
+    let half = materials(&state).await.materials[2].clone();
+    let mut mixed = half.clone();
+    mixed.components.push(MaterialComponent::Composite {
+        n: "2".into(),
+        ref_name: "M".into(),
+    });
+    assert!(update(mixed).await.unwrap_err().message.contains("mixes"));
+    let mut short = half.clone();
+    short.components = vec![MaterialComponent::Fraction {
+        n: "0.3".into(),
+        ref_name: "M".into(),
+    }];
+    assert!(update(short).await.unwrap_err().message.contains("sum to"));
+    assert_eq!(unsaved(state.clone()).await, false);
+
+    let mut renamed = half;
+    renamed.name = "Renamed".into();
+    let _ = update(renamed).await.unwrap();
+    assert_eq!(unsaved(state.clone()).await, true);
+    export(&state).await;
+    assert_eq!(unsaved(state.clone()).await, false);
+}
+
+#[tokio::test]
+async fn matrix_cells_drive_loop_placements() {
+    // The GDML manual's pattern: a loop reads its positions from a matrix.
+    let xml = document(
+        r#"<variable name="i" value="0"/>
+        <constant name="y" value="m[2,2]"/>
+        <matrix name="m" coldim="2" values="10 1 20 2 30 3"/>"#,
+        r#"<box name="world" x="100" y="100" z="100"/><box name="B" x="1" y="1" z="1"/>"#,
+        r#"<volume name="In"><materialref ref="M"/><solidref ref="B"/></volume>
+        <volume name="W"><materialref ref="M"/><solidref ref="world"/>
+        <loop for="i" from="1" to="3" step="1"><physvol><volumeref ref="In"/>
+        <position name="p[i]" x="m[i,1]" y="y"/></physvol></loop></volume>"#,
+    );
+    let scene = get_scene(State(load(&xml).await)).await.unwrap().0;
+    let placed: Vec<_> = scene["scene_graph"]["children"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| (c["position"][0].as_f64(), c["position"][1].as_f64()))
+        .collect();
+    assert_eq!(
+        placed,
+        [10.0, 20.0, 30.0].map(|x| (Some(x), Some(2.0))),
+        "{scene}"
+    );
+}
+
+#[tokio::test]
+async fn assemblies_and_reflections_are_drawn_and_saved() {
+    let xml = document(
+        "",
+        r#"<box name="world" x="100" y="100" z="100"/><box name="B" x="1" y="1" z="1"/>"#,
+        r#"<volume name="In"><materialref ref="M"/><solidref ref="B"/></volume>
+        <assembly name="A"><physvol><volumeref ref="In"/><position name="a1" x="10"/></physvol>
+        <physvol><volumeref ref="In"/><position name="a2" x="-10"/></physvol></assembly>
+        <volume name="W"><materialref ref="M"/><solidref ref="world"/>
+        <physvol><volumeref ref="A"/></physvol>
+        <physvol><volumeref ref="In"/><scale name="s" x="-1" y="1" z="1"/></physvol></volume>"#,
+    );
+    let state = load(&xml).await;
+    let scene = get_scene(State(state.clone())).await.unwrap().0;
+    let children = &scene["scene_graph"]["children"];
+    let assembly = children[0]["children"].as_array().unwrap();
+    assert_eq!(assembly.len(), 2, "{scene}");
+    assert_eq!(assembly[1]["position"][0], -10.0);
+    assert_eq!(children[1]["scale"], json!([-1.0, 1.0, 1.0]));
+    assert!(update_volume_material_ref(
+        State(state.clone()),
+        Json(UpdateMaterialRefRequest {
+            volume_name: "A".into(),
+            material_ref: "N".into(),
+        }),
+    )
+    .await
+    .is_err());
+    let saved = export(&state).await;
+    assert!(saved.contains(r#"<assembly name="A">"#), "{saved}");
+    assert!(
+        saved.contains(r#"<scale name="s" x="-1" y="1" z="1"/>"#),
+        "{saved}"
+    );
+}
+
+#[tokio::test]
+async fn a_module_placed_twice_is_merged_once() {
+    let child = r#"<gdml><define/><materials/><solids><box name="cb" x="1" y="1" z="1"/>
+    <opticalsurface name="os" model="glisur" finish="polished" type="dielectric_dielectric" value="1"/></solids>
+    <structure><volume name="A"><materialref ref="G4_Galactic"/><solidref ref="cb"/></volume>
+    <volume name="B"><materialref ref="G4_Galactic"/><solidref ref="cb"/></volume></structure>
+    <setup name="Default" version="1"><world ref="A"/></setup></gdml>"#;
+    // The second reference names a directory, which a browser upload drops.
+    let main = r#"<gdml><define/><materials/><solids><box name="world" x="100" y="100" z="100"/></solids>
+    <structure><volume name="W"><materialref ref="G4_Galactic"/><solidref ref="world"/>
+    <physvol><file name="child.gdml" volname="A"/></physvol>
+    <physvol><file name="./child.gdml" volname="B"/></physvol></volume></structure>
+    <setup name="Default" version="1"><world ref="W"/></setup></gdml>"#;
+    let state = create_shared_state();
+    let summary = upload_files(
+        State(state.clone()),
+        Json(UploadFilesRequest {
+            main_file: "main.gdml".into(),
+            segments: None,
+            files: HashMap::from([
+                ("main.gdml".into(), main.into()),
+                ("child.gdml".into(), child.into()),
+            ]),
+        }),
+    )
+    .await
+    .unwrap()
+    .0;
+    assert!(!summary.to_string().contains("not provided"), "{summary}");
+    let scene = get_scene(State(state.clone())).await.unwrap().0;
+    let placed: Vec<_> = scene["scene_graph"]["children"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["volume_name"].clone())
+        .collect();
+    assert_eq!(placed, [json!("A"), json!("B")]);
+    assert_eq!(export(&state).await.matches("<opticalsurface").count(), 1);
 }
 
 async fn solid_mesh(solids: &str, solid: &str) -> TriangleMesh {
@@ -565,7 +721,9 @@ async fn twistedtubs_zlen_is_the_full_length() {
 /// x, y of the mesh vertices lying in the plane at height `z`.
 fn slice(mesh: &TriangleMesh, z: f64) -> Vec<[f64; 2]> {
     mesh.positions
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .filter(|p| (p[2] as f64 - z).abs() < 1e-4)
         .map(|p| [p[0] as f64, p[1] as f64])
         .collect()

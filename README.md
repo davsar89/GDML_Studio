@@ -111,8 +111,8 @@ file over it yourself.
 Geometry expressions use real-valued arithmetic (`1/2` is `0.5`). Declared length
 and angle units apply after expression evaluation, as in Geant4; a ratio of two
 length quantities is therefore still multiplied by the attribute's `lunit`.
-Multi-file export retains imported isotopes and scales and writes referenced
-volumes before their parents.
+Saving a multi-file geometry writes one self-contained file. Where modules define
+a name differently, the main file's definition is kept, as the load warnings say.
 
 ## Sample Files
 

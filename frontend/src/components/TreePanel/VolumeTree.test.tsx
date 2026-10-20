@@ -9,7 +9,7 @@ import type { SceneNode } from '../../store/types';
 
 const node = (name: string, children: SceneNode[] = []): SceneNode => ({
   name, instance_id: `/${name}`, volume_name: name, solid_name: name, material_name: 'M',
-  color: null, density: 1, position: [0, 0, 0], rotation: [0, 0, 0], is_world: name === 'W', children,
+  color: null, density: 1, position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1], is_world: name === 'W', children,
 });
 
 beforeEach(() => {

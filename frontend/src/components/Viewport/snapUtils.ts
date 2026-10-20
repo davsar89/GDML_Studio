@@ -25,7 +25,8 @@ function triangle(index: THREE.BufferAttribute | null, t: number): [number, numb
 }
 
 /**
- * Extract 7 snap candidates (3 vertices, 3 edge midpoints, 1 centroid) from a face.
+ * Extract 6 snap candidates (3 vertices, 3 edge midpoints) from a face. Away
+ * from these, findBestSnap falls back to the exact hit point.
  */
 function faceCandidates(intersection: THREE.Intersection): SnapCandidate[] {
   const mesh = intersection.object as THREE.Mesh;
@@ -50,7 +51,6 @@ function faceCandidates(intersection: THREE.Intersection): SnapCandidate[] {
     { position: new THREE.Vector3().addVectors(vA, vB).multiplyScalar(0.5), type: 'edge' },
     { position: new THREE.Vector3().addVectors(vB, vC).multiplyScalar(0.5), type: 'edge' },
     { position: new THREE.Vector3().addVectors(vA, vC).multiplyScalar(0.5), type: 'edge' },
-    { position: new THREE.Vector3().addVectors(vA, vB).add(vC).multiplyScalar(1 / 3), type: 'face' },
   ];
 }
 

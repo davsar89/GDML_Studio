@@ -54,14 +54,15 @@ function densityToColor(density: number): string {
 }
 
 function materialColor(materialName: string, auxColor: string | null, density: number | null): string {
-  if (auxColor && auxColor.length >= 6) {
+  const hex = auxColor?.replace(/^#/, '');
+  if (hex && hex.length >= 6) {
     // Skip near-black aux colors (common in GDML files exported from other tools)
-    const r = parseInt(auxColor.substring(0, 2), 16);
-    const g = parseInt(auxColor.substring(2, 4), 16);
-    const b = parseInt(auxColor.substring(4, 6), 16);
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
     const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
     if (luminance > 20) {
-      return `#${auxColor}`;
+      return `#${hex}`;
     }
   }
   if (density != null && density > 0) {
@@ -113,7 +114,7 @@ const SceneNodeGroup = memo(({ node, depth, maxDepth }: { node: SceneNode; depth
   const skipMesh = node.is_world || !meshData || isHidden;
 
   return (
-    <group position={position} rotation={euler}>
+    <group position={position} rotation={euler} scale={node.scale}>
       {!skipMesh && meshData && (
         <MeshObject
           meshData={meshData}

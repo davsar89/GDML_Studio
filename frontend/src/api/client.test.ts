@@ -15,7 +15,7 @@ const material: MaterialInfo = {
   state: null,
   density: { value: '1.0', unit: 'g/cm3' },
   density_ref: null,
-  temperature: null,
+  temperature: null, temperature_ref: null, pressure_ref: null, mee_ref: null,
   pressure: null,
   mee: null,
   rl: null,

@@ -23,12 +23,13 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 /**
  * The main file references others via <file name=".."> but is not itself
- * referenced. Falls back to the file with the most references.
+ * referenced. Falls back to the file with the most references. References are
+ * compared by basename, as uploads carry no directories.
  */
 function detectMainFile(files: Record<string, string>): string {
   const refs: Record<string, string[]> = {};
   for (const [name, content] of Object.entries(files)) {
-    refs[name] = Array.from(content.matchAll(/<file\s[^>]*name\s*=\s*(["'])(.*?)\1/g), (m) => m[2]);
+    refs[name] = Array.from(content.matchAll(/<file\s[^>]*name\s*=\s*(["'])(.*?)\1/g), (m) => m[2].split(/[\\/]/).pop()!);
   }
   const referenced = new Set(Object.values(refs).flat());
   const names = Object.keys(files);

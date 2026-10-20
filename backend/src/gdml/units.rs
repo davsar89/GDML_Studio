@@ -59,16 +59,13 @@ const LENGTH: Units = &[
     ("nanometer nm", 1.0e-9 * M),
     ("angstrom Ang", 1.0e-10 * M),
     ("fermi fm", 1.0e-15 * M),
-    // Not Geant4 units, accepted as a convenience for hand-written files.
-    ("inch in", 25.4),
-    ("foot ft", 304.8),
 ];
 
-/// Legal `aunit` values: `G4UnitsTable.cc` "Angle" (plus the plurals).
+/// Legal `aunit` values: `G4UnitsTable.cc` "Angle".
 const ANGLE: Units = &[
-    ("radian rad radians", 1.0),
+    ("radian rad", 1.0),
     ("milliradian mrad", 1.0e-3),
-    ("degree deg degrees", PI / 180.0),
+    ("degree deg", PI / 180.0),
 ];
 
 /// Every other unit `setSystemOfUnits.cc` gives the expression evaluator, plus
@@ -242,6 +239,8 @@ mod tests {
         // treating them as mm would silently render wrong geometry.
         assert!(length_factor("micron").is_none());
         assert!(length_factor("dm").is_none());
+        assert!(length_factor("inch").is_none());
+        assert!(angle_factor("degrees").is_none());
         // The lenient converters still pass the value through unchanged.
         assert_eq!(length_to_mm(5.0, "furlong"), 5.0);
     }
