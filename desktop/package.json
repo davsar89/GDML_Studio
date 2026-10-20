@@ -1,0 +1,55 @@
+{
+  "name": "gdml-studio",
+  "productName": "GDML Studio",
+  "version": "0.1.0",
+  "description": "Viewer and material editor for GDML detector geometry",
+  "author": "davsar89",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:backend": "cargo build --release --manifest-path ../Cargo.toml",
+    "build:frontend": "npm --prefix ../frontend ci && npm --prefix ../frontend run build",
+    "dist": "npm run build:backend && npm run build:frontend && electron-builder --win nsis",
+    "smoke": "node smoke.mjs"
+  },
+  "build": {
+    "appId": "io.github.davsar89.gdml-studio",
+    "files": [
+      "main.js",
+      "preload.js",
+      "icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "../target/release/gdml-studio-backend.exe",
+        "to": "gdml-studio-backend.exe"
+      },
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": "../sample_data",
+        "to": "sample_data"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "installer-icon.ico"
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.9.2",
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.64.1"
+  },
+  "allowScripts": {
+    "electron-winstaller": false
+  }
+}

@@ -348,6 +348,30 @@ describe('material drafts and document actions', () => {
     expect(useAppStore.getState().summary?.filename).toBe('copy.gdml');
   });
 
+  it('desktop Save: a cancelled native dialog saves nothing and keeps the document unsaved', async () => {
+    const saveFile = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce('renamed.gdml').mockResolvedValueOnce(null);
+    vi.stubGlobal('desktop', { saveFile });
+    const user = mount(); act(() => useAppStore.getState().markDirty());
+    // Save As goes straight to the native dialog, which is cancelled.
+    await user.click(screen.getByRole('button', { name: 'Save As' }));
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(saveFile).toHaveBeenLastCalledWith('<gdml density="1.0"/>', 'original.gdml');
+    expect(useAppStore.getState().dirty).toBe(true);
+    // The name picked in the native dialog becomes the document's name.
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(useAppStore.getState().dirty).toBe(false));
+    expect(useAppStore.getState().summary?.filename).toBe('renamed.gdml');
+    // Cancelling the Save offered before opening another file keeps this document open.
+    act(() => useAppStore.getState().markDirty());
+    await chooseFile(user); await choose(user, 'Save');
+    await waitFor(() => expect(useAppStore.getState().documentBusy).toBe(false));
+    expect(mocked.uploadFiles).not.toHaveBeenCalled();
+    expect(useAppStore.getState().summary?.filename).toBe('renamed.gdml');
+    expect(useAppStore.getState().dirty).toBe(true);
+    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+  });
+
   it('returns focus to the control that started an action once it finishes', async () => {
     let finish!: (value: { gdml: string; filename: string }) => void;
     mocked.exportGdml.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));

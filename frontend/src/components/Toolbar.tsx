@@ -40,11 +40,11 @@ export default function Toolbar() {
 
   const handleSaveAs = () => runDocumentAction(async () => {
     // Cancelling the file name leaves even an unapplied draft intact.
-    const filename = await askFilename(useAppStore.getState().summary?.filename || 'output.gdml');
+    // The desktop app's native Save dialog asks for the name itself.
+    const current = useAppStore.getState().summary?.filename || 'output.gdml';
+    const filename = window.desktop ? current : await askFilename(current);
     if (!filename || !await resolveMaterialDraft()) return;
     await exportCurrentDocument(filename);
-    // The next Save keeps the name chosen here.
-    useAppStore.setState((s) => ({ summary: s.summary && { ...s.summary, filename } }));
   });
 
   const handleSave = () => runDocumentAction(async () => {

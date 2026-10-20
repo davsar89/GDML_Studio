@@ -10,3 +10,7 @@ CLAUDE.md
 
 # Claude Code local tooling config
 .claude/
+
+# Electron shell: dependencies and built installer
+desktop/node_modules/
+desktop/dist/

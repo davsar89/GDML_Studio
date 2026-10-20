@@ -2,7 +2,7 @@
 
 > **Early-stage project** — This is a fresh prototype under active development. It likely does not fully work yet. Expect rough edges, missing features, and bugs. Contributions and bug reports are welcome.
 
-A lightweight desktop tool for viewing [GDML](https://gdml.web.cern.ch/GDML/) (Geometry Description Markup Language) detector geometry files. GDML is the standard geometry format used by [Geant4](https://geant4.web.cern.ch/) and other particle-physics simulation frameworks. GDML Studio lets you quickly inspect these geometries without launching a full Geant4 session — it parses the GDML XML, evaluates expressions and units, tessellates solids into triangle meshes, and renders the 3D scene in the browser.
+A lightweight desktop tool for viewing [GDML](https://gdml.web.cern.ch/GDML/) (Geometry Description Markup Language) detector geometry files. GDML is the standard geometry format used by [Geant4](https://geant4.web.cern.ch/) and other particle-physics simulation frameworks. GDML Studio lets you quickly inspect these geometries without launching a full Geant4 session — it parses the GDML XML, evaluates expressions and units, tessellates solids into triangle meshes, and renders the 3D scene in a desktop window (or a browser).
 
 <p align="center">
   <img src="screen_example.jpg" alt="GDML Studio screenshot" width="700">
@@ -14,8 +14,29 @@ A lightweight desktop tool for viewing [GDML](https://gdml.web.cern.ch/GDML/) (G
 |-------|------|------|
 | Backend | Rust / Axum | `backend/` |
 | Frontend | React / Three.js (via React Three Fiber) | `frontend/` |
+| Desktop shell | Electron | `desktop/` |
 
 The backend exposes a REST API that the frontend consumes. Communication is JSON over HTTP.
+The desktop app starts the backend on a free local port; the backend also serves the
+built frontend, which the app shows in its window.
+
+## Desktop app (Windows)
+
+Run `GDML Studio Setup 0.1.0.exe`. It installs per user (no admin rights) and bundles
+everything: Rust, Node.js and a browser are not needed. The installer is not code-signed,
+so Windows SmartScreen may warn on first run (**More info → Run anyway**).
+
+To build the installer (needs the [prerequisites](#prerequisites)):
+
+```bash
+cd desktop
+npm install
+npm run dist     # builds backend + frontend, writes desktop/dist/GDML Studio Setup 0.1.0.exe
+```
+
+`npm start` runs the desktop app from the repo after `npm run build:backend` and
+`npm run build:frontend`. Set `GDML_PORT` (e.g. `GDML_PORT=4001 npm start`) to pin the
+backend's port, so the same session can also be opened in a browser for debugging.
 
 ## Prerequisites
 
@@ -35,6 +56,7 @@ cd GDML_Studio
 ### 2. One-command start (recommended)
 
 Scripts that build the backend, run tests, start both servers, and open the browser.
+This browser mode, with Vite hot reload, is the development and debugging setup.
 The scripts check for prerequisites first and will tell you exactly what to install if anything is missing.
 
 ```bash
@@ -89,7 +111,11 @@ Select a volume in the 3D scene or tree view to open the **Volume Detail** panel
 
 ### Save / Export
 
-The toolbar provides two export options. Both **download** a GDML file through
+In the **desktop app**, Save and Save As open the Windows Save dialog, so you can
+overwrite the original file. Cancelling the dialog saves nothing and the document
+stays marked unsaved. Closing the window with unsaved changes asks first.
+
+In a **browser**, the toolbar provides two export options. Both **download** a GDML file through
 the browser — neither writes to the file you opened, and the backend never
 touches your filesystem. Your original file on disk is left untouched.
 
@@ -131,6 +157,12 @@ cd ../frontend
 npx tsc -b
 npm run lint
 npm test
+
+# Desktop app end-to-end (after building backend and frontend):
+# launch, open a sample, save, unsaved-close prompt, backend shutdown
+cd ../desktop
+npm run smoke                                          # repo build
+npm run smoke -- "dist/win-unpacked/GDML Studio.exe"   # packaged build
 ```
 
 Use `tsc -b`, not `tsc --noEmit` — see [`frontend/README.md`](frontend/README.md#checks).

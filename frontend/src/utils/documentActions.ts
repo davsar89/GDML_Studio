@@ -2,6 +2,16 @@ import * as api from '../api/client';
 import { useAppStore } from '../store';
 import { refreshMaterialsAndScene } from './refresh';
 
+declare global {
+  interface Window {
+    /** Set by the desktop app's preload script (desktop/preload.js); absent in a browser. */
+    desktop?: {
+      /** Native Save dialog, then write. The saved file's name, or null when cancelled. */
+      saveFile(content: string, filename: string): Promise<string | null>;
+    };
+  }
+}
+
 export type DialogChoice = 'primary' | 'discard' | 'cancel';
 export interface DocumentDecision {
   title: string;
@@ -112,12 +122,22 @@ export function downloadFile(content: string, filename: string): void {
   setTimeout(() => { anchor.remove(); URL.revokeObjectURL(url); }, 0);
 }
 
-/** Export only after the caller has resolved drafts and acquired the action. */
-export async function exportCurrentDocument(filename?: string): Promise<void> {
+/**
+ * Export only after the caller has resolved drafts and acquired the action.
+ * False when the desktop Save dialog was cancelled: nothing was written, so the
+ * document stays unsaved. A browser download cannot report that and counts as saved.
+ */
+export async function exportCurrentDocument(filename?: string): Promise<boolean> {
   const { editRevision, summary } = useAppStore.getState();
   const result = await api.exportGdml();
-  downloadFile(result.gdml, filename ?? summary?.filename ?? result.filename);
+  let saved: string | null = filename ?? summary?.filename ?? result.filename;
+  if (window.desktop) saved = await window.desktop.saveFile(result.gdml, saved);
+  else downloadFile(result.gdml, saved);
+  if (saved === null) return false;
   useAppStore.getState().markSaved(editRevision);
+  // The next Save keeps the name just saved under.
+  useAppStore.setState((s) => ({ summary: s.summary && { ...s.summary, filename: saved } }));
+  return true;
 }
 
 /** Runs after a replacement file was actually selected, before uploading it. */
@@ -128,6 +148,7 @@ export async function resolveDocumentReplacement(): Promise<boolean> {
     'Unsaved document changes', 'Save the current document before opening another file?', 'Save',
   );
   if (choice === 'cancel') return false;
-  if (choice === 'primary') await exportCurrentDocument();
+  // A cancelled Save dialog keeps the current document open, as Cancel does.
+  if (choice === 'primary') return exportCurrentDocument();
   return true;
 }

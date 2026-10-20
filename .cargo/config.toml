@@ -1,0 +1,4 @@
+# Static MSVC C runtime: the Windows installer ships only the backend .exe,
+# without the VC++ redistributable it would otherwise need (VCRUNTIME140.dll).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
