@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "Viewer and material editor for GDML detector geometry",
   "author": "davsar89",
+  "homepage": "https://github.com/davsar89/GDML_Studio",
   "private": true,
   "main": "main.js",
   "scripts": {
@@ -11,6 +12,8 @@
     "build:backend": "cargo build --release --manifest-path ../Cargo.toml",
     "build:frontend": "npm --prefix ../frontend ci && npm --prefix ../frontend run build",
     "dist": "npm run build:backend && npm run build:frontend && electron-builder --win nsis",
+    "build:backend:linux": "cargo build --release --target x86_64-unknown-linux-musl --manifest-path ../Cargo.toml",
+    "dist:linux": "npm run build:backend:linux && npm run build:frontend && electron-builder --linux deb",
     "smoke": "node smoke.mjs"
   },
   "build": {
@@ -22,10 +25,6 @@
     ],
     "extraResources": [
       {
-        "from": "../target/release/gdml-studio-backend.exe",
-        "to": "gdml-studio-backend.exe"
-      },
-      {
         "from": "../frontend/dist",
         "to": "frontend/dist"
       },
@@ -36,7 +35,40 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "icon.png"
+      "icon": "icon.png",
+      "extraResources": [
+        {
+          "from": "../target/release/gdml-studio-backend.exe",
+          "to": "gdml-studio-backend.exe"
+        }
+      ]
+    },
+    "linux": {
+      "target": "deb",
+      "icon": "icon.png",
+      "category": "Science",
+      "executableName": "gdml-studio",
+      "maintainer": "davsar89 <david@example.com>",
+      "extraResources": [
+        {
+          "from": "../target/x86_64-unknown-linux-musl/release/gdml-studio-backend",
+          "to": "gdml-studio-backend"
+        }
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0",
+        "libasound2t64 | libasound2"
+      ]
     },
     "nsis": {
       "oneClick": false,

@@ -20,19 +20,36 @@ The backend exposes a REST API that the frontend consumes. Communication is JSON
 The desktop app starts the backend on a free local port; the backend also serves the
 built frontend, which the app shows in its window.
 
-## Desktop app (Windows)
+## Desktop app
 
-Run `GDML Studio Setup 0.1.0.exe`. It installs per user (no admin rights) and bundles
-everything: Rust, Node.js and a browser are not needed. The installer is not code-signed,
-so Windows SmartScreen may warn on first run (**More info → Run anyway**).
+Both packages bundle everything: Rust, Node.js and a browser are not needed.
 
-To build the installer (needs the [prerequisites](#prerequisites)):
+**Windows:** run `GDML Studio Setup 0.1.0.exe`. It installs per user (no admin rights).
+The installer is not code-signed, so Windows SmartScreen may warn on first run
+(**More info → Run anyway**).
+
+**Ubuntu 20.04 or newer:** `sudo apt install ./gdml-studio_0.1.0_amd64.deb`, then start
+**GDML Studio** from the applications menu or run `gdml-studio`. Tested by installing and
+launching on clean Ubuntu 20.04 and 24.04.
+
+To build the packages (needs the [prerequisites](#prerequisites)):
 
 ```bash
 cd desktop
 npm install
-npm run dist     # builds backend + frontend, writes desktop/dist/GDML Studio Setup 0.1.0.exe
+npm run dist         # on Windows: desktop/dist/GDML Studio Setup 0.1.0.exe
+npm run dist:linux   # on Linux or WSL: desktop/dist/gdml-studio_0.1.0_amd64.deb
 ```
+
+`dist:linux` also needs `rustup target add x86_64-unknown-linux-musl`. The Linux backend is
+a static musl binary, so it runs regardless of the system's glibc version. The cost is
+about 1.4× slower loading than a glibc build (213 vs 150 ms for
+`pod_asm_tessellated.gdml`). If that ever matters, switch the global allocator, e.g. to mimalloc.
+When building in WSL, work on a copy inside the Linux filesystem (not `/mnt/c`), since
+the Windows `node_modules` cannot be reused.
+
+Where the GPU is unavailable or blocklisted (VMs, remote desktops, WSL), the 3D view
+falls back to software rendering.
 
 `npm start` runs the desktop app from the repo after `npm run build:backend` and
 `npm run build:frontend`. Set `GDML_PORT` (e.g. `GDML_PORT=4001 npm start`) to pin the
@@ -111,7 +128,7 @@ Select a volume in the 3D scene or tree view to open the **Volume Detail** panel
 
 ### Save / Export
 
-In the **desktop app**, Save and Save As open the Windows Save dialog, so you can
+In the **desktop app**, Save and Save As open the system's Save dialog, so you can
 overwrite the original file. Cancelling the dialog saves nothing and the document
 stays marked unsaved. Closing the window with unsaved changes asks first.
 
@@ -162,7 +179,7 @@ npm test
 # launch, open a sample, save, unsaved-close prompt, backend shutdown
 cd ../desktop
 npm run smoke                                          # repo build
-npm run smoke -- "dist/win-unpacked/GDML Studio.exe"   # packaged build
+npm run smoke -- "dist/win-unpacked/GDML Studio.exe"   # packaged build (Linux: dist/linux-unpacked/gdml-studio)
 ```
 
 Use `tsc -b`, not `tsc --noEmit` — see [`frontend/README.md`](frontend/README.md#checks).

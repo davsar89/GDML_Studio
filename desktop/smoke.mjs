@@ -21,6 +21,8 @@ const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getB
 await chooser.setFiles(sample);
 await page.locator('.document-name', { hasText: 'solids.gdml' }).waitFor();
 await page.locator('canvas').waitFor();
+// Without WebGL2 the canvas exists but stays blank.
+assert.ok(await page.evaluate(() => document.querySelector('canvas')?.getContext('webgl2') != null), 'the 3D view has no WebGL2 context');
 await page.waitForTimeout(1500);
 await page.screenshot({ path: path.join(out, 'window.png') });
 

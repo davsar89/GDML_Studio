@@ -9,9 +9,13 @@ const path = require('node:path');
 // Installed: everything sits in resources/ (see "extraResources" in package.json).
 // `npm start`: the repo, after `npm run build:backend` and `npm run build:frontend`.
 const root = app.isPackaged ? process.resourcesPath : path.join(__dirname, '..');
-const exe = app.isPackaged
-  ? path.join(root, 'gdml-studio-backend.exe')
-  : path.join(root, 'target', 'release', process.platform === 'win32' ? 'gdml-studio-backend.exe' : 'gdml-studio-backend');
+const backendName = process.platform === 'win32' ? 'gdml-studio-backend.exe' : 'gdml-studio-backend';
+const exe = app.isPackaged ? path.join(root, backendName) : path.join(root, 'target', 'release', backendName);
+
+// Where Chromium blocklists the GPU (VMs, remote desktops, WSL), WebGL is off
+// and the 3D view stays blank; this lets it fall back to software rendering.
+// "Unsafe" refers to untrusted web content; the window only shows our own page.
+app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
 let backend = null;
 let quitting = false;
