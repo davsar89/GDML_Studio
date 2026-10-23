@@ -65,7 +65,6 @@ function dedup(candidates: SnapCandidate[], eps = 0.01): SnapCandidate[] {
   for (const c of candidates) {
     const o = out.find((k) => c.position.distanceTo(k.position) < eps);
     if (!o) out.push(c);
-    // keep higher priority type
     else if (TYPE_PRIORITY[c.type] < TYPE_PRIORITY[o.type]) o.type = c.type;
   }
   return out;
@@ -113,14 +112,12 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
   // --- Weld vertices by position ---
   //
   // Edges must be keyed by location, not by vertex index. Tessellated solids
-  // arrive fully unwelded — the backend emits fresh vertices for every facet, so
-  // no two facets share a corner index — and an index-keyed edge
-  // map therefore never pairs the two faces that share a geometric edge. Every
-  // edge then looked like a boundary edge, so *every* edge and vertex became a
-  // "feature": 71,328 candidates for the largest solid in
-  // pod_asm_tessellated.gdml, fed into the O(n·|out|) dedup below, which is
-  // roughly a billion distance comparisons and several seconds of frozen main
-  // thread on the click that places the first measurement point.
+  // arrive fully unwelded (the backend emits fresh vertices for every facet), so
+  // an index-keyed edge map never pairs the two faces that share a geometric
+  // edge. Every edge would read as a boundary and every vertex as a feature:
+  // 71,328 candidates for the largest solid in pod_asm_tessellated.gdml, which
+  // the O(n·|out|) dedup below turns into seconds of frozen main thread on the
+  // click that places the first measurement point.
   const WELD_DECIMALS = 4; // 0.1 µm at millimetre scale
   const canonicalOf = new Int32Array(vertexCount);
   const canonicalByPos = new Map<string, number>();
@@ -156,7 +153,7 @@ export function allMeshCandidates(mesh: THREE.Mesh): SnapPoint[] {
   for (const [key, faces] of edgeFaceMap) {
     // A boundary edge is always a feature
     const isFeature = faces.length === 1
-      || (faces.length >= 2 && faceNormals[faces[0]].angleTo(faceNormals[faces[1]]) > featureAngleRad);
+      || faceNormals[faces[0]].angleTo(faceNormals[faces[1]]) > featureAngleRad;
     if (isFeature) {
       featureEdgeKeys.add(key);
       const [a, b] = key.split('-').map(Number);
@@ -198,7 +195,6 @@ function thinCandidates(candidates: SnapCandidate[], maxCount: number): SnapCand
   // Sort by type priority so vertices survive the cull
   candidates.sort((a, b) => TYPE_PRIORITY[a.type] - TYPE_PRIORITY[b.type]);
 
-  // Compute bounding box diagonal
   const box = new THREE.Box3();
   for (const c of candidates) box.expandByPoint(c.position);
   const diagonal = box.min.distanceTo(box.max);
@@ -265,7 +261,6 @@ export function findBestSnap(
     }
   }
 
-  // Convert filtered to SnapPoint[]
   const candidatePoints: SnapPoint[] = filtered.map(({ c }) => ({
     position: [c.position.x, c.position.y, c.position.z] as [number, number, number],
     type: c.type,

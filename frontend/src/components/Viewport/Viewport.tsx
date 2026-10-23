@@ -57,7 +57,6 @@ function AutoFitCamera() {
       camera.updateProjectionMatrix();
       camera.lookAt(center);
 
-      // Update OrbitControls target
       const controls = controlsRef.current;
       if (controls) {
         controls.target.copy(center);
@@ -71,8 +70,8 @@ function AutoFitCamera() {
 
   const measureMode = useAppStore((s) => s.measureMode);
 
-  // In measure mode, free left-click for measurement: left=none, middle=dolly, right=rotate
-  // Always pass explicit config — OrbitControls doesn't reset when prop goes from object to undefined
+  // In measure mode, free left-click for measurement: left=none, middle=dolly, right=rotate.
+  // Always pass explicit config: OrbitControls doesn't reset when the prop goes from object to undefined.
   const mouseButtons = measureMode
     ? { LEFT: undefined as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }
     : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };

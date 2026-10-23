@@ -38,7 +38,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
     // The body readers stop quietly at end of input, so a file cut off inside
     // any element shows up here as a root that never closed.
     let mut root_open = false;
-    // Unsupported constructs that had to be dropped entirely (warn the user).
+    // Notes on constructs that are kept but not interpreted; load warnings.
     let mut skipped_unsupported: Vec<String> = Vec::new();
 
     let mut section = Section::None;
@@ -83,8 +83,7 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     b"materials" if open => section = Section::Materials,
                     b"solids" if open => section = Section::Solids,
                     b"structure" if open => section = Section::Structure,
-                    // Capture the root's own attributes so the writer can
-                    // reproduce them instead of substituting a hardcoded pair.
+                    // The root's own attributes, so the writer can reproduce them.
                     b"gdml" => {
                         seen_root = true;
                         root_open = open;
@@ -279,10 +278,9 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
                     _ => {}
                 }
             }
-            // Comments are content: the user wrote them, and export used to
-            // delete every one (155 across 6 of the 10 shipped samples).
-            // `from_utf8_lossy` without unescaping, deliberately — comment bodies
-            // are not XML-escaped, so unescaping would corrupt a literal `&amp;`.
+            // Comments are content the user wrote. Read with `from_utf8_lossy`,
+            // without unescaping: comment bodies are not XML-escaped, so
+            // unescaping would corrupt a literal `&amp;`.
             Ok(Event::Comment(ref e)) => {
                 let text = String::from_utf8_lossy(e).to_string();
                 if seen_root {
@@ -337,10 +335,8 @@ pub fn parse_gdml_from_bytes(raw: &[u8], filename: String) -> Result<GdmlDocumen
         materials,
         solids,
         structure,
-        // A file may carry several <setup> blocks. Overwriting meant the LAST
-        // one won; Geant4's G4GDMLParser::Read asks for the one named "Default",
-        // so a file with an alternative setup listed after the default rendered
-        // the wrong world volume.
+        // A file may carry several <setup> blocks; G4GDMLParser::Read asks for
+        // the one named "Default".
         setup: setups
             .iter()
             .find(|s| s.name.eq_ignore_ascii_case("Default"))
@@ -518,7 +514,7 @@ fn anchor_pending_comments(
     if pending.is_empty() {
         return;
     }
-    // A section element is itself the anchor, at root level -- that is where
+    // A section element is itself the anchor, at root level: that is where
     // the comments between </materials> and <solids> belong.
     let is_section = matches!(
         tag,
@@ -1262,9 +1258,8 @@ fn read_volume_body(
                 b"auxiliary" => vol.auxiliaries.push(read_auxiliary(reader, c, open)?),
                 b"physvol" => vol.physvols.push(read_physvol_body(reader, c, open)?),
                 b"replicavol" => vol.replica = Some(read_replicavol_body(reader, c, open)?),
-                // Kept whole for the export. Falling through to the catch-all
-                // read a loop's children as the volume's own, so the wrapper
-                // vanished on save and N placements became one.
+                // Kept whole for the export; loops are expanded separately for
+                // the preview.
                 tag @ (b"loop" | b"divisionvol" | b"paramvol") => {
                     let tag = String::from_utf8_lossy(tag).to_string();
                     if tag != "loop" {
@@ -1295,10 +1290,6 @@ fn read_volume_body(
 }
 
 /// Read an `<auxiliary>` and its nested `<auxiliary>` children.
-///
-/// The one volume child whose children are themselves `<auxiliary>`, hence
-/// the recursion: the flat treatment re-parented a nested production cut onto
-/// the volume and dropped its enclosing Region entirely.
 fn read_auxiliary(reader: &mut Reader<&[u8]>, e: &BytesStart, open: bool) -> Result<Auxiliary> {
     let mut aux = Auxiliary {
         auxtype: get_attr(e, "auxtype").unwrap_or_default(),
@@ -1349,7 +1340,7 @@ fn read_physvol_body(reader: &mut Reader<&[u8]>, e: &BytesStart, open: bool) -> 
     Ok(pv)
 }
 
-// ─── Boolean solid parser ────────────────────────────────────────────────────
+// ─── Solids built from other solids ──────────────────────────────────────────
 
 fn parse_reflected_solid(e: &BytesStart, solids: &mut SolidSection) {
     solids.solids.push(Solid::Reflected(ReflectedSolidDef {
@@ -1427,24 +1418,13 @@ fn read_scaled_solid_body(
     let mut s = ScaledSolidDef {
         name: get_attr(e, "name").unwrap_or_default(),
         solid_ref: String::new(),
-        scale_x: "1".to_string(),
-        scale_y: "1".to_string(),
-        scale_z: "1".to_string(),
-        scale_ref: None,
-        scale_name: None,
+        scale: None,
     };
     for_each_child(reader, e, open, |_, c, _| {
         match c.local_name().as_ref() {
             b"solidref" => s.solid_ref = ref_attr(c),
-            b"scale" => {
-                s.scale_x = get_attr_or(c, "x", "1");
-                s.scale_y = get_attr_or(c, "y", "1");
-                s.scale_z = get_attr_or(c, "z", "1");
-                s.scale_name = get_attr(c, "name");
-            }
-            // Geant4 accepts a reference to a named <scale> here just as
-            // it does an inline one.
-            b"scaleref" => s.scale_ref = get_attr(c, "ref"),
+            b"scale" => s.scale = Some(PlacementScale::Inline(scale_from(c))),
+            b"scaleref" => s.scale = Some(PlacementScale::Ref(ref_attr(c))),
             _ => {}
         }
         Ok(())

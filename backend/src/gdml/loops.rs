@@ -17,13 +17,12 @@
 //!
 //! Names are disambiguated by brackets. Inside a loop every name goes through
 //! `G4GDMLEvaluator::SolveBrackets`, which turns `Slice[i]` into
-//! `Slice_<int(i) - 1>` — note the **one-based to zero-based** shift.
+//! `Slice_<int(i) - 1>`: note the **one-based to zero-based** shift.
 //!
 //! Expansion happens on the XML, before parsing: an iteration is the body with
 //! the loop variable replaced by its literal value, so the ordinary parser and
-//! evaluator handle the result with no per-iteration state. That also makes
-//! nesting fall out for free — an inner `<loop>` is expanded when the outer
-//! body is re-scanned.
+//! evaluator handle the result with no per-iteration state. Nesting comes for
+//! free: an inner `<loop>` is expanded when the outer body is re-scanned.
 //!
 //! This never touches the document that gets exported. It feeds a separate
 //! render document, so a save still writes the user's `<loop>` back verbatim.
@@ -83,8 +82,8 @@ fn substitute_identifier(expr: &str, var: &str, value: i64) -> String {
 /// the loop; the expansion budget bounds how many are used.
 fn iterations(from: i64, to: i64, step: i64) -> Result<impl Iterator<Item = i64>> {
     // Both guards are Geant4's (G4GDMLRead.cc:257-267). The second is
-    // unreachable in practice -- with from > to the `while (_var <= _to)` never
-    // runs -- but it is what the reference rejects, so it is rejected here.
+    // unreachable in practice (with from > to the `while (_var <= _to)` never
+    // runs), but it is what the reference rejects, so it is rejected here.
     if from < to && step <= 0 {
         bail!("<loop> from={from} to={to} step={step} would never terminate");
     }
@@ -145,10 +144,8 @@ pub fn expand_loops(xml: &str, engine: &EvalEngine) -> Result<String> {
 
 /// One pass over a fragment, expanding any loops it contains.
 ///
-/// `bindings` carries every enclosing loop's variable, outermost first. It has
-/// to be the whole chain rather than just the innermost: a nested loop's body
-/// still refers to the outer variables, and expanding the inner loop alone left
-/// them as bare identifiers the evaluator could not resolve.
+/// `bindings` carries every enclosing loop's variable, outermost first: a
+/// nested loop's body still refers to the outer variables.
 fn expand_fragment(
     xml: &str,
     engine: &EvalEngine,

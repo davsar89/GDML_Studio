@@ -143,7 +143,7 @@ fn scale_mesh(mesh: &TriangleMesh, sx: f64, sy: f64, sz: f64) -> TriangleMesh {
         }
     }
 
-    // If any scale factor is negative, winding order flips — reverse triangle winding
+    // An odd number of negative factors flips the winding; reverse it back.
     let neg_count = [sx, sy, sz].iter().filter(|&&v| v < 0.0).count();
     let mut indices = mesh.indices.clone();
     if neg_count % 2 == 1 {
@@ -212,20 +212,7 @@ fn tessellate_solid(
         }
         Solid::Scaled(ss) => {
             let inner = operand(&ss.solid_ref)?;
-            // A <scaleref> resolves against the named <scale> defines. Without this
-            // the reference fell through to the (1,1,1) defaults and the solid
-            // rendered unscaled, with nothing to indicate it.
-            let [sx, sy, sz] = match &ss.scale_ref {
-                Some(name) => *engine
-                    .scale_values
-                    .get(name)
-                    .ok_or_else(|| anyhow::anyhow!("Undefined scale '{name}'"))?,
-                None => [
-                    engine.resolve_value(&ss.scale_x),
-                    engine.resolve_value(&ss.scale_y),
-                    engine.resolve_value(&ss.scale_z),
-                ],
-            };
+            let [sx, sy, sz] = engine.resolve_scale(&ss.scale)?;
             Ok(scale_mesh(&inner, sx, sy, sz))
         }
         Solid::Reflected(rs) => {
@@ -943,7 +930,7 @@ fn tessellate_generic_polycone_solid(
     let deltaphi = resolve_delta_phi(engine, &s.deltaphi, aunit);
 
     // The rzpoints are a closed contour in the (r,z) half-plane, revolved about
-    // z -- not a list of z-planes.
+    // z, not a list of z-planes.
     Ok(revolve(
         rz_points(engine, &s.rzpoints, lunit),
         startphi,
@@ -979,10 +966,11 @@ fn tessellate_hype_solid(
     let rmax = resolve_with_lunit(engine, &s.rmax, lunit);
     let inst = resolve_opt_with_aunit(engine, &s.inst, aunit);
     let outst = resolve_opt_with_aunit(engine, &s.outst, aunit);
-    let h = resolve_with_lunit(engine, &s.z, lunit) / 2.0; // G4GDMLReadSolids.cc:778
-                                                           // G4Hype refuses a length that is not positive and rmin >= rmax. Each wall
-                                                           // is r^2 = r0^2 + z^2 tan^2(stereo); the inner one exists whenever rmin > 0
-                                                           // or inst != 0 (G4Hype::InnerSurfaceExists), a double cone when rmin = 0.
+    // The reader halves `z` (G4GDMLReadSolids.cc:778). G4Hype refuses a length
+    // that is not positive and rmin >= rmax. Each wall is
+    // r^2 = r0^2 + z^2 tan^2(stereo); the inner one exists whenever rmin > 0 or
+    // inst != 0 (G4Hype::InnerSurfaceExists), a double cone when rmin = 0.
+    let h = resolve_with_lunit(engine, &s.z, lunit) / 2.0;
     if h <= 0.0 || rmin < 0.0 || rmin >= rmax {
         return Ok(TriangleMesh::default());
     }
@@ -1002,7 +990,7 @@ fn tessellate_elcone_solid(
     segments: u32,
 ) -> Result<TriangleMesh> {
     let lunit = s.lunit.as_deref().unwrap_or("mm");
-    // dx, dy are dimensionless ratios — NOT scaled by lunit
+    // dx, dy are dimensionless ratios, NOT scaled by lunit.
     let dx = engine.resolve_value(&s.dx);
     let dy = engine.resolve_value(&s.dy);
     let zmax = resolve_with_lunit(engine, &s.zmax, lunit);

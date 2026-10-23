@@ -15,7 +15,7 @@ use std::f64::consts::PI;
 /// ```
 ///
 /// so radius grows away from the waist and reaches `r_mid / cos(twist/2)` at the
-/// ends. That is why the GDML reader offers `endinnerrad` *and* `midinnerrad` —
+/// ends. That is why the GDML reader offers `endinnerrad` *and* `midinnerrad`:
 /// they are different surfaces of the same solid.
 ///
 /// A zero twist makes `tanStereo` zero and the profile collapses to a plain

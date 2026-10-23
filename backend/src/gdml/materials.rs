@@ -32,16 +32,8 @@ pub struct NistMaterial {
 }
 
 static NIST_MATERIALS: LazyLock<Vec<NistMaterial>> = LazyLock::new(|| {
-    let data = include_str!("../../data/nist_materials.json");
-    // Fall back to an empty database rather than panicking inside a request handler
-    // if the embedded JSON ever fails to parse.
-    match serde_json::from_str(data) {
-        Ok(materials) => materials,
-        Err(e) => {
-            tracing::error!("Failed to parse embedded nist_materials.json: {}", e);
-            Vec::new()
-        }
-    }
+    serde_json::from_str(include_str!("../../data/nist_materials.json"))
+        .expect("embedded nist_materials.json parses")
 });
 
 pub fn find_nist_material(name: &str) -> Option<&'static NistMaterial> {
@@ -259,7 +251,7 @@ fn write_materials_define(
 /// Write the define items `include` selects. Shared by both blocks so the two
 /// cannot drift apart in which attributes they emit.
 ///
-/// Replays `order.define_slots` -- the order the source declared these in --
+/// Replays `order.define_slots`, the order the source declared these in,
 /// whenever it lines up with the collections (why: see
 /// `DocumentOrder::define_slots`), each preserved element after its define.
 ///
@@ -616,6 +608,20 @@ fn write_placement_rot(
     }
 }
 
+/// A placement's `<scale>`, or `<scaleref>` by reference.
+fn write_placement_scale(
+    writer: &mut Writer<Cursor<Vec<u8>>>,
+    scale: &Option<PlacementScale>,
+) -> Result<()> {
+    match scale {
+        Some(PlacementScale::Inline(s)) => {
+            write_xyz(writer, "scale", &s.name, [&s.x, &s.y, &s.z], &None)
+        }
+        Some(PlacementScale::Ref(name)) => write_ref(writer, "scaleref", name),
+        None => Ok(()),
+    }
+}
+
 fn write_solids(
     writer: &mut Writer<Cursor<Vec<u8>>>,
     solids: &SolidSection,
@@ -940,8 +946,7 @@ fn write_solids(
                 push_opt(&mut elem, "endouterrad", &t.endouterrad);
                 push_opt(&mut elem, "zlen", &t.zlen);
                 push_opt(&mut elem, "phi", &t.phi);
-                // The zlen == 0 parameterisation. Omitting these on save turned
-                // a mid-radius twistedtubs into an empty one.
+                // The zlen == 0 parameterisation.
                 push_opt(&mut elem, "midinnerrad", &t.midinnerrad);
                 push_opt(&mut elem, "midouterrad", &t.midouterrad);
                 push_opt(&mut elem, "negativeEndz", &t.negative_endz);
@@ -1054,22 +1059,7 @@ fn write_solids(
                 elem.push_attribute(("name", ss.name.as_str()));
                 writer.write_event(Event::Start(elem))?;
                 write_ref(writer, "solidref", &ss.solid_ref)?;
-                if let Some(ref r) = ss.scale_ref {
-                    // Written as a reference in the source; keep it one rather
-                    // than substituting a fabricated inline scale.
-                    write_ref(writer, "scaleref", r)?;
-                } else {
-                    let mut scale = BytesStart::new("scale");
-                    let scale_name = ss
-                        .scale_name
-                        .clone()
-                        .unwrap_or_else(|| format!("{}_scale", ss.name));
-                    scale.push_attribute(("name", scale_name.as_str()));
-                    scale.push_attribute(("x", ss.scale_x.as_str()));
-                    scale.push_attribute(("y", ss.scale_y.as_str()));
-                    scale.push_attribute(("z", ss.scale_z.as_str()));
-                    writer.write_event(Event::Empty(scale))?;
-                }
+                write_placement_scale(writer, &ss.scale)?;
                 writer.write_event(Event::End(BytesEnd::new("scaledSolid")))?;
             }
             Solid::Boolean(bs) => {
@@ -1268,18 +1258,11 @@ fn write_structure(
             }
             write_placement_pos(writer, &pv.position, "position")?;
             write_placement_rot(writer, &pv.rotation, "rotation")?;
-            match &pv.scale {
-                Some(PlacementScale::Inline(s)) => {
-                    write_xyz(writer, "scale", &s.name, [&s.x, &s.y, &s.z], &None)?
-                }
-                Some(PlacementScale::Ref(name)) => write_ref(writer, "scaleref", name)?,
-                None => {}
-            }
+            write_placement_scale(writer, &pv.scale)?;
 
             writer.write_event(Event::End(BytesEnd::new("physvol")))?;
         }
 
-        // Write replicavol if present
         if let Some(ref replica) = vol.replica {
             let mut rv = BytesStart::new("replicavol");
             rv.push_attribute(("number", replica.number.as_str()));
@@ -1310,7 +1293,7 @@ fn write_structure(
 
         // Verbatim, after the physvols. GDML places no ordering constraint
         // between placements, and Geant4 reads them in one pass, so the
-        // interleaving with <physvol> is not preserved -- the elements are.
+        // interleaving with <physvol> is not preserved; the elements are.
         for raw in &vol.preserved {
             write_raw(writer, raw)?;
         }

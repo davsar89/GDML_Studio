@@ -18,8 +18,8 @@ export default defineConfig({
     // The default `forks` pool times out waiting for its worker to respond on
     // Windows; threads start reliably.
     pool: 'threads',
-    // `globals: false` -- tests import describe/it/expect from 'vitest'
-    // explicitly, so tsconfig.app.json needs no `types` entry and `tsc -b`
+    // Tests import describe/it/expect from 'vitest' explicitly, so
+    // tsconfig.app.json needs no `vitest/globals` types entry and `tsc -b`
     // keeps type-checking the tests along with the rest of src.
     globals: false,
     setupFiles: ['./src/test/setup.ts'],

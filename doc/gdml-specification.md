@@ -1,6 +1,6 @@
 # GDML Specification Reference
 
-> Geometry Description Markup Language — Schema version 3.1.6
+> Geometry Description Markup Language, schema version 3.1.7 (as shipped in Geant4 11.4 `persistency/gdml/schema/`)
 > Sources: [CERN GDML](https://gdml.web.cern.ch/GDML/), [JeffersonLab XSD](https://github.com/JeffersonLab/gdml), [Geant4 Docs](https://geant4-userdoc.web.cern.ch/UsersGuides/ForApplicationDeveloper/html/Detector/Geometry/geomXML.html)
 
 ---
@@ -21,7 +21,7 @@
 </gdml>
 ```
 
-The five sections must appear in order: **define**, **materials**, **solids**, **structure**, **setup**.
+The schema requires the sections in this order: **define**, **materials**, **solids**, **structure**, an optional **userinfo**, then **setup**.
 
 ---
 
@@ -44,7 +44,7 @@ The five sections must appear in order: **define**, **materials**, **solids**, *
 <variable name="myvar" value="2*myconst"/>
 ```
 
-Same attributes as `constant`. Re-evaluated each time it is used (useful as loop variable).
+Same attributes as `constant`. Like a constant it is evaluated once, but a `<loop>` can change its value.
 
 ### quantity
 
@@ -75,7 +75,7 @@ Text content is the expression body. May reference other named constants/quantit
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `name` | xs:ID | — | Unique identifier |
+| `name` | xs:ID | | Unique identifier |
 | `x` | Expression | "0.0" | X coordinate |
 | `y` | Expression | "0.0" | Y coordinate |
 | `z` | Expression | "0.0" | Z coordinate |
@@ -97,7 +97,7 @@ Same structure as position. Default unit is `"rad"`.
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `name` | xs:ID | — | Unique identifier |
+| `name` | xs:ID | | Unique identifier |
 | `x` | Expression | "1.0" | X scale factor |
 | `y` | Expression | "1.0" | Y scale factor |
 | `z` | Expression | "1.0" | Z scale factor |
@@ -122,9 +122,11 @@ Same structure as position. Default unit is `"rad"`.
 </loop>
 ```
 
+Geant4 reads a loop inside `<solids>`, `<structure>`, a `<volume>` or a `<paramvol>`, not inside `<define>` (`G4GDMLRead::LoopRead` callers).
+
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `for` | string | Loop variable name |
+| `for` | string | Name of a defined `<variable>` (anything else is fatal) |
 | `from` | int | Start value |
 | `to` | Expression | End value |
 | `step` | positive int | Increment |
@@ -176,7 +178,7 @@ Two forms:
 
 Three forms:
 
-**Form 1 — Single element:**
+**Form 1, single element:**
 ```xml
 <material Z="7" name="Nitrogen" formula="N">
   <D value="0.00125"/>
@@ -184,7 +186,7 @@ Three forms:
 </material>
 ```
 
-**Form 2 — Composite by atom count:**
+**Form 2, composite by atom count:**
 ```xml
 <material name="Water" formula="H2O">
   <D value="1.0"/>
@@ -193,7 +195,7 @@ Three forms:
 </material>
 ```
 
-**Form 3 — Fractional mixture:**
+**Form 3, fractional mixture:**
 ```xml
 <material name="Air">
   <D value="0.0012"/>
@@ -214,16 +216,16 @@ Three forms:
 | Element | Description | Default Unit |
 |---------|-------------|-------------|
 | `<D value="..." unit="..."/>` | Density | g/cm3 |
-| `<Dref ref="..."/>` | Reference to named density | — |
+| `<Dref ref="..."/>` | Reference to named density | |
 | `<atom value="..." unit="..."/>` | Atomic mass | g/mole |
-| `<composite n="2" ref="..."/>` | Element by atom count | — |
-| `<fraction n="0.7" ref="..."/>` | Mass fraction | — |
+| `<composite n="2" ref="..."/>` | Element by atom count | |
+| `<fraction n="0.7" ref="..."/>` | Mass fraction | |
 | `<T value="..." unit="..."/>` | Temperature | K |
 | `<P value="..." unit="..."/>` | Pressure | pascal |
 | `<MEE value="..." unit="..."/>` | Mean excitation energy | eV |
-| `<RL value="..." unit="..."/>` | Radiation length | cm |
-| `<AL value="..." unit="..."/>` | Absorption length | cm |
-| `<property name="..." ref="..."/>` | Material property (references matrix) | — |
+| `<RL value="..." unit="..."/>` | Radiation length (schema only; Geant4 ignores it) | cm |
+| `<AL value="..." unit="..."/>` | Absorption length (schema only; Geant4 ignores it) | cm |
+| `<property name="..." ref="..."/>` | Material property (references matrix) | |
 
 ---
 
@@ -231,7 +233,7 @@ Three forms:
 
 All solids have a required `name` attribute (xs:ID). Most accept `lunit` (default `"mm"`) and `aunit` (default `"rad"`).
 
-**Important:** GDML dimensions are **full lengths**, not half-lengths. The Geant4 GDML reader divides by 2 internally for solids that use half-lengths (e.g., G4Box).
+**Important:** the lengths of box, tube, cutTube, cone, trd, trap, para, hype and the twisted solids (`x`, `y`, `z`, `x1`...`x4`, `y1`, `y2`, twistedtubs `zlen`) are **full lengths**; the Geant4 reader halves them. eltube, paraboloid and arb8 take half-lengths (`dx`, `dy`, `dz`) and ellipsoid semi-axes, passed through unchanged.
 
 ### 4.1 box
 
@@ -367,7 +369,7 @@ Full solid sphere. Only attribute: `r` (outer radius).
 | Attribute | Description |
 |-----------|-------------|
 | `x`, `y`, `z` | Lengths along axes |
-| `alpha` | Angle of Y-axis and the side in the Y-Z plane |
+| `alpha` | Angle between the Y axis and the line joining the centres of the -y and +y faces |
 | `theta` | Polar angle of line joining face centers |
 | `phi` | Azimuthal angle of that line |
 
@@ -414,8 +416,10 @@ Same as genericPolycone plus `numsides` attribute.
 | `ax` | Semi-axis along X |
 | `by` | Semi-axis along Y |
 | `cz` | Semi-axis along Z |
-| `zcut1` | Lower cut plane (optional) |
-| `zcut2` | Upper cut plane (optional) |
+| `zcut1` | Lower cut plane (default 0) |
+| `zcut2` | Upper cut plane (default 0) |
+
+Both 0 means uncut; omitting only one puts that cut at z = 0 (`G4Ellipsoid::CheckParameters`).
 
 ### 4.16 eltube (elliptical tube)
 
@@ -423,7 +427,7 @@ Same as genericPolycone plus `numsides` attribute.
 <eltube name="myeltube" dx="10" dy="15" dz="20" lunit="mm"/>
 ```
 
-`dx`, `dy`: half-lengths of X/Y semi-axes. `dz`: half-length in Z.
+`dx`, `dy`: X/Y semi-axes. `dz`: half-length in Z.
 
 ### 4.17 elcone (elliptical cone)
 
@@ -431,7 +435,7 @@ Same as genericPolycone plus `numsides` attribute.
 <elcone name="myelcone" dx="2" dy="3" zmax="20" zcut="15" lunit="mm"/>
 ```
 
-`dx`, `dy`: semi-axis scaling factors. `zmax`: apex height. `zcut`: upper Z cut.
+`dx`, `dy`: dimensionless semi-axis slopes (not scaled by `lunit`). `zmax`: apex height. `zcut`: the solid is cut at z = ±`zcut`.
 
 ### 4.18 hype (hyperbolic tube)
 
@@ -496,7 +500,7 @@ Vertices reference positions. `type`: `ABSOLUTE` (default) or `RELATIVE`. Vertic
 **twistedbox**: `PhiTwist`, `x`, `y`, `z`
 **twistedtrd**: `PhiTwist`, `x1`, `x2`, `y1`, `y2`, `z`
 **twistedtrap**: `PhiTwist`, `z`, `Theta`, `Phi`, `y1`, `x1`, `x2`, `y2`, `x3`, `x4`, `Alph`
-**twistedtubs**: `twistedangle`, `endinnerrad`, `endouterrad`, `zlen`, `phi`
+**twistedtubs**: `twistedangle`, `endinnerrad`, `endouterrad`, `zlen`, `phi` (Geant4 also reads `midinnerrad`/`midouterrad`, `negativeEndz`/`positiveEndz`, and `nseg` with `totphi`)
 
 ### 4.25 Boolean Solids
 
@@ -572,40 +576,13 @@ Position/rotation define the placement of the second solid in the first solid's 
 
 **Type values:** `dielectric_metal`, `dielectric_dielectric`, `dielectric_LUT`, `dielectric_LUTDAVIS`, `dielectric_dichroic`, `firsov`, `x_ray`
 
-**Finish values (the 30 non-LUT ones; Geant4 10.7 also accepts the DAVIS `*_LUT` finishes):**
+**Finish values:**
 
-| Finish | Description |
-|--------|-------------|
-| `polished` | Smooth perfectly polished |
-| `polishedfrontpainted` | Polished, front painted |
-| `polishedbackpainted` | Polished, back painted |
-| `ground` | Rough surface |
-| `groundfrontpainted` | Rough, front painted |
-| `groundbackpainted` | Rough, back painted |
-| `polishedlumirrorair` | Polished + Lumirror (air) |
-| `polishedlumirrorglue` | Polished + Lumirror (glue) |
-| `polishedair` | Polished + air gap |
-| `polishedteflonair` | Polished + Teflon (air) |
-| `polishedtioair` | Polished + TiO2 paint (air) |
-| `polishedtyvekair` | Polished + Tyvek (air) |
-| `polishedvm2000air` | Polished + VM2000/ESR (air) |
-| `polishedvm2000glue` | Polished + VM2000/ESR (glue) |
-| `etchedlumirrorair` | Etched + Lumirror (air) |
-| `etchedlumirrorglue` | Etched + Lumirror (glue) |
-| `etchedair` | Etched + air gap |
-| `etchedteflonair` | Etched + Teflon (air) |
-| `etchedtioair` | Etched + TiO2 paint (air) |
-| `etchedtyvekair` | Etched + Tyvek (air) |
-| `etchedvm2000air` | Etched + VM2000/ESR (air) |
-| `etchedvm2000glue` | Etched + VM2000/ESR (glue) |
-| `groundlumirrorair` | Ground + Lumirror (air) |
-| `groundlumirrorglue` | Ground + Lumirror (glue) |
-| `groundair` | Ground + air gap |
-| `groundteflonair` | Ground + Teflon (air) |
-| `groundtioair` | Ground + TiO2 paint (air) |
-| `groundtyvekair` | Ground + Tyvek (air) |
-| `groundvm2000air` | Ground + VM2000/ESR (air) |
-| `groundvm2000glue` | Ground + VM2000/ESR (glue) |
+- `polished`, `polishedfrontpainted`, `polishedbackpainted`, `ground`, `groundfrontpainted`, `groundbackpainted`
+- LUT model: `polished`, `etched` or `ground` followed by one of `lumirrorair`, `lumirrorglue`, `air`, `teflonair`, `tioair`, `tyvekair`, `vm2000air`, `vm2000glue` (e.g. `groundtyvekair`)
+- DAVIS model: `Rough_LUT`, `RoughTeflon_LUT`, `RoughESR_LUT`, `RoughESRGrease_LUT`, `Polished_LUT`, `PolishedTeflon_LUT`, `PolishedESR_LUT`, `PolishedESRGrease_LUT`
+
+The reader also accepts each enum's integer value; an unknown `model` becomes `dichroic` and an unknown `type` becomes `x_ray`.
 
 ---
 
@@ -646,7 +623,7 @@ Required children: `<materialref>`, `<solidref>`. Optional: `<physvol>`, `<divis
 | `<file name="..." volname="..."/>` | External GDML file inclusion |
 | `<position .../>` or `<positionref .../>` | Placement position |
 | `<rotation .../>` or `<rotationref .../>` | Placement rotation |
-| `<scale .../>` or `<scaleref .../>` | Placement scale |
+| `<scale .../>` or `<scaleref .../>` | Reflection: only components of ±1 take effect; Geant4 drops any other positive scale and refuses a scaled reflection (`G4ReflectionFactory::Place`) |
 
 ### assembly
 
@@ -687,7 +664,7 @@ Groups volumes without a boundary solid. No `materialref`/`solidref`. Cannot be 
 </auxiliary>
 ```
 
-Common `auxtype` values: `SensDet`, `Color`, `Region`, `gamcut`, `ecut`, `poscut`, `protoncut`, `StepLimit`, `EField`, `MagField`.
+`auxtype` is free text the application interprets. Geant4's writer emits only `SensDet` and the `gammaECut`/`electronECut`/`positronECut`/`protonECut` production cuts; Geant4 example G01 reads `Region` with `volume`, `gamcut`, `ecut`, `poscut`, `pcut` children. GDML Studio colours a volume from a `Color` auxiliary.
 
 ---
 
@@ -730,7 +707,7 @@ Axis values: `kXAxis`, `kYAxis`, `kZAxis`, `kRho`, `kPhi`.
 </paramvol>
 ```
 
-Dimension types: `box_dimensions`, `tube_dimensions`, `cone_dimensions`, `sphere_dimensions`, `orb_dimensions`, `torus_dimensions`, `para_dimensions`, `hype_dimensions`, `trap_dimensions`, `trd_dimensions`, `polycone_dimensions`, `polyhedra_dimensions`.
+Dimension types: `box_dimensions`, `tube_dimensions`, `cone_dimensions`, `sphere_dimensions`, `orb_dimensions`, `torus_dimensions`, `ellipsoid_dimensions`, `para_dimensions`, `hype_dimensions`, `trap_dimensions`, `trd_dimensions`, `polycone_dimensions`, `polyhedra_dimensions`.
 
 ---
 

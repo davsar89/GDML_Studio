@@ -1,22 +1,21 @@
 //! Round-trip fidelity harness.
 //!
 //! GDML Studio can export the document it loaded, so anything the parser drops
-//! is deleted from the user's file. `parser.rs` had no unit tests, so this
-//! exists to make changes to it safe.
+//! is deleted from the user's file.
 //!
 //! Three levels, cheapest first:
 //!
-//! 1. **Idempotence** — `parse → serialize → parse → serialize` must be
+//! 1. **Idempotence**: `parse → serialize → parse → serialize` must be
 //!    byte-identical. Catches non-determinism (HashMap iteration order leaking
 //!    into output) and constructs that survive one trip but not two. It
 //!    deliberately does *not* compare against the source: the writer legitimately
 //!    re-indents and normalises attribute order.
 //!
-//! 2. **Normalised-XML equality** — one token per XML event, attributes sorted,
+//! 2. **Normalised-XML equality**: one token per XML event, attributes sorted,
 //!    whitespace and `<x/>` vs `<x></x>` erased, everything semantic kept. One
 //!    assertion covers a whole class of drops at once.
 //!
-//! 3. **Corpus loss detection** — over every shipped sample, every element and
+//! 3. **Corpus loss detection**: over every shipped sample, every element and
 //!    attribute present in the source must still be present in the export. Weaker
 //!    than level 2 (it tolerates additions and reordering) but it runs against
 //!    real files with no hand-written expectations, so it catches drops in
@@ -27,7 +26,7 @@ use std::path::{Path, PathBuf};
 
 use gdml_studio_backend::eval::engine::EvalEngine;
 use gdml_studio_backend::gdml::materials::serialize_gdml;
-use gdml_studio_backend::gdml::model::Solid;
+use gdml_studio_backend::gdml::model::{PlacementScale, Solid};
 use gdml_studio_backend::gdml::parser::parse_gdml_from_bytes;
 
 use gdml_studio_backend::mesh::tessellator::tessellate_all_solids;
@@ -286,7 +285,7 @@ fn comments_survive_at_every_depth() {
 #[test]
 fn comment_bodies_are_not_escaped() {
     // Comment content is not XML-escaped, so it must not be unescaped on read
-    // nor escaped on write -- `BytesText::new` would turn `<` into `&lt;`.
+    // nor escaped on write: `BytesText::new` would turn `<` into `&lt;`.
     // Commented-out markup is common in real files: fermi_simple_elements_
     // satellite.gdml has 11 commented-out <auxiliary/> elements.
     let src = doc_with(
@@ -306,10 +305,9 @@ fn comment_bodies_are_not_escaped() {
 
 #[test]
 fn non_self_closed_leaf_children_are_read() {
-    // Seven body readers matched Event::Empty only, so `<zplane ...></zplane>`
-    // — legal XML that a DOM serialiser will happily emit — was silently
-    // skipped, leaving e.g. a polycone with zero z-planes and no warning.
-    // These children are schema leaves, so `for_each_child` hands Start and
+    // `<zplane ...></zplane>` is legal XML that a DOM serialiser will happily
+    // emit; skipping it would leave e.g. a polycone with zero z-planes. These
+    // children are schema leaves, so `for_each_child` hands Start and
     // Empty to the reader alike: its End arm is name-guarded on the parent, so
     // the child's own closing tag is ignored.
     let cases: &[(&str, &str, usize)] = &[
@@ -372,7 +370,10 @@ fn non_self_closed_leaf_children_are_read() {
             // solidref + scale: the ref must be non-empty and the scale applied.
             Solid::Scaled(s) => {
                 assert_eq!(s.solid_ref, "WorldBox", "{kind}: solidref lost");
-                assert_eq!(s.scale_x, "2", "{kind}: scale lost");
+                assert!(
+                    matches!(&s.scale, Some(PlacementScale::Inline(sc)) if sc.x.as_deref() == Some("2")),
+                    "{kind}: scale lost"
+                );
                 2
             }
             other => panic!("{kind}: unexpected variant {other:?}"),
@@ -387,11 +388,8 @@ fn non_self_closed_leaf_children_are_read() {
 
 #[test]
 fn loop_is_re_emitted_in_its_own_section() {
-    // <loop> is legal in <define>, <solids> and <structure>. The writer inferred
-    // the section from the tag name alone and always chose <define>, so a loop
-    // in solids or structure came back nested inside <define> — a file Geant4
-    // will not load. The user-facing warning meanwhile claimed the element was
-    // "preserved on save".
+    // <loop> is legal in <define>, <solids> and <structure>. A loop in solids
+    // or structure written back inside <define> is a file Geant4 will not load.
     let src = doc_with(
         r#"    <loop for="i" to="3" step="1"><box name="looped" x="1" y="1" z="1"/></loop>"#,
         r#"    <loop for="j" to="2" step="1"><volume name="LV"><materialref ref="Vacuum"/><solidref ref="WorldBox"/></volume></loop>"#,
@@ -423,9 +421,8 @@ fn loop_is_re_emitted_in_its_own_section() {
 
 #[test]
 fn optical_material_properties_survive() {
-    // <property> is how an optical material binds a named <matrix>. Dropping
-    // these removed every optical property from the file while leaving the
-    // matrices they referenced behind — a silently non-functional export.
+    // <property> is how an optical material binds a named <matrix>; without it
+    // the export keeps the matrices but no optical property.
     let src = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gdml>
   <define/>
@@ -484,10 +481,8 @@ fn optical_material_properties_survive() {
 
 #[test]
 fn named_default_setup_wins_over_the_last_one() {
-    // G4GDMLParser::Read asks for the setup named "Default". Overwriting on each
-    // <setup> meant the last one won, so a file listing an alternative setup
-    // after the default rendered the wrong world volume — and the alternative
-    // was deleted on save either way.
+    // G4GDMLParser::Read asks for the setup named "Default", wherever it is
+    // listed, and the alternative must survive a save.
     let src = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gdml>
   <define/>
@@ -521,9 +516,7 @@ fn named_default_setup_wins_over_the_last_one() {
 #[test]
 fn scaleref_is_resolved_and_not_rewritten() {
     // Geant4 accepts <scaleref> in a <scaledSolid> as readily as an inline
-    // <scale>. Only the inline form was handled, so a scaleref fell through to
-    // the (1,1,1) defaults — an unscaled render — and was then rewritten on
-    // export as a fabricated inline scale, corrupting the file too.
+    // <scale>. It must scale the render and be written back as a reference.
     let src = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gdml>
   <define>
@@ -572,7 +565,7 @@ fn scaleref_is_resolved_and_not_rewritten() {
 
 #[test]
 fn doctype_survives_and_entities_are_reported() {
-    // The declaration must round-trip -- losing it permanently breaks any file
+    // The declaration must round-trip: losing it permanently breaks any file
     // that uses entity-based includes. References are deliberately not expanded
     // (see the parser), so the user is told rather than left with silent zeros.
     let src = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -615,7 +608,7 @@ fn doctype_survives_and_entities_are_reported() {
 #[test]
 fn external_entity_is_refused_loudly() {
     // Resolving a SYSTEM entity server-side on an upload endpoint is XXE. The
-    // file still loads -- it is mostly renderable -- but the omission is stated.
+    // file still loads (it is mostly renderable), but the omission is stated.
     let src = r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE gdml [<!ENTITY sub SYSTEM "sub.gdml">]>
 <gdml>
@@ -651,7 +644,7 @@ fn export_is_idempotent_across_the_corpus() {
 
         assert_eq!(
             once, twice,
-            "{name}: export is not idempotent — a second round trip changed the bytes. \
+            "{name}: export is not idempotent: a second round trip changed the bytes. \
              Usually non-deterministic ordering, or a construct that survives one trip \
              but not two."
         );
@@ -694,9 +687,8 @@ fn export_drops_nothing_from_the_corpus() {
 fn nested_materials_define_stays_in_materials() {
     // GDML allows a <define> inside <materials>; BgoDetModel and
     // NaiDetModelWithMLI both use one for universe_mean_density. Defines are
-    // global wherever they sit, so everything is parsed into one list -- but
-    // folding them all into the top-level block on save rewrote the file's
-    // shape, which was the corpus detector's last standing exemption.
+    // global wherever they sit, so everything is parsed into one list, but a
+    // save must keep the nested ones where they were.
     let src = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gdml>
   <define>
@@ -720,9 +712,7 @@ fn nested_materials_define_stays_in_materials() {
 
     let doc = parse_gdml_from_bytes(src.as_bytes(), "t.gdml".to_string()).unwrap();
 
-    // A <constant> in the nested block used to be dropped outright: the parser
-    // only accepted <quantity> there, and every other arm required the
-    // top-level section.
+    // Every define kind is read in the nested block, not only <quantity>.
     assert!(
         doc.defines
             .constants
@@ -804,7 +794,7 @@ fn defines_are_emitted_in_source_order() {
     // G4GDMLReadDefine::DefineRead walks the <define> children once, in document
     // order, and evaluates each `value` inline as it reads it
     // (G4GDMLReadDefine.cc:602 and :204). Emitting the collections one type at a
-    // time -- every constant, then every quantity, ... -- can therefore put a
+    // time (every constant, then every quantity, ...) can therefore put a
     // define ahead of one it references and produce a file Geant4 refuses to
     // load, which this project's own evaluator never notices because
     // `evaluate_all` sorts topologically.
@@ -920,10 +910,8 @@ fn twistedtubs_mid_radius_attributes_survive() {
 
 #[test]
 fn a_loop_inside_a_volume_survives_a_save() {
-    // The <loop> start tag used to be unhandled inside a volume body, so the
-    // parser read its children as if they were direct children of the volume:
-    // the wrapper vanished on save and N placements collapsed to one. Saving
-    // such a file silently deleted geometry.
+    // A loop's children are not the volume's own: read as such, the wrapper
+    // would vanish on save and N placements collapse to one.
     let src = doc_with(
         "",
         r#"    <volume name="Inner">
@@ -978,10 +966,8 @@ fn a_loop_inside_a_volume_survives_a_save() {
 
 #[test]
 fn malformed_multiunion_is_a_parse_error() {
-    // The multiUnion readers matched `_ => {}` on every event, errors included,
-    // and discarded `read_to_end` failures. A mismatched end tag inside a node
-    // loaded without a word -- in the second case as a node whose solid
-    // reference is silently empty. Geant4's XML parser rejects both files.
+    // A mismatched end tag inside a node must be an error, not a node whose
+    // solid reference is silently empty. Geant4's XML parser rejects both files.
     for node in [
         r#"<solid ref="WorldBox"/><position name="p" x="1"></rotation>"#,
         r#"<solid>WorldBox</solidx><position name="p" x="1"/>"#,

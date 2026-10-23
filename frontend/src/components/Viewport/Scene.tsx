@@ -4,7 +4,7 @@ import MeshObject from './MeshObject';
 import { useAppStore } from '../../store';
 import type { SceneNode } from '../../store/types';
 
-/** Replace NaN/Inf with 0 so a malformed coordinate can't poison the scene graph. */
+/** Replace a non-finite coordinate (JSON null) with 0 so it can't poison the scene graph. */
 const finite = (v: number): number => (Number.isFinite(v) ? v : 0);
 
 // Bright fallback palette for materials without density info
@@ -30,7 +30,6 @@ const PALETTE = [
 /** Map material density (g/cm³) to an HSL color.
  *  Light materials → cool bright colors, heavy → warm dark colors. */
 function densityToColor(density: number): string {
-  // Clamp density to a useful range
   const d = Math.max(0.001, Math.min(density, 22));
   // Use log scale: ln(0.001)≈-6.9, ln(22)≈3.1 → normalize to 0..1
   const t = (Math.log(d) - (-6.9)) / (3.1 - (-6.9)); // 0 = ultra-light, 1 = ultra-heavy
@@ -45,9 +44,9 @@ function densityToColor(density: number): string {
     hue = 360 - ((t - 0.8) / 0.2) * 80; // 360 → 280
   }
 
-  // Saturation: 60% to 75% — vivid colors
+  // Saturation: 60% to 75%, for vivid colors
   const sat = 60 + t * 15;
-  // Lightness: 75% for lightest down to 50% for heaviest — always bright enough
+  // Lightness: 75% for the lightest down to 50% for the heaviest, always bright enough
   const light = 75 - t * 25;
 
   return `hsl(${Math.round(hue)}, ${Math.round(sat)}%, ${Math.round(light)}%)`;
@@ -111,11 +110,11 @@ const SceneNodeGroup = memo(({ node, depth, maxDepth }: { node: SceneNode; depth
   const color = materialColor(node.material_name, node.color, node.density);
 
   // Skip world volume mesh (usually huge bounding sphere/box) but render children
-  const skipMesh = node.is_world || !meshData || isHidden;
+  const showMesh = !node.is_world && !isHidden;
 
   return (
     <group position={position} rotation={euler} scale={node.scale}>
-      {!skipMesh && meshData && (
+      {showMesh && meshData && (
         <MeshObject
           meshData={meshData}
           color={color}
@@ -127,8 +126,8 @@ const SceneNodeGroup = memo(({ node, depth, maxDepth }: { node: SceneNode; depth
           maxDepth={maxDepth}
         />
       )}
-      {node.children.map((child, i) => (
-        <SceneNodeGroup key={child.instance_id || `${child.volume_name}-${i}`} node={child} depth={depth + 1} maxDepth={maxDepth} />
+      {node.children.map((child) => (
+        <SceneNodeGroup key={child.instance_id} node={child} depth={depth + 1} maxDepth={maxDepth} />
       ))}
     </group>
   );

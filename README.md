@@ -1,8 +1,8 @@
 # GDML Studio
 
-> **Early-stage project** — This is a fresh prototype under active development. It likely does not fully work yet. Expect rough edges, missing features, and bugs. Contributions and bug reports are welcome.
+> **Early-stage project.** This is a fresh prototype under active development. It likely does not fully work yet. Expect rough edges, missing features, and bugs. Contributions and bug reports are welcome.
 
-A lightweight desktop tool for viewing [GDML](https://gdml.web.cern.ch/GDML/) (Geometry Description Markup Language) detector geometry files. GDML is the standard geometry format used by [Geant4](https://geant4.web.cern.ch/) and other particle-physics simulation frameworks. GDML Studio lets you quickly inspect these geometries without launching a full Geant4 session — it parses the GDML XML, evaluates expressions and units, tessellates solids into triangle meshes, and renders the 3D scene in a desktop window (or a browser).
+A lightweight desktop tool for viewing [GDML](https://gdml.web.cern.ch/GDML/) (Geometry Description Markup Language) detector geometry files. GDML is the standard geometry format used by [Geant4](https://geant4.web.cern.ch/) and other particle-physics simulation frameworks. GDML Studio lets you quickly inspect these geometries without launching a full Geant4 session: it parses the GDML XML, evaluates expressions and units, tessellates solids into triangle meshes, and renders the 3D scene in a desktop window (or a browser).
 
 <p align="center">
   <img src="screen_example.jpg" alt="GDML Studio screenshot" width="700">
@@ -57,8 +57,8 @@ backend's port, so the same session can also be opened in a browser for debuggin
 
 ## Prerequisites
 
-- **Rust** stable toolchain — [install via rustup](https://rustup.rs/)
-- **Node.js** v20.19+ or v22.12+, and **npm** — [install from nodejs.org](https://nodejs.org/)
+- **Rust** stable toolchain ([install via rustup](https://rustup.rs/))
+- **Node.js** v20.19+ or v22.12+, and **npm** ([install from nodejs.org](https://nodejs.org/))
   (required by Vite 7; on Node 18 `npm install` only warns and the dev server then fails)
 
 ## Quick Start
@@ -114,11 +114,11 @@ Open the Vite URL in your browser, click **Open File(s)**, and select a `.gdml` 
 
 The **Materials** tab in the left panel lists all materials and elements defined in the loaded GDML file. Select a material to edit its properties:
 
-- **Density** — edit the numeric value and choose a unit (g/cm3, kg/m3, mg/cm3)
-- **Formula** — set or clear the chemical formula
-- **Z** — set or clear the atomic number (for simple materials)
-- **Components** — add or remove element or material references with fraction or composite weights
-- **Name** — rename the material and update its references
+- **Density**: edit the numeric value and choose a unit (g/cm3, kg/m3, mg/cm3)
+- **Formula**: set or clear the chemical formula
+- **Z**: set or clear the atomic number (for simple materials)
+- **Components**: add or remove element or material references with fraction or composite weights
+- **Name**: rename the material and update its references
 
 Use **NIST Material Lookup** to prepare a material from the built-in database of 309 Geant4 predefined materials. Fields, composition, renaming, and any missing NIST elements stay in a draft until **Apply** commits them together. **Cancel** restores the last applied material. Invalid edits remain in the editor for correction.
 
@@ -133,11 +133,11 @@ overwrite the original file. Cancelling the dialog saves nothing and the documen
 stays marked unsaved. Closing the window with unsaved changes asks first.
 
 In a **browser**, the toolbar provides two export options. Both **download** a GDML file through
-the browser — neither writes to the file you opened, and the backend never
+the browser; neither writes to the file you opened, and the backend never
 touches your filesystem. Your original file on disk is left untouched.
 
-- **Save** — downloads the current document under its filename (the opened file's, or the last Save As name)
-- **Save As** — same, but prompts for the filename first
+- **Save**: downloads the current document under its filename (the opened file's, or the last Save As name)
+- **Save As**: same, but prompts for the filename first
 
 Save and material selection resolve pending drafts with **Apply / Discard / Cancel**.
 Opening another file also asks **Save / Discard / Cancel** for applied changes that
@@ -154,6 +154,9 @@ file over it yourself.
 Geometry expressions use real-valued arithmetic (`1/2` is `0.5`). Declared length
 and angle units apply after expression evaluation, as in Geant4; a ratio of two
 length quantities is therefore still multiplied by the attribute's `lunit`.
+Every solid Geant4 reads from GDML is drawn, as are assemblies and reflected
+placements. `<divisionvol>`, `<paramvol>` and optical surfaces are kept on save but
+not drawn; the load warnings list anything of that kind.
 Saving a multi-file geometry writes one self-contained file. Where modules define
 a name differently, the main file's definition is kept, as the load warnings say.
 
@@ -182,11 +185,11 @@ npm run smoke                                          # repo build
 npm run smoke -- "dist/win-unpacked/GDML Studio.exe"   # packaged build (Linux: dist/linux-unpacked/gdml-studio)
 ```
 
-Use `tsc -b`, not `tsc --noEmit` — see [`frontend/README.md`](frontend/README.md#checks).
+Use `tsc -b`, not `tsc --noEmit`; see [`frontend/README.md`](frontend/README.md#checks).
 
 Frontend tests run under Vitest in jsdom. In `Viewport/` they cover only the
-WebGL-free helpers (`snapUtils`, `geometryCache`) — three.js rendering needs a
-WebGL context jsdom does not provide — so the 3D rendering path is still only
+WebGL-free helpers (`snapUtils`, `geometryCache`), since three.js rendering needs a
+WebGL context jsdom does not provide, so the 3D rendering path is still only
 verified by loading a file in the browser.
 
 ## License

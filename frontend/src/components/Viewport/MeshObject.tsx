@@ -56,12 +56,10 @@ export default function MeshObject({ meshData, color, selected, name, instanceId
         if (e.delta > 2) return;
         e.stopPropagation();
         e.nativeEvent.preventDefault();
-        e.nativeEvent.stopImmediatePropagation?.();
+        e.nativeEvent.stopImmediatePropagation();
         const store = useAppStore.getState();
         store.setSelectedVolume(name);
-        const nativeX = e.nativeEvent.clientX;
-        const nativeY = e.nativeEvent.clientY;
-        store.openContextMenu(nativeX, nativeY, [
+        store.openContextMenu(e.nativeEvent.clientX, e.nativeEvent.clientY, [
           {
             label: store.hiddenInstances.has(instanceId) ? 'Show' : 'Hide',
             action: () => useAppStore.getState().toggleInstanceVisibility(instanceId),

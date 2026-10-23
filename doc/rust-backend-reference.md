@@ -14,7 +14,7 @@ use axum::{Router, routing::{get, post}, extract::State};
 
 let app = Router::new()
     .route("/users", get(list_users).post(create_user))
-    .route("/users/{id}", get(get_user))     // 0.8 uses {id} not :id
+    .route("/users/{id}", get(get_user))
     .nest("/api", api_router)
     .with_state(app_state);
 ```
@@ -23,8 +23,8 @@ let app = Router::new()
 
 | Extractor | Purpose | Notes |
 |-----------|---------|-------|
-| `State<T>` | App state | Type must match `with_state` |
-| `Json<T>` | JSON body | Must be **last** parameter |
+| `State<T>` | App state | `T` is the `with_state` type or derived from it via `FromRef` |
+| `Json<T>` | JSON body | Consumes the body, so it must be the last extractor |
 | `Path<T>` | URL path params | `Path<(String, u32)>` for multiple |
 | `Query<T>` | Query string | `T: Deserialize` |
 | `Multipart` | File uploads | Feature: `multipart` |
@@ -42,7 +42,7 @@ let app = Router::new()
     .layer(DefaultBodyLimit::max(10 * 1024 * 1024))  // 10MB
     .layer(CorsLayer::permissive());
 
-// ServeDir for static files (0.8: use nest_service, not get_service)
+// ServeDir for static files (nest_service at "/" panics in 0.8; use fallback_service)
 app.nest_service("/assets", ServeDir::new("./assets"))
    .fallback_service(ServeDir::new("./dist"));
 ```
@@ -67,9 +67,8 @@ impl IntoResponse for AppError {
 ### Gotchas
 
 - **0.8 path syntax:** `{param}` not `:param`
-- **`get_service` removed** — use `nest_service()` or `fallback_service()`
+- **Nesting at the root panics in 0.8:** `nest("/", ..)` and `nest_service("/", ..)`; use `merge` or `fallback_service`
 - **Layer ordering:** last `.layer()` is outermost middleware (runs first on request)
-- **State type mismatch:** `with_state` type must exactly match `State<T>` extractor type
 
 ---
 
@@ -88,10 +87,10 @@ let mut buf = Vec::new();
 loop {
     match reader.read_event_into(&mut buf) {
         Ok(Event::Start(e)) => {
-            let tag = e.local_name().as_ref();  // &[u8]
+            let tag = e.local_name();  // compare tag.as_ref() with b"box"
             for attr in e.attributes().flatten() {
                 let key = attr.key.as_ref();                    // &[u8]
-                let val = String::from_utf8_lossy(&attr.value); // Cow<str>
+                let val = String::from_utf8_lossy(&attr.value); // raw: entities NOT decoded
             }
         }
         Ok(Event::End(e)) => { /* closing tag */ }
@@ -107,11 +106,11 @@ loop {
 
 ### Key Points
 
-- **No external entity support** — does NOT resolve DTD or external SYSTEM entities (safe against XXE)
-- **Only 5 built-in entities:** `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`
-- **Almost zero-copy** design using `Cow` references
+- **No external entity support:** does NOT resolve DTD or external SYSTEM entities (safe against XXE)
+- **Unescaping knows only the 5 predefined entities** (`&amp;`, `&lt;`, `&gt;`, `&quot;`, `&apos;`) and character references
+- **Attribute values are not unescaped for you.** With the `encoding` feature (on in this crate) `unescape_value()` is compiled out; use `decode_and_unescape_value(reader.decoder())` or `quick_xml::escape::unescape` (as `gdml/parser.rs` does)
 - **Buffer reuse** with `read_event_into` is critical for performance
-- **Tag names are `&[u8]`** — compare with `b"tagname"`
+- **Tag names are `&[u8]`:** compare with `b"tagname"`
 - **`Event::Empty`** for self-closing tags (`<br/>`) by default
 
 ---
@@ -161,11 +160,11 @@ let v = json!({ "key": value, "list": [1, 2, 3] });
 
 ### Performance Tips
 
-- **`from_slice` > `from_reader`** — can reference input directly
+- **`from_slice` > `from_reader`:** can reference input directly
 - Deserialize into typed structs, not `Value` intermediaries
 - `untagged` enums are slow (tries each variant)
 - `flatten` buffers entire object internally
-- `#[serde(borrow)]` on `&str` enables zero-copy
+- `&'a str` fields borrow from the input; `Cow<'a, str>` needs `#[serde(borrow)]` to do so
 
 ---
 
@@ -179,13 +178,13 @@ use evalexpr::*;
 let result = eval("1 + 2 * 3")?;           // Value::Int(7)
 let f = eval_float("3.14 * 2.0")?;         // 6.28
 
-// Context with variables
-let mut ctx = HashMapContext::new();
-ctx.set_value("x".into(), Value::from(10))?;
+// Context with variables (v12+: numeric types are a type parameter)
+let mut ctx = HashMapContext::<DefaultNumericTypes>::new();
+ctx.set_value("x".into(), Value::from_int(10))?;
 let result = eval_with_context("x * 2 + 1", &ctx)?;
 
 // Pre-compiled (parse once, eval many)
-let tree = build_operator_tree("x * 2 + y")?;
+let tree = build_operator_tree::<DefaultNumericTypes>("x * 2 + y")?;
 tree.eval_with_context(&ctx)?;
 ```
 
@@ -193,7 +192,7 @@ tree.eval_with_context(&ctx)?;
 
 ```rust
 ctx.set_function("double".into(), Function::new(|arg| {
-    Ok(Value::Float(arg.as_float()? * 2.0))
+    Ok(Value::Float(arg.as_number()? * 2.0))  // as_float() rejects an Int such as 21
 }))?;
 eval_with_context("double(21)", &ctx)?;
 ```
@@ -213,7 +212,7 @@ eval_with_context("double(21)", &ctx)?;
 
 ### Built-in Functions
 
-**Math:** `min`, `max`, `abs`, `floor`, `round`, `ceil`, `math::ln`, `math::log`, `math::log2`, `math::log10`, `math::exp`, `math::sqrt`, `math::cbrt`, `math::sin`, `math::cos`, `math::tan`, `math::asin`, `math::acos`, `math::atan`, `math::atan2`, `math::pow`, `math::hypot`
+**Math:** `min`, `max`, `math::abs`, `floor`, `round`, `ceil`, `math::ln`, `math::log`, `math::log2`, `math::log10`, `math::exp`, `math::sqrt`, `math::cbrt`, `math::sin`, `math::cos`, `math::tan`, `math::asin`, `math::acos`, `math::atan`, `math::atan2`, `math::pow`, `math::hypot`
 
 **String:** `len`, `str::to_lowercase`, `str::to_uppercase`, `str::trim`, `str::substring`
 
@@ -224,13 +223,14 @@ eval_with_context("double(21)", &ctx)?;
 - **`2^2` returns `4.0` (float)**, not `4` (int)
 - **Integer division truncates:** `1/2` is `0`, use `1.0/2` for float
 - Multi-arg functions receive a single `Value::Tuple`
-- **License: AGPL-3.0**
+- `HashMapContext::set_value` refuses to change a variable's type (Int to Float)
+- **License: AGPL-3.0-only**
 
 ---
 
 ## 5. Tokio
 
-### spawn — Concurrent Tasks
+### spawn: Concurrent Tasks
 
 ```rust
 let handle = tokio::spawn(async move {
@@ -240,27 +240,6 @@ let result = handle.await?;
 ```
 
 Future must be `Send + 'static`. Use `Arc` for shared ownership.
-
-### select! — First-Completed
-
-```rust
-tokio::select! {
-    val = rx.recv() => { /* message */ }
-    _ = tokio::time::sleep(Duration::from_secs(5)) => { /* timeout */ }
-}
-```
-
-Losing branches are **cancelled** (futures dropped).
-
-### Channels
-
-| Channel | Pattern | Use Case |
-|---------|---------|----------|
-| `mpsc::channel(n)` | N:1 bounded | Command queues |
-| `mpsc::unbounded_channel()` | N:1 unbounded | No backpressure needed |
-| `oneshot::channel()` | 1:1 | Request/response |
-| `broadcast::channel(n)` | N:N | Pub/sub events |
-| `watch::channel(init)` | N:N latest | Config, shutdown signals |
 
 ### RwLock vs Mutex
 
@@ -275,7 +254,7 @@ Losing branches are **cancelled** (futures dropped).
 - **`tokio::sync::RwLock`** when reads vastly outnumber writes
 - **Never** hold `std::sync::MutexGuard` across `.await`
 
-### spawn_blocking — CPU-Bound Work
+### spawn_blocking: CPU-Bound Work
 
 ```rust
 let result = tokio::task::spawn_blocking(move || {
@@ -285,17 +264,3 @@ let result = tokio::task::spawn_blocking(move || {
 
 Use for: parsing large files, compression, cryptography, blocking I/O.
 Cannot be aborted once running.
-
-### Graceful Shutdown
-
-```rust
-let (tx, mut rx) = tokio::sync::watch::channel(false);
-
-// In workers:
-tokio::select! {
-    msg = channel.recv() => { /* work */ }
-    _ = rx.changed() => { if *rx.borrow() { break; } }
-}
-
-// Trigger: tx.send(true)?;
-```

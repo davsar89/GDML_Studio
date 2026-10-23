@@ -12,7 +12,7 @@
 //! out in mm, angles in rad, and a density in MeV·ns²/mm⁵ (g/cm3 = 6.2415e18).
 //!
 //! Note that `micron` and `dm` are *not* legal GDML length units despite
-//! appearing in some documentation — Geant4's length table spells the micrometre
+//! appearing in some documentation: Geant4's length table spells the micrometre
 //! `um`/`micrometer`, and has no decimetre. (`micron` works inside expressions.)
 
 use std::f64::consts::PI;
@@ -68,8 +68,7 @@ const ANGLE: Units = &[
     ("degree deg", PI / 180.0),
 ];
 
-/// Every other unit `setSystemOfUnits.cc` gives the expression evaluator, plus
-/// CLHEP's perCent family.
+/// Every other unit `setSystemOfUnits.cc` gives the expression evaluator.
 const OTHER: Units = &[
     ("metre", M),
     ("decimeter", 0.1 * M),
@@ -167,9 +166,6 @@ const OTHER: Units = &[
     ("milligray", 1.0e-3 * GY),
     ("microgray", 1.0e-6 * GY),
     ("sievert Sv", GY),
-    ("perCent", 0.01),
-    ("perThousand", 0.001),
-    ("perMillion", 1.0e-6),
 ];
 
 fn lookup(groups: &[Units], unit: &str) -> Option<f64> {

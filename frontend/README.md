@@ -1,4 +1,4 @@
-# GDML Studio — Frontend
+# GDML Studio Frontend
 
 React + TypeScript + Vite, rendering GDML geometry with Three.js via
 [React Three Fiber](https://r3f.docs.pmnd.rs/). State lives in a single
@@ -37,9 +37,10 @@ input files, checks nothing, and exits 0 no matter how many type errors exist.
 |------|----------|
 | `src/api/client.ts` | Typed wrappers over the backend REST API |
 | `src/store/` | Zustand store and the TypeScript mirrors of the backend's JSON shapes |
+| `src/components/` | Toolbar, layout, inspector, material picker, dialogs, context menu, error boundary |
 | `src/components/Viewport/` | R3F canvas, scene graph, geometry cache, measurement tools |
-| `src/components/TreePanel/` | Volume tree, volume detail, material and element editors |
-| `src/utils/` | NIST material import and search, open/save/apply flows, post-edit refresh helpers |
+| `src/components/TreePanel/` | Volume tree, defines list, volume detail, material and element editors |
+| `src/utils/` | NIST material import and search, open/save/apply flows, document loading and post-edit refresh |
 
 ### A note on `src/store/types.ts`
 
@@ -47,5 +48,5 @@ input files, checks nothing, and exits 0 no matter how many type errors exist.
 update replaces the stored material **wholesale**, and an added element is
 stored as sent. Every field the backend models must appear in
 these interfaces, and edit paths must spread the original object rather than
-rebuild it field by field — any field omitted from the payload is silently
+rebuild it field by field: any field omitted from the payload is silently
 dropped from the document and from the exported GDML.

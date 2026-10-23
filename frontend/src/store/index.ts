@@ -12,8 +12,9 @@ interface AppState {
   /**
    * The in-memory document has edits that are not in any file on disk.
    *
-   * Set by every mutating API call (see `mutate` in `api/client.ts`) and
-   * cleared on load and on a successful export. Note "Save" downloads a copy
+   * Set by every mutating API call (see `mutate` in `api/client.ts`), read
+   * from the backend's `unsaved` flag on load, and cleared on a successful
+   * export. Note "Save" downloads a copy
    * rather than overwriting the file that was opened, so clearing here means
    * "the user has been given a file matching this state", not "the original
    * path is up to date".
@@ -54,7 +55,7 @@ interface AppState {
 
   setError: (error: string | null) => void;
   markDirty: () => void;
-  markSaved: (revision?: number) => void;
+  markSaved: (revision: number) => void;
   clearWarnings: () => void;
   setSelectedVolume: (name: string | null) => void;
   setSelectedMaterial: (name: string | null) => void;
@@ -91,7 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setError: (error) => set({ error }),
   markDirty: () => set((state) => ({ dirty: true, editRevision: state.editRevision + 1 })),
-  markSaved: (revision) => set((state) => revision === undefined || revision === state.editRevision ? { dirty: false } : {}),
+  markSaved: (revision) => set((state) => revision === state.editRevision ? { dirty: false } : {}),
   updateMaterialDraft: (changes, elements) => set((state) => {
     const original = state.materialDraft?.original ?? state.materials.find((m) => m.name === state.selectedMaterial);
     if (!original) return {};

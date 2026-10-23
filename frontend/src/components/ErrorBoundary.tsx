@@ -24,11 +24,10 @@ export default class ErrorBoundary extends Component<Props, State> {
     console.error('Unhandled UI error:', error, info);
   }
 
-  // Clearing `error` alone re-renders the same children against the same store
-  // state that just threw, so getDerivedStateFromError catches again and the
-  // message comes straight back -- the button appeared to do nothing. Drop the
-  // loaded document first: `reset()` disposes the geometries and empties the
-  // document, which is a state the tree is known to render.
+  // Clearing `error` alone would re-render the same children against the store
+  // state that just threw, so getDerivedStateFromError would catch again at
+  // once. Drop the loaded document first: `reset()` disposes the geometries and
+  // empties the document, which is a state the tree is known to render.
   handleRetry = () => {
     useAppStore.getState().reset();
     this.setState({ error: null });

@@ -27,8 +27,8 @@ pub fn curve(n: u32, f: impl Fn(f64) -> (f64, f64)) -> impl Iterator<Item = (f64
 /// accepted, since `Create` reverses a clockwise one.
 ///
 /// `sides` selects the surface:
-/// - `None` — smooth revolution in `segments` steps.
-/// - `Some(n)` — `n` flat facets whose corners sit at the given radii. The
+/// - `None`: smooth revolution in `segments` steps.
+/// - `Some(n)`: `n` flat facets whose corners sit at the given radii. The
 ///   radii are corner radii: `<genericPolyhedra>` hands them to G4Polyhedra
 ///   unscaled (`G4Polyhedra.cc:154`, from `G4GDMLReadSolids.cc:1629`), and the
 ///   `<polyhedra>` caller converts its apothems first.
@@ -41,7 +41,7 @@ pub fn tessellate_generic_polycone(
 ) -> TriangleMesh {
     let mut m = TriangleMesh::default();
 
-    // Matches G4Polycone::Create — a non-positive or over-full sweep is a
+    // Matches G4Polycone::Create: a non-positive or over-full sweep is a
     // complete revolution. Tubes, cones and spheres arrive already checked.
     let full_circle = deltaphi <= 0.0 || deltaphi >= 2.0 * PI - 1e-6;
     let deltaphi = if full_circle { 2.0 * PI } else { deltaphi };

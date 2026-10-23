@@ -69,17 +69,17 @@ export interface Fraction {
   ref_name: string;
 }
 
-// These interfaces are sent back to the backend, which replaces the stored
-// item wholesale. Every field the backend models must appear here, and edit
-// paths must spread the original object rather than rebuild it field by field —
-// anything missing is silently dropped from the user's GDML on export.
-/** `<property name="RINDEX" ref="rindexMatrix"/>` — an optical property binding. */
+/** `<property name="RINDEX" ref="rindexMatrix"/>`: an optical property binding. */
 export interface MaterialProperty {
   name: string;
   ref_name: string | null;
   values: string | null;
 }
 
+// MaterialInfo and ElementInfo are sent back to the backend, which stores them
+// as sent. Every field the backend models must appear here, and edit paths must
+// spread the original object rather than rebuild it field by field: anything
+// missing is silently dropped from the user's GDML on export.
 export interface MaterialInfo {
   name: string;
   formula: string | null;
@@ -99,7 +99,7 @@ export interface MaterialInfo {
   rl: PropertyValue | null;
   /** `<AL>` absorption length. */
   al: PropertyValue | null;
-  /** `<property>` bindings — the optical property table. */
+  /** `<property>` bindings: the optical property table. */
   properties: MaterialProperty[];
   atom_value: string | null;
   atom_unit: string | null;

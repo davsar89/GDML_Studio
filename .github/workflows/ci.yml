@@ -49,9 +49,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      # Build mode, not `--noEmit`: tsconfig.json is solution-style
-      # ("files": [] plus project references), so a non-build invocation
-      # resolves zero input files and exits 0 however broken the code is.
+      # Build mode, not --noEmit: see frontend/README.md#checks.
       - name: Type check
         run: npx tsc -b
 

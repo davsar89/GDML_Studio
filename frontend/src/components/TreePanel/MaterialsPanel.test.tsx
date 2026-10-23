@@ -45,9 +45,9 @@ beforeEach(() => {
     let body: unknown;
     switch (path) {
       case '/api/document/materials': body = { materials: serverMaterials, elements: serverElements }; break;
-      case '/api/document/scene': body = { scene_graph: scene }; break;
+      case '/api/document/scene': body = { scene_graph: scene, warnings: [] }; break;
       case '/api/document/structure': body = { volumes: [], world_ref: 'W' }; break;
-      case '/api/document/meshes': body = { meshes: {}, scene_graph: scene }; break;
+      case '/api/document/meshes': body = { meshes: {}, scene_graph: scene, warnings: [] }; break;
       case '/api/document/defines': body = { defines: [] }; break;
       case '/api/document/materials/update': {
         const request = JSON.parse(String(init?.body));

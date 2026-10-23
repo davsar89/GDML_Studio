@@ -5,7 +5,7 @@
 
 ---
 
-## 1. BufferGeometry — Custom Geometry from Raw Data
+## 1. BufferGeometry: Custom Geometry from Raw Data
 
 ```javascript
 const geometry = new THREE.BufferGeometry();
@@ -19,7 +19,8 @@ geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
 // Index buffer: Uint16 for <65536 vertices, Uint32 for larger
 geometry.setIndex(new THREE.Uint32BufferAttribute(indices, 1));
 
-// Required for frustum culling and raycasting
+// Culling and raycasting compute these lazily when null;
+// recompute them after editing positions
 geometry.computeBoundingBox();
 geometry.computeBoundingSphere();
 ```
@@ -31,11 +32,11 @@ posAttr.array[0] = newX;
 posAttr.needsUpdate = true;  // flag for GPU re-upload
 ```
 
-**Disposal:** `geometry.dispose()` — releases GPU buffers. Must be called manually.
+**Disposal:** `geometry.dispose()` releases GPU buffers. Must be called manually.
 
 ---
 
-## 2. InstancedMesh — Efficient Repeated Geometry
+## 2. InstancedMesh: Efficient Repeated Geometry
 
 Renders thousands of the same geometry in a single draw call.
 
@@ -53,6 +54,7 @@ for (let i = 0; i < count; i++) {
   mesh.setColorAt(i, new THREE.Color(0xff0000));
 }
 mesh.instanceMatrix.needsUpdate = true;
+if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
 ```
 
 | Property | Description |
@@ -61,36 +63,9 @@ mesh.instanceMatrix.needsUpdate = true;
 | `instanceColor` | RGB colors (3 floats per instance), created on first `setColorAt` |
 | `count` | Number of visible instances (can be set lower than allocated max) |
 
-**Performance:** Reduces N draw calls to 1. Real-world: 9,000 draw calls reduced to 300.
-
 ---
 
-## 3. BatchedMesh — Multiple Geometries, Single Draw Call
-
-Available since Three.js r156+. Supports different geometries sharing one material.
-
-```javascript
-const batchedMesh = new THREE.BatchedMesh(maxInstances, maxVertices, maxIndices, material);
-
-const boxId = batchedMesh.addGeometry(boxGeometry);
-const sphereId = batchedMesh.addGeometry(sphereGeometry);
-
-const inst1 = batchedMesh.addInstance(boxId);
-batchedMesh.setMatrixAt(inst1, matrix);
-```
-
-**When to use what:**
-
-| Scenario | Technique |
-|----------|-----------|
-| Same shape, many placements | **InstancedMesh** |
-| Mix of shapes, same material | **BatchedMesh** |
-| Static background geometry | **Geometry merging** |
-| Need individual selection | **Separate meshes** + BVH |
-
----
-
-## 4. Materials for CAD Viewers
+## 3. Materials for CAD Viewers
 
 | Material | Lighting Model | Performance | Best For |
 |----------|---------------|-------------|----------|
@@ -113,13 +88,13 @@ new THREE.MeshStandardMaterial({
 });
 ```
 
-Share material instances across meshes with the same appearance (enables draw call batching).
+Share material instances across meshes with the same appearance: it saves memory and state changes, but three.js does not merge their draw calls.
 
 ---
 
-## 5. Euler Rotations
+## 4. Euler Rotations
 
-**Default order:** `'XYZ'` intrinsic — first X, then local Y, then local Z.
+**Default order:** `'XYZ'` intrinsic: first X, then local Y, then local Z.
 
 **Available:** `'XYZ'`, `'YZX'`, `'ZXY'`, `'XZY'`, `'YXZ'`, `'ZYX'`
 
@@ -136,7 +111,7 @@ const quat = new THREE.Quaternion().setFromEuler(euler);
 
 ---
 
-## 6. Scene Graph
+## 5. Scene Graph
 
 ```
 Object3D (base: position, rotation, scale, matrix, matrixWorld)
@@ -161,7 +136,7 @@ scene.getObjectByName('name');
 
 ---
 
-## 7. OrbitControls for CAD Viewers
+## 6. OrbitControls for CAD Viewers
 
 ```javascript
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -177,35 +152,19 @@ controls.screenSpacePanning = true;
 
 ---
 
-## 8. Performance
-
-### Geometry Merging (static objects)
-```javascript
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils';
-const merged = mergeGeometries([geom1, geom2, geom3]);
-// Caveat: merged objects cannot be individually transformed or picked
-```
-
-### Level of Detail (LOD)
-```javascript
-const lod = new THREE.LOD();
-lod.addLevel(highDetail, 0);
-lod.addLevel(medDetail, 50);
-lod.addLevel(lowDetail, 200);
-```
+## 7. Performance
 
 ### Frustum Culling
 - Built-in and enabled by default (`object.frustumCulled = true`)
 - Requires accurate bounding spheres for custom geometries
 - Per-object only, not sub-mesh
 
-### Draw Call Targets
-- Aim for <100 draw calls for 60fps
-- Monitor: `renderer.info.render.calls`, `renderer.info.memory.geometries`
+### Monitoring
+- `renderer.info.render.calls`, `renderer.info.memory.geometries` (catches geometry leaks)
 
 ---
 
-## 9. Raycasting / Object Picking
+## 8. Raycasting / Object Picking
 
 ```javascript
 const raycaster = new THREE.Raycaster();
@@ -214,16 +173,9 @@ const intersects = raycaster.intersectObjects(scene.children, true);
 // intersects[0]: { object, distance, point, face, faceIndex }
 ```
 
-**BVH acceleration** (for large scenes):
-```javascript
-import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
-THREE.Mesh.prototype.raycast = acceleratedRaycast;
-geometry.boundsTree = new MeshBVH(geometry);
-```
-
 ---
 
-## 10. Memory Management
+## 9. Memory Management
 
 ```javascript
 // Dispose geometry
@@ -256,25 +208,9 @@ renderer.dispose();
 
 ---
 
-## 11. Lighting for Engineering Viewers
+## 10. React Three Fiber Patterns
 
-```javascript
-// Recommended setup
-scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-
-const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-dir.position.set(5, 10, 7);
-scene.add(dir);
-
-// Optional hemisphere for sky/ground fill
-scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
-```
-
----
-
-## 12. React Three Fiber Patterns
-
-### useFrame — Per-Frame Updates
+### useFrame: Per-Frame Updates
 ```jsx
 useFrame((state, delta) => {
   meshRef.current.rotation.y += delta;
@@ -282,7 +218,7 @@ useFrame((state, delta) => {
 });
 ```
 
-### useThree — Access Renderer State
+### useThree: Access Renderer State
 ```jsx
 const { gl, scene, camera, size, viewport } = useThree();
 // Selective subscription (prevents re-renders):
@@ -307,12 +243,6 @@ const geometry = useMemo(() => new THREE.BoxGeometry(1, 1, 1), []);
 
 // React.memo for expensive components
 const Volume = React.memo(function Volume({ geometry, color }) { ... });
-
-// Instancing in R3F
-<instancedMesh ref={ref} args={[null, null, count]}>
-  <sphereGeometry args={[0.5, 16, 16]} />
-  <meshStandardMaterial />
-</instancedMesh>
 ```
 
 ### Event Handling
@@ -328,26 +258,6 @@ const Volume = React.memo(function Volume({ geometry, color }) { ... });
 
 | Helper | Purpose |
 |--------|---------|
-| `<OrbitControls />` | Camera orbit/pan/zoom |
-| `<Environment preset="studio" />` | IBL environment |
-| `<Stats />` | FPS counter |
+| `<OrbitControls makeDefault />` | Camera orbit/pan/zoom; calls `update()` itself |
 | `<Html position={[0,1,0]}>` | HTML in 3D space |
-| `<Bvh>` | BVH acceleration for raycasting |
-| `<Edges threshold={15} />` | Edge visualization |
-| `<Outlines />` | Object outlining |
 | `<GizmoHelper />` | XYZ orientation gizmo |
-| `<Grid infiniteGrid />` | Ground plane grid |
-| `<Detailed distances={[0,50,200]}>` | LOD component |
-
----
-
-## 13. GDML Viewer-Specific Recommendations
-
-1. **Group identical solids** into InstancedMesh — one per geometry type per material
-2. Use **MeshLambertMaterial** for preview, **MeshStandardMaterial** for presentation
-3. **LOD** for complex sub-detectors: full mesh close, simplified far
-4. **Frustum culling** is automatic; ensure `computeBoundingSphere()` on custom geometries
-5. **Share materials** — create a palette, reuse instances
-6. **Dispose on scene change** — traverse and dispose all previous geometry/materials
-7. Use **Drei `<Bvh>`** for accelerated picking
-8. Monitor `renderer.info` to catch geometry/texture leaks

@@ -31,13 +31,13 @@ const useStore = create<AppState>()((set) => ({
 
 The creator function receives `(set, get, store)`.
 
-### `set` — Updating State
+### `set`: Updating State
 
 ```typescript
-// Shallow merge (default) — only updates specified fields
+// Shallow merge (default): only updates specified fields
 set({ count: 5 })
 
-// Updater function — access previous state
+// Updater function: access previous state
 set((state) => ({ count: state.count + 1 }))
 
 // Replace entire state (second arg = true, must provide ALL fields)
@@ -50,11 +50,11 @@ set({ count: 0, loading: false, increment: ..., reset: ... }, true)
 // Correct
 set((s) => ({ nested: { ...s.nested, field: 'new' } }))
 
-// WRONG — mutation, won't trigger re-renders
+// WRONG: mutates in place and returns undefined, which REPLACES the whole state with undefined
 set((s) => { s.nested.field = 'new' })
 ```
 
-### `get` — Reading State Inside the Store
+### `get`: Reading State Inside the Store
 
 ```typescript
 const useStore = create<MyState>()((set, get) => ({
@@ -68,16 +68,16 @@ const useStore = create<MyState>()((set, get) => ({
 }))
 ```
 
-### Selectors — Preventing Re-renders
+### Selectors: Preventing Re-renders
 
 ```tsx
-// GOOD — only re-renders when count changes
+// GOOD: only re-renders when count changes
 const count = useStore((s) => s.count)
 
-// GOOD — action refs are stable, won't cause re-renders
+// GOOD: action refs are stable, won't cause re-renders
 const increment = useStore((s) => s.increment)
 
-// BAD — subscribes to entire store, re-renders on ANY change
+// BAD: subscribes to entire store, re-renders on ANY change
 const state = useStore()
 ```
 
@@ -175,7 +175,7 @@ const useStore = create<BearSlice & FishSlice>()((...a) => ({
 // Store has only state
 export const useStore = create(() => ({ count: 0, text: '' }))
 
-// Actions at module level — no hook needed to call them
+// Actions at module level: no hook needed to call them
 export const inc = () => useStore.setState((s) => ({ count: s.count + 1 }))
 export const setText = (t: string) => useStore.setState({ text: t })
 ```
@@ -187,20 +187,14 @@ export const setText = (t: string) => useStore.setState({ text: t })
 ### Selector Best Practices
 
 ```tsx
-// 1. Always use selectors — never call useStore() bare
-const count = useStore((s) => s.count)
-
-// 2. Select actions separately (stable references)
-const increment = useStore((s) => s.increment)
-
-// 3. For multiple fields, use useShallow
+// For multiple fields, use useShallow
 import { useShallow } from 'zustand/react/shallow'
 
 const { count, name } = useStore(
   useShallow((s) => ({ count: s.count, name: s.name }))
 )
 
-// 4. Cache fallback values outside the selector
+// Cache fallback values outside the selector
 const EMPTY: Item[] = []
 const items = useStore((s) => s.items ?? EMPTY)
 ```
@@ -210,10 +204,10 @@ const items = useStore((s) => s.items ?? EMPTY)
 Use when selector returns a **new reference** each render (objects, arrays, derived arrays):
 
 ```tsx
-// Without useShallow — infinite loop in v5!
+// Without useShallow: infinite loop in v5!
 const [val, setVal] = useStore((s) => [s.val, s.setVal])
 
-// With useShallow — safe
+// With useShallow: safe
 const [val, setVal] = useStore(useShallow((s) => [s.val, s.setVal]))
 ```
 
@@ -223,7 +217,7 @@ const [val, setVal] = useStore(useShallow((s) => [s.val, s.setVal]))
 
 ## 4. Middleware
 
-### `persist` — LocalStorage Persistence
+### `persist`: LocalStorage Persistence
 
 ```typescript
 import { persist, createJSONStorage } from 'zustand/middleware'
@@ -245,7 +239,7 @@ const useStore = create<MyState>()(
 )
 ```
 
-### `devtools` — Redux DevTools
+### `devtools`: Redux DevTools
 
 ```typescript
 import { devtools } from 'zustand/middleware'
@@ -256,16 +250,16 @@ const useStore = create<MyState>()(
       count: 0,
       inc: () => set(
         (s) => ({ count: s.count + 1 }),
-        undefined,        // 2nd arg: must be undefined in v5
+        undefined,        // 2nd arg: replace flag (undefined or false)
         'count/increment' // 3rd arg: action name in DevTools
       ),
     }),
-    { name: 'MyStore', enabled: process.env.NODE_ENV === 'development' }
+    { name: 'MyStore' } // on unless import.meta.env.MODE is 'production'
   )
 )
 ```
 
-### `immer` — Mutable Syntax for Immutable Updates
+### `immer`: Mutable Syntax for Immutable Updates (needs the `immer` package)
 
 ```typescript
 import { immer } from 'zustand/middleware/immer'
@@ -280,7 +274,7 @@ const useStore = create<MyState>()(
 )
 ```
 
-### `subscribeWithSelector` — Fine-Grained Subscriptions
+### `subscribeWithSelector`: Fine-Grained Subscriptions
 
 ```typescript
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -310,27 +304,9 @@ devtools(persist(subscribeWithSelector(immer((set) => ({ ... })))))
 
 ## 5. TypeScript
 
-### Curried Create (required with middleware)
-
-```typescript
-// v5: create<Type>()((set) => ...)  — note the double ()()
-const useStore = create<MyState>()((set) => ({ ... }))
-```
-
-### StateCreator for Slices
-
-```typescript
-import { StateCreator } from 'zustand'
-
-const createSlice: StateCreator<
-  FullState,        // combined state type
-  [],               // middleware mutators in
-  [],               // middleware mutators out
-  SliceType         // this slice's return type
-> = (set, get) => ({ ... })
-```
-
 ### Middleware Mutator Types
+
+`StateCreator<FullState, MutatorsIn, MutatorsOut, Slice>`: a slice used under middleware lists the middleware's mutators in the second parameter:
 
 | Middleware | Mutator type |
 |-----------|-------------|
@@ -347,9 +323,7 @@ const createSlice: StateCreator<
 |--------|-----------|
 | Default exports removed | Use named: `import { create } from 'zustand'` |
 | React 18+ required | Upgrade React |
-| `shallow` as 2nd selector arg removed | Use `useShallow` or `createWithEqualityFn` |
+| `shallow` as 2nd selector arg removed | Use `useShallow`, or `createWithEqualityFn` from `zustand/traditional` |
 | Selectors returning new refs can loop | Wrap with `useShallow` |
 | `setState(partial, true)` stricter | Must provide complete state when replacing |
 | `persist` no longer stores initial state on creation | Explicitly set state after creation if needed |
-| `useShallow` import path | `import { useShallow } from 'zustand/react/shallow'` |
-| `createWithEqualityFn` import path | `import { createWithEqualityFn } from 'zustand/traditional'` |

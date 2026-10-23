@@ -1,5 +1,5 @@
 @echo off
-REM GDML Studio — build backend, run tests, start backend + frontend, open browser
+REM GDML Studio: build backend, run tests, start backend + frontend, open browser
 setlocal
 
 set SCRIPT_DIR=%~dp0
@@ -61,7 +61,7 @@ echo === Building backend (release) ===
 cd backend
 REM Stop any backend left over from a previous run BEFORE building. Windows locks
 REM a running .exe, so link.exe cannot overwrite it and the build fails with
-REM access-denied -- and the script then exits below, never reaching the cleanup
+REM access-denied; the script then exits below, never reaching the cleanup
 REM that would have unblocked it.
 taskkill /F /IM gdml-studio-backend.exe /T >nul 2>&1
 cargo build --release
@@ -84,9 +84,7 @@ echo.
 echo === Type-checking frontend ===
 cd /d "%SCRIPT_DIR%\frontend"
 call npm install --silent
-REM Build mode is required: tsconfig.json is solution-style ("files": [] plus
-REM project references), so plain `tsc --noEmit` checks zero files and always
-REM exits 0. Matches the `tsc -b` in package.json's build script.
+REM Build mode, not --noEmit: see frontend\README.md#checks.
 call npx tsc -b
 if errorlevel 1 (
     echo Frontend type-check failed.
@@ -134,8 +132,8 @@ echo Press any key to stop both servers.
 pause >nul
 
 REM `start` detaches both servers into their own consoles, so closing this window
-REM used to leave them running -- the backend then held port 4001 and locked its
-REM own .exe against the next build.
+REM would leave them running: the backend would hold port 4001 and lock its own
+REM .exe against the next build.
 echo.
 echo Shutting down...
 taskkill /F /IM gdml-studio-backend.exe /T >nul 2>&1

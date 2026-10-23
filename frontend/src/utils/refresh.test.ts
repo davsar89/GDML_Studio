@@ -28,7 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useAppStore.setState(useAppStore.getInitialState(), true);
   mocked.getMaterials.mockResolvedValue({ materials: [], elements });
-  mocked.getScene.mockResolvedValue({ scene_graph: scene });
+  mocked.getScene.mockResolvedValue({ scene_graph: scene, warnings: [] });
   mocked.getStructure.mockResolvedValue({ volumes, world_ref: 'World' });
 });
 

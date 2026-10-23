@@ -22,7 +22,7 @@ export async function loadDocument(upload: () => Promise<DocumentSummary>, what:
       ...emptyDocument(),
       // A reloaded page restores the backend's unsaved edits and their flag.
       dirty: summary.unsaved,
-      summary, warnings: [...(summary.warnings ?? []), ...(meshData.warnings ?? [])],
+      summary, warnings: [...summary.warnings, ...meshData.warnings],
       meshes: meshData.meshes, sceneGraph: meshData.scene_graph,
       defines: defData.defines, volumes: structData.volumes,
       materials: matData.materials, elements: matData.elements,

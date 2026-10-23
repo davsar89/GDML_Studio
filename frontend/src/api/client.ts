@@ -54,7 +54,7 @@ export async function getMeshes() {
   return fetchJson<{
     meshes: Record<string, MeshData>;
     scene_graph: SceneNode;
-    warnings?: string[];
+    warnings: string[];
   }>('/api/document/meshes');
 }
 
@@ -65,10 +65,7 @@ export async function getMeshes() {
  * BufferGeometry and re-uploading the scene to the GPU.
  */
 export async function getScene() {
-  return fetchJson<{
-    scene_graph: SceneNode;
-    warnings?: string[];
-  }>('/api/document/scene');
+  return fetchJson<{ scene_graph: SceneNode; warnings: string[] }>('/api/document/scene');
 }
 
 export async function getDefines() {

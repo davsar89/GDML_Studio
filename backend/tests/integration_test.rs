@@ -251,7 +251,7 @@ fn test_round_trip_preserves_material_fidelity_and_escaping() {
 
 #[test]
 fn test_segments_extremes_produce_finite_bounded_meshes() {
-    // `segments` is request-controlled. 0 used to divide by zero (NaN geometry) in
+    // `segments` is request-controlled: 0 would divide by zero (NaN geometry) in
     // several primitives, and a huge value would blow up memory. The central clamp
     // in tessellate_all_solids must make both cases finite and bounded.
     let path = project_root().join("sample_data/solids.gdml"); // widest variety of solids
@@ -281,7 +281,7 @@ fn test_segments_extremes_produce_finite_bounded_meshes() {
         // With the clamp (max 512), even u32::MAX cannot explode the vertex count.
         assert!(
             total_tris < 10_000_000,
-            "segments={}: triangle count {} not bounded — clamp failed",
+            "segments={}: triangle count {} not bounded; clamp failed",
             segments,
             total_tris
         );
@@ -547,8 +547,7 @@ fn oversized_deltaphi_sweeps_a_full_circle() {
 #[test]
 fn twistedtubs_mid_radius_form_is_supported() {
     // The zlen == 0 branch: midinnerrad/midouterrad with explicit, and
-    // deliberately asymmetric, z bounds. This form used to be rejected
-    // outright, so the solid vanished from the scene.
+    // deliberately asymmetric, z bounds.
     let xml = r#"    <twistedtubs name="T" twistedangle="0" midinnerrad="0" midouterrad="10"
                 negativeEndz="-5" positiveEndz="15" phi="6.283185307179586"
                 aunit="rad" lunit="mm"/>"#;

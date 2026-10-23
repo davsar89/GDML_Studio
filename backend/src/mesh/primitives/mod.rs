@@ -1,5 +1,5 @@
-// Tessellators take one parameter per GDML attribute of the solid they build —
-// a trap has 11, a twisted trap 12 — and the emit helpers thread the three
+// Tessellators take one parameter per GDML attribute of the solid they build
+// (a trap has 11, a twisted trap 12), and the emit helpers thread the three
 // output buffers plus a vertex quad. Grouping them into structs would only
 // rename the arguments, so the lint is turned off for this module rather than
 // silenced function by function.

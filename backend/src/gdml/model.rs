@@ -9,15 +9,14 @@ pub struct GdmlDocument {
     pub structure: StructureSection,
     pub setup: SetupSection,
     /// Elements the parser recognizes by name but does not interpret
-    /// (e.g. `<opticalsurface>`, `<skinsurface>`, `<userinfo>`, `<loop>`).
-    /// Stored verbatim so they survive a load → save round-trip instead of
-    /// being silently dropped.
+    /// (e.g. `<opticalsurface>`, `<skinsurface>`, `<userinfo>`, `<loop>`),
+    /// stored verbatim so they survive a load → save round trip.
     #[serde(default)]
     pub raw_unknown: Vec<RawElement>,
     /// Every `<setup>` in the source, in document order.
     ///
-    /// `setup` above is the *selected* one — the block named "Default" if there
-    /// is one, else the first — matching `G4GDMLParser::Read`. Keeping the rest
+    /// `setup` above is the *selected* one (the block named "Default" if there
+    /// is one, else the first), matching `G4GDMLParser::Read`. Keeping the rest
     /// means an alternative setup is not deleted on save.
     #[serde(default)]
     pub setups: Vec<SetupSection>,
@@ -25,9 +24,7 @@ pub struct GdmlDocument {
     /// annotations. See [`DocumentOrder`].
     #[serde(default)]
     pub order: DocumentOrder,
-    /// Attributes on the `<gdml>` root, captured verbatim. The writer used to
-    /// hardcode two xsi attributes, so anything else — most commonly
-    /// `xmlns:gdml`, present in 4 of the 10 shipped samples — was dropped.
+    /// Attributes on the `<gdml>` root (e.g. `xmlns:gdml`), captured verbatim.
     #[serde(default)]
     pub root_attributes: Vec<(String, String)>,
     /// Names of the defines that appeared inside `<materials><define>` rather
@@ -36,8 +33,8 @@ pub struct GdmlDocument {
     /// GDML allows a `<define>` block nested in `<materials>`; both large
     /// samples use one to carry `universe_mean_density`. Defines are global
     /// whichever block they sit in, so everything is parsed into
-    /// [`Self::defines`] as before and this only records where each item came
-    /// from, letting the writer put it back. `None` means the source had no
+    /// [`Self::defines`] and this only records where each item came from,
+    /// letting the writer put it back. `None` means the source had no
     /// nested block; `Some(vec![])` means it had an empty one.
     pub materials_define: Option<Vec<String>>,
     /// Human-readable notes about constructs the parser cannot interpret
@@ -51,7 +48,7 @@ pub struct GdmlDocument {
 ///
 /// Comments are stored by *anchor* rather than by absolute index because the
 /// document is a set of typed collections that the writer emits in a fixed
-/// order — there is no single position a comment could be pinned to. Anchoring
+/// order: there is no single position a comment could be pinned to. Anchoring
 /// to the name of the next element keeps a comment attached to the thing it
 /// describes even though the surrounding items may be re-ordered on write.
 ///
@@ -81,12 +78,12 @@ pub struct DocumentOrder {
     ///
     /// quick-xml counts `<`/`>` within the internal subset, so
     /// `<!DOCTYPE gdml [<!ENTITY size "10">]>` arrives intact. Entity
-    /// *references* are not expanded — see the note in the parser.
+    /// *references* are not expanded; see the note in the parser.
     pub doctype: Option<String>,
     /// The `<define>` children in the order the source declared them.
     ///
-    /// The writer otherwise emits one typed collection at a time — every
-    /// constant, then every quantity, and so on — which can move a define ahead
+    /// The writer otherwise emits one typed collection at a time (every
+    /// constant, then every quantity, and so on), which can move a define ahead
     /// of one it references. `G4GDMLReadDefine::DefineRead` is a single forward
     /// pass over the children and evaluates each `value` inline as it reads it
     /// (`G4GDMLReadDefine.cc:602` and `:204`), so a forward reference is fatal
@@ -120,15 +117,9 @@ pub enum DefineKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawElement {
-    /// The section this element was captured from, so it can be re-emitted
-    /// there.
-    ///
-    /// The writer used to infer the section from the tag name alone. That is
-    /// right for every tag it handles except `<loop>`, which is legal in
-    /// `<define>`, `<solids>` *and* `<structure>` — so a loop in solids or
-    /// structure was re-emitted nested inside `<define>`, producing a file
-    /// Geant4 will not load. Recording the section is right by construction and
-    /// removes the whole class of bug.
+    /// The section this element was captured from, so it is re-emitted there.
+    /// The tag alone does not say: `<loop>` is legal in `<define>`, `<solids>`
+    /// and `<structure>`.
     #[serde(default)]
     pub section: String,
     /// The define, material, solid or volume this element followed in its section
@@ -151,9 +142,7 @@ pub struct DefineSection {
     pub expressions: Vec<Expression>,
     pub positions: Vec<Position>,
     pub rotations: Vec<Rotation>,
-    /// Named `<scale>` elements. Previously swallowed into `raw_unknown`, which
-    /// preserved them on save but left nothing for `<scaleref>` to resolve
-    /// against.
+    /// Named `<scale>` elements, which `<scaleref>` resolves against.
     #[serde(default)]
     pub scales: Vec<Scale>,
     #[serde(default)]
@@ -198,7 +187,7 @@ pub struct Position {
 /// A named `<scale>` in `<define>`, referenced by `<scaleref>`.
 ///
 /// Structurally identical to [`Position`], but kept separate because it is
-/// dimensionless — a scale factor has no `lunit`.
+/// dimensionless: a scale factor has no `lunit`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scale {
     pub name: String,
@@ -240,15 +229,14 @@ pub struct Isotope {
     pub n: Option<String>,
     pub z: Option<String>,
     pub atom_value: Option<String>,
-    /// `<atom unit="g/mole"/>` — read but previously discarded.
+    /// `<atom unit="g/mole"/>`.
     pub atom_unit: Option<String>,
     /// `<atom type="A"/>`.
     pub atom_type: Option<String>,
 }
 
-/// `<property name="RINDEX" ref="rindexMatrix"/>` — how an optical material
-/// binds a named `<matrix>`. Dropping these silently removes every optical
-/// property from the file while leaving the matrices they referenced behind.
+/// `<property name="RINDEX" ref="rindexMatrix"/>`: how an optical material
+/// binds a named `<matrix>`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaterialProperty {
     pub name: String,
@@ -301,7 +289,7 @@ pub struct Material {
     pub atom_value: Option<String>,
     pub atom_unit: Option<String>,
     pub atom_type: Option<String>,
-    /// `<property>` bindings — the optical property table.
+    /// `<property>` bindings: the optical property table.
     #[serde(default)]
     pub properties: Vec<MaterialProperty>,
     /// `<RL value=".." unit=".."/>` radiation length.
@@ -656,9 +644,9 @@ impl TessellatedFacet {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TessellatedSolid {
     pub name: String,
-    /// `lunit`/`aunit` are inert for tessellated solids — `TessellatedRead`
-    /// reads only `name`, and each facet's own `lunit` scales its vertices —
-    /// but they are written in real files and were dropped on export.
+    /// `lunit`/`aunit` are inert for tessellated solids (`TessellatedRead`
+    /// reads only `name`, and each facet's own `lunit` scales its vertices),
+    /// but real files write them, so they round-trip.
     pub lunit: Option<String>,
     pub aunit: Option<String>,
     pub facets: Vec<TessellatedFacet>,
@@ -849,17 +837,8 @@ pub struct TwistedTrdSolid {
 pub struct ScaledSolidDef {
     pub name: String,
     pub solid_ref: String,
-    pub scale_x: String,
-    pub scale_y: String,
-    pub scale_z: String,
-    /// Set when the source wrote `<scaleref ref=".."/>` instead of an inline
-    /// `<scale>`. Geant4 accepts both; only the inline form was handled, so a
-    /// scaleref silently fell back to (1,1,1) — an unscaled render — and was
-    /// rewritten as a fabricated inline scale on export.
-    pub scale_ref: Option<String>,
-    /// `name` of the inline `<scale>`, so it round-trips instead of being
-    /// regenerated as "{solid}_scale".
-    pub scale_name: Option<String>,
+    /// `<scale>` or `<scaleref>`; absent, the solid is unscaled.
+    pub scale: Option<PlacementScale>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -881,8 +860,7 @@ pub struct ReflectedSolidDef {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MultiUnionNode {
-    /// `<multiUnionNode name="..">`. Present in sample_data/solids.gdml and
-    /// dropped on export before this was modelled.
+    /// `<multiUnionNode name="..">`.
     pub name: Option<String>,
     pub solid_ref: String,
     pub position: Option<PlacementPos>,
@@ -959,8 +937,7 @@ pub struct PhysVol {
     pub volume_ref: String,
     /// `<physvol copynumber="..">`. Geant4 reads it and hands it to
     /// G4PVPlacement, where it is the copy number used for sensitive-detector
-    /// and readout identity — so dropping it on export corrupts the detector,
-    /// not just its description.
+    /// and readout identity.
     pub copynumber: Option<String>,
     pub file_ref: Option<FileRef>,
     pub position: Option<PlacementPos>,
@@ -992,9 +969,7 @@ pub struct Auxiliary {
     pub auxtype: String,
     pub auxvalue: String,
     pub auxunit: Option<String>,
-    /// Nested `<auxiliary>` children — e.g. production cuts inside a Region.
-    /// Only the self-closing form was handled before, so a nested cut was
-    /// silently re-parented onto the volume as a sibling of its own Region.
+    /// Nested `<auxiliary>` children, e.g. production cuts inside a Region.
     #[serde(default)]
     pub children: Vec<Auxiliary>,
 }

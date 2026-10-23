@@ -6,7 +6,7 @@ const cache = new Map<string, { geometry: THREE.BufferGeometry; refCount: number
 /**
  * Acquire the geometry for a solid, incrementing its reference count.
  * MUST be balanced by exactly one `releaseGeometry(solidName)` call.
- * Call this once per consumer lifetime (e.g. in a mount effect) — NOT in a
+ * Call this once per consumer lifetime (e.g. in a mount effect), NOT in a
  * React render body, or the ref count grows on every re-render and the
  * geometry is never disposed.
  */

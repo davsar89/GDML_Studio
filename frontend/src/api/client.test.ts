@@ -6,26 +6,9 @@ vi.mock('../components/Viewport/geometryCache', () => ({
 
 import * as api from './client';
 import { useAppStore } from '../store';
-import type { MaterialInfo } from '../store/types';
+import { emptyMaterial } from '../utils/nistImport';
 
-const material: MaterialInfo = {
-  name: 'G4_WATER',
-  formula: null,
-  z: null,
-  state: null,
-  density: { value: '1.0', unit: 'g/cm3' },
-  density_ref: null,
-  temperature: null, temperature_ref: null, pressure_ref: null, mee_ref: null,
-  pressure: null,
-  mee: null,
-  rl: null,
-  al: null,
-  properties: [],
-  atom_value: null,
-  atom_unit: null,
-  atom_type: null,
-  components: [],
-};
+const material = emptyMaterial('G4_WATER');
 
 function mockFetch(ok: boolean, body: unknown = { ok: true }) {
   return vi.fn().mockResolvedValue({
@@ -68,8 +51,8 @@ describe('unsaved-changes tracking', () => {
   });
 
   it('leaves the document clean when a mutation fails', async () => {
-    // A rejected edit changed nothing, so claiming unsaved work would be a lie
-    // -- and would keep the beforeunload prompt up for no reason.
+    // A rejected edit changed nothing, so claiming unsaved work would be wrong
+    // and would keep the beforeunload prompt up for no reason.
     vi.stubGlobal('fetch', mockFetch(false, { error: 'nope' }));
     await expect(api.updateMaterial('G4_WATER', material)).rejects.toThrow('nope');
     expect(useAppStore.getState().dirty).toBe(false);

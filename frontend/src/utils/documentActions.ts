@@ -33,7 +33,7 @@ function ask(request: Omit<DocumentDecision, 'resolve'>): Promise<{ choice: Dial
   });
 }
 
-export async function askDocumentDecision(
+async function askDocumentDecision(
   title: string, message: string, primaryLabel: 'Apply' | 'Save',
 ): Promise<DialogChoice> {
   return (await ask({ title, message, primaryLabel, canDiscard: true })).choice;
@@ -111,7 +111,7 @@ export async function resolveMaterialDraft(): Promise<boolean> {
   return true;
 }
 
-export function downloadFile(content: string, filename: string): void {
+function downloadFile(content: string, filename: string): void {
   const url = URL.createObjectURL(new Blob([content], { type: 'application/xml' }));
   const anchor = document.createElement('a');
   anchor.href = url;

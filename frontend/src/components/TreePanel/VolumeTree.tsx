@@ -54,8 +54,8 @@ const VolumeNode = memo(({ node, depth }: { node: SceneNode; depth: number }) =>
           {node.name}
         </button>
       </div>
-      {expanded && node.children.map((child, i) => (
-        <VolumeNode key={child.instance_id || `${child.volume_name}-${i}`} node={child} depth={depth + 1} />
+      {expanded && node.children.map((child) => (
+        <VolumeNode key={child.instance_id} node={child} depth={depth + 1} />
       ))}
     </div>
   );

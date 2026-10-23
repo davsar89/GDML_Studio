@@ -38,18 +38,16 @@ function SnapDot({ position, type }: { position: [number, number, number]; type:
   );
 }
 
-/** Renders all snap candidates as small black dots, with the active one highlighted white.
- *  After placing point A, shows ALL surface candidates on the clicked mesh instead of just hover candidates. */
+/** Renders snap candidates as small black dots, with the active one highlighted white.
+ *  After placing point A, shows the clicked mesh's feature candidates instead of the hover candidates. */
 function SnapCandidates() {
   const hoverCandidates = useAppStore((s) => s.hoverCandidates);
   const surfaceCandidates = useAppStore((s) => s.surfaceCandidates);
   const pendingPoint = useAppStore((s) => s.pendingPoint);
   const hoverSnap = useAppStore((s) => s.hoverSnap);
-  const measureMode = useAppStore((s) => s.measureMode);
   const groupRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
 
-  // Show surface candidates when point A is placed, otherwise hover candidates
   const candidates = pendingPoint && surfaceCandidates.length > 0 ? surfaceCandidates : hoverCandidates;
 
   useFrame(() => {
@@ -63,7 +61,7 @@ function SnapCandidates() {
     });
   });
 
-  if (!measureMode || candidates.length === 0) return null;
+  if (candidates.length === 0) return null;
 
   return (
     <group ref={groupRef}>
@@ -153,7 +151,6 @@ function Segment({ a, b }: { a: [number, number, number]; b: [number, number, nu
 }
 
 export default function MeasureOverlay() {
-  const measureMode = useAppStore((s) => s.measureMode);
   const measurements = useAppStore((s) => s.measurements);
   const pendingPoint = useAppStore((s) => s.pendingPoint);
   const hoverSnap = useAppStore((s) => s.hoverSnap);
@@ -168,12 +165,11 @@ export default function MeasureOverlay() {
         </group>
       ))}
 
-      {/* Snap candidate indicators */}
       <SnapCandidates />
 
       {/* Pending point and the live preview to the hovered snap */}
       {pendingPoint && <SnapDot position={pendingPoint.position} type={pendingPoint.type} />}
-      {pendingPoint && hoverSnap && measureMode && <Segment a={pendingPoint.position} b={hoverSnap.position} />}
+      {pendingPoint && hoverSnap && <Segment a={pendingPoint.position} b={hoverSnap.position} />}
     </group>
   );
 }

@@ -28,10 +28,9 @@ fn same_definition<T: Serialize>(a: &T, b: &T) -> bool {
 /// Append child items whose names are not already taken, warning when a name is
 /// taken by a *different* definition.
 ///
-/// An identical duplicate is normal — two modules including the same materials
-/// file — and passes without comment. A genuine conflict means the child's
-/// version is being discarded, which changes the rendered geometry, so it is
-/// reported rather than swallowed.
+/// An identical duplicate is normal (two modules including the same materials
+/// file) and passes without comment. A genuine conflict means the child's
+/// version is discarded, which changes the rendered geometry, so it is reported.
 fn merge_by_name<T, F>(
     target: &mut Vec<T>,
     incoming: &[T],
@@ -61,78 +60,45 @@ fn merge_by_name<T, F>(
 
 /// Merge a child module's definitions into the main document. Runs once per
 /// module, however many physvols place it.
+///
+/// Known gap: Geant4 reads each module with its own reader and evaluator
+/// (G4GDMLReadStructure::FileRead), so two modules may define one name
+/// differently. One namespace keeps the main document's definition and warns.
 fn merge_child_into_main(
     main_doc: &mut GdmlDocument,
     child_doc: &GdmlDocument,
     file_ref_name: &str,
     warnings: &mut Vec<String>,
 ) {
-    // Known gap: Geant4 gives each file its own evaluator, so modules may define
-    // one name differently; a single namespace keeps the main file's value.
-    merge_by_name(
-        &mut main_doc.defines.constants,
-        &child_doc.defines.constants,
-        |d| d.name.as_str(),
-        "constant",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.defines.quantities,
-        &child_doc.defines.quantities,
-        |d| d.name.as_str(),
-        "quantity",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.defines.variables,
-        &child_doc.defines.variables,
-        |d| d.name.as_str(),
-        "variable",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.defines.expressions,
-        &child_doc.defines.expressions,
-        |d| d.name.as_str(),
-        "expression",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.defines.positions,
-        &child_doc.defines.positions,
-        |d| d.name.as_str(),
-        "position",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.defines.rotations,
-        &child_doc.defines.rotations,
-        |d| d.name.as_str(),
-        "rotation",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.defines.scales,
-        &child_doc.defines.scales,
-        |d| d.name.as_str(),
-        "scale",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.defines.matrices,
-        &child_doc.defines.matrices,
-        |d| d.name.as_str(),
-        "matrix",
-        file_ref_name,
-        warnings,
-    );
+    macro_rules! merge {
+        ($($field:ident).+, $kind:literal) => {
+            merge!($($field).+, $kind, |item| item.name.as_str())
+        };
+        ($($field:ident).+, $kind:literal, $name_of:expr) => {
+            merge_by_name(
+                &mut main_doc.$($field).+,
+                &child_doc.$($field).+,
+                $name_of,
+                $kind,
+                file_ref_name,
+                warnings,
+            )
+        };
+    }
+    merge!(defines.constants, "constant");
+    merge!(defines.quantities, "quantity");
+    merge!(defines.variables, "variable");
+    merge!(defines.expressions, "expression");
+    merge!(defines.positions, "position");
+    merge!(defines.rotations, "rotation");
+    merge!(defines.scales, "scale");
+    merge!(defines.matrices, "matrix");
+    merge!(materials.isotopes, "isotope");
+    merge!(materials.elements, "element");
+    merge!(materials.materials, "material");
+    merge!(solids.solids, "solid", Solid::name);
+    merge!(structure.volumes, "volume");
+
     // Append only new slots, in the child's declaration order. Collection order
     // alone is insufficient: a constant can depend on an earlier quantity.
     for slot in &child_doc.order.define_slots {
@@ -150,63 +116,11 @@ fn merge_child_into_main(
             }
         }
     }
+    // The child's comments, preserved elements and parse warnings come along.
     main_doc
         .order
         .anchors
         .extend(child_doc.order.anchors.iter().cloned());
-    merge_by_name(
-        &mut main_doc.materials.isotopes,
-        &child_doc.materials.isotopes,
-        |item| item.name.as_str(),
-        "isotope",
-        file_ref_name,
-        warnings,
-    );
-
-    // Merge elements, materials, solids and volumes by name.
-    //
-    // Geant4 does not flatten like this: G4GDMLReadStructure::FileRead builds a
-    // separate reader for each module and reads it with `isModule = true`, so two
-    // modules may legitimately each define a `Box` with different dimensions.
-    // Flattening into one namespace means the first definition wins -- and doing
-    // that silently rendered the second module with the first module's geometry.
-    // Until modules are properly namespaced, at least say so.
-    merge_by_name(
-        &mut main_doc.materials.elements,
-        &child_doc.materials.elements,
-        |e| e.name.as_str(),
-        "element",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.materials.materials,
-        &child_doc.materials.materials,
-        |m| m.name.as_str(),
-        "material",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.solids.solids,
-        &child_doc.solids.solids,
-        |s| s.name(),
-        "solid",
-        file_ref_name,
-        warnings,
-    );
-    merge_by_name(
-        &mut main_doc.structure.volumes,
-        &child_doc.structure.volumes,
-        |v| v.name.as_str(),
-        "volume",
-        file_ref_name,
-        warnings,
-    );
-
-    // Preserved-verbatim elements and the child's own parse warnings were not
-    // carried over at all, so a child's <opticalsurface> vanished on save and its
-    // warnings never reached the user.
     main_doc
         .raw_unknown
         .extend(child_doc.raw_unknown.iter().cloned());
@@ -511,7 +425,6 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
         .evaluate_all(&geometry.defines)
         .map_err(|e| ApiError::bad_request(&format!("Expression evaluation error: {e}")))?;
 
-    // Tessellate solids
     let segments = segments.unwrap_or_else(config::mesh_segments);
     let (meshes, mut warnings) =
         tessellator::tessellate_all_solids(&geometry.solids, &engine, segments)
@@ -602,8 +515,8 @@ async fn with_loaded<T: Send + 'static>(
 
 /// Scene graph without the mesh buffers.
 ///
-/// Editing a material never re-tessellates — `tessellate_all_solids` runs only
-/// on upload — but node colour is derived from density, so the tree still has to
+/// Editing a material never re-tessellates (`tessellate_all_solids` runs only
+/// on upload), but node colour is derived from density, so the tree still has to
 /// be rebuilt after an edit. Serving it separately keeps a debounced keystroke
 /// from re-downloading every vertex in the document (~16 MB on the largest
 /// sample) and, on the client, from rebuilding every BufferGeometry and
@@ -633,9 +546,8 @@ pub async fn get_meshes(State(state): State<SharedState>) -> Result<Response, Ap
         let (scene_graph, warnings) = scene(loaded);
 
         // The buffers are serialised by reference straight into the response:
-        // a serde_json::Value tree cost one 32-byte Value per number and widened
-        // every f32 to f64 (12.34f32 came out as 12.340000152587891). Peak on
-        // the largest sample was ~50 MB for 3.7 MB of vertex data.
+        // a serde_json::Value tree would cost one 32-byte Value per number and
+        // widen every f32 to f64 (12.34f32 becomes 12.340000152587891).
         #[derive(Serialize)]
         struct MeshesResponse<'a> {
             meshes: HashMap<&'a str, &'a TriangleMesh>,
@@ -770,54 +682,44 @@ fn build_render_document(
 /// apart makes that explicit rather than relying on the two being kept in sync.
 fn build_scene_graph(
     doc: &GdmlDocument,
-    materials: &crate::gdml::model::MaterialSection,
+    materials: &MaterialSection,
     engine: &EvalEngine,
     warnings: &mut Vec<String>,
 ) -> SceneNode {
     let world_ref = &doc.setup.world_ref;
-    let vol_map: HashMap<&str, &Volume> = doc
-        .structure
-        .volumes
-        .iter()
-        .map(|v| (v.name.as_str(), v))
-        .collect();
+    let mut builder = SceneBuilder {
+        vol_map: doc
+            .structure
+            .volumes
+            .iter()
+            .map(|v| (v.name.as_str(), v))
+            .collect(),
+        // Material name → density in g/cm3. DRead evaluates `value` as an
+        // expression and defaults the unit to g/cm3 (G4GDMLReadMaterials.cc:147-150).
+        density_map: materials
+            .materials
+            .iter()
+            .filter_map(|m| {
+                let d = m.density.as_ref()?;
+                let unit = d.unit.as_deref().unwrap_or("g/cm3");
+                let density = engine
+                    .eval_expr(&format!("({})*(({unit})/(g/cm3))", d.value))
+                    .ok()?;
+                Some((m.name.as_str(), density))
+            })
+            .collect(),
+        engine,
+        warnings,
+        visited: HashSet::new(),
+        nodes: 0,
+        bytes: 0,
+        truncated: false,
+    };
 
-    // Material name → density in g/cm3. DRead evaluates `value` as an
-    // expression and defaults the unit to g/cm3 (G4GDMLReadMaterials.cc:147-150).
-    let density_map: HashMap<&str, f64> = materials
-        .materials
-        .iter()
-        .filter_map(|m| {
-            let d = m.density.as_ref()?;
-            let unit = d.unit.as_deref().unwrap_or("g/cm3");
-            let density = engine
-                .eval_expr(&format!("({})*(({unit})/(g/cm3))", d.value))
-                .ok()?;
-            Some((m.name.as_str(), density))
-        })
-        .collect();
-
-    let mut visited = HashSet::new();
-    let mut budget = SceneBudget::default();
-
-    let root = vol_map
-        .get(world_ref.as_str())
-        .and_then(|world_vol| {
-            build_volume_node(
-                world_vol,
-                &vol_map,
-                &density_map,
-                engine,
-                [0.0; 3],
-                [0.0; 3],
-                true,
-                &mut visited,
-                "",
-                format!("/{}", world_vol.name),
-                warnings,
-                0,
-                &mut budget,
-            )
+    let world = builder.vol_map.get(world_ref.as_str()).copied();
+    let root = world
+        .and_then(|world| {
+            builder.node(world, [0.0; 3], [0.0; 3], "", format!("/{}", world.name), 0)
         })
         .unwrap_or_else(|| SceneNode {
             name: "World".to_string(),
@@ -834,8 +736,8 @@ fn build_scene_graph(
             children: Vec::new(),
         });
 
-    if budget.truncated {
-        warnings.push(format!(
+    if builder.truncated {
+        builder.warnings.push(format!(
             "Scene graph truncated at {} nodes / depth {} / {} MiB of names. This \
              geometry expands multiplicatively (a volume placed in several mothers \
              is re-expanded under each), so parts of the tree are not shown.",
@@ -847,23 +749,17 @@ fn build_scene_graph(
 
     // Replica counts, widths and inline placements are first evaluated here,
     // so their evaluation warnings are collected here too.
-    warnings.extend(engine.take_warnings());
-    dedupe_warnings(warnings);
+    builder.warnings.extend(engine.take_warnings());
+    dedupe_warnings(builder.warnings);
     root
 }
 
 /// Collapse repeats and cap the list.
 ///
-/// Warnings here are raised per *instance* — `build_volume_node` runs once per
-/// placement — so a replicavol nested inside a 16x16 replica reports the same
-/// problem 256 times. pinhole_lab.gdml produced 277 warnings of which 4 were
-/// distinct, burying the panel and the two warnings that were actually about
-/// different volumes. Repeats are counted rather than dropped, since "256
-/// placements affected" is the useful part.
-///
-/// First-occurrence order is preserved so the output is deterministic.
-/// `EvalEngine::record_warning` already does the equivalent for evaluation
-/// warnings; this is the same treatment for scene-graph ones.
+/// Scene warnings are raised per placement, so a replicavol nested inside a
+/// 16x16 replica reports one problem 256 times. Repeats are counted rather than
+/// dropped, since "256 placements affected" is the useful part. First-occurrence
+/// order is kept, so the output is deterministic.
 fn dedupe_warnings(warnings: &mut Vec<String>) {
     const MAX_WARNINGS: usize = 100;
 
@@ -897,16 +793,10 @@ fn dedupe_warnings(warnings: &mut Vec<String>) {
 
 /// Total nodes the scene graph may emit before it stops expanding.
 ///
-/// `visited` is path-scoped — a volume is inserted on entry and removed once its
-/// children are built — which correctly detects cycles but means a volume
-/// reachable by two different paths is re-expanded along each. That is the
-/// intended behaviour (it is how repeated placements render), and real files
-/// stay small: the largest shipped sample produces about 4,400 nodes. But it is
-/// multiplicative and was unbounded, so 25 volumes each containing two physvols
-/// pointing at the next produce 2^25 nodes, each holding several strings, on
-/// every request. Hostile input rather than a real-file problem. 100k nodes is
-/// ~21 MB of JSON, already more meshes than the viewer can draw interactively;
-/// 500k was 105 MB and took 1.1 s to serialise.
+/// Expansion is multiplicative (see [`SceneBuilder::visited`]): 25 volumes each
+/// placing the next twice make 2^25 nodes. The largest shipped sample makes
+/// about 4,400; 100k nodes is ~21 MB of JSON, already more meshes than the
+/// viewer can draw interactively.
 const MAX_SCENE_NODES: usize = 100_000;
 
 /// Maximum nesting depth, bounding recursion independently of the node count.
@@ -916,268 +806,226 @@ const MAX_SCENE_DEPTH: u32 = 256;
 /// path, so deep trees of long names outgrow memory well before the node cap.
 const MAX_SCENE_BYTES: usize = 64 << 20;
 
-#[derive(Default)]
-struct SceneBudget {
+/// The lookups and running totals of one scene-graph build.
+struct SceneBuilder<'a> {
+    vol_map: HashMap<&'a str, &'a Volume>,
+    density_map: HashMap<&'a str, f64>,
+    engine: &'a EvalEngine,
+    warnings: &'a mut Vec<String>,
+    /// The volumes on the path to the node being built. That catches cycles,
+    /// while a volume reachable by several paths is expanded along each,
+    /// which is how repeated placements render.
+    visited: HashSet<&'a str>,
     nodes: usize,
     bytes: usize,
+    /// A limit stopped the expansion.
     truncated: bool,
 }
 
-// Recursion carries both immutable lookup tables and mutable accumulators. The
-// lookups belong in a context struct; that refactor is worth doing on its own
-// rather than bundled into a bug fix.
-#[allow(clippy::too_many_arguments)]
-fn build_volume_node(
-    vol: &Volume,
-    vol_map: &HashMap<&str, &Volume>,
-    density_map: &HashMap<&str, f64>,
-    engine: &EvalEngine,
-    position: [f64; 3],
-    rotation: [f64; 3],
-    is_world: bool,
-    visited: &mut HashSet<String>,
-    parent_id: &str,
-    id_suffix: String,
-    warnings: &mut Vec<String>,
-    depth: u32,
-    budget: &mut SceneBudget,
-) -> Option<SceneNode> {
-    // Every child kind comes through here, so these checks run once for
-    // physvols and replicas alike. `None` means nothing was added; a replica
-    // loop stops at the first one, since its copies would all fail alike.
-    if visited.contains(&vol.name) {
-        // G4PVPlacement refuses "a volume inside itself", and GDML's
-        // define-before-use makes longer cycles unloadable too.
-        warnings.push(format!(
-            "volume '{}' is placed inside itself; Geant4 cannot load this, and \
-             the placement is skipped.",
-            vol.name
-        ));
-        return None;
-    }
-    if depth > MAX_SCENE_DEPTH || budget.nodes >= MAX_SCENE_NODES || budget.bytes >= MAX_SCENE_BYTES
-    {
-        budget.truncated = true;
-        return None;
-    }
-    // Built only once admitted: a refused sibling would copy the whole path.
-    let instance_id = format!("{parent_id}{id_suffix}");
-    budget.nodes += 1;
-    budget.bytes +=
-        instance_id.len() + 2 * vol.name.len() + vol.solid_ref.len() + vol.material_ref.len();
+impl<'a> SceneBuilder<'a> {
+    /// The node placing `vol`, with its children, or `None` when nothing was
+    /// added. Every child kind comes through here, so these checks run once
+    /// for physvols and replicas alike; a replica loop stops at the first
+    /// `None`, since its copies would all fail alike.
+    fn node(
+        &mut self,
+        vol: &'a Volume,
+        position: [f64; 3],
+        rotation: [f64; 3],
+        parent_id: &str,
+        id_suffix: String,
+        depth: u32,
+    ) -> Option<SceneNode> {
+        if self.visited.contains(vol.name.as_str()) {
+            // G4PVPlacement refuses "a volume inside itself", and GDML's
+            // define-before-use makes longer cycles unloadable too.
+            self.warnings.push(format!(
+                "volume '{}' is placed inside itself; Geant4 cannot load this, and \
+                 the placement is skipped.",
+                vol.name
+            ));
+            return None;
+        }
+        if depth > MAX_SCENE_DEPTH || self.nodes >= MAX_SCENE_NODES || self.bytes >= MAX_SCENE_BYTES
+        {
+            self.truncated = true;
+            return None;
+        }
+        // Built only once admitted: a refused sibling would copy the whole path.
+        let instance_id = format!("{parent_id}{id_suffix}");
+        self.nodes += 1;
+        self.bytes +=
+            instance_id.len() + 2 * vol.name.len() + vol.solid_ref.len() + vol.material_ref.len();
+        self.visited.insert(vol.name.as_str());
 
-    visited.insert(vol.name.clone());
-
-    let color = vol
-        .auxiliaries
-        .iter()
-        .find(|a| a.auxtype.eq_ignore_ascii_case("color"))
-        .map(|a| a.auxvalue.clone());
-
-    let density = density_map.get(vol.material_ref.as_str()).copied();
-
-    let mut children: Vec<SceneNode> = vol
-        .physvols
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, pv)| {
-            let child_vol = match vol_map.get(pv.volume_ref.as_str()) {
-                Some(v) => v,
-                None => {
-                    warnings.push(format!(
+        let engine = self.engine;
+        let mut children: Vec<SceneNode> = vol
+            .physvols
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, pv)| {
+                let Some(&child_vol) = self.vol_map.get(pv.volume_ref.as_str()) else {
+                    self.warnings.push(format!(
                         "volume '{}': physvol references undefined volume '{}'; skipping it.",
                         vol.name, pv.volume_ref
                     ));
                     return None;
-                }
-            };
-
-            let placement = engine.resolve_position(&pv.position).and_then(|pos| {
-                let rot = engine.resolve_rotation(&pv.rotation)?;
-                Ok((pos, rot, engine.resolve_scale(&pv.scale)?))
-            });
-            let (pos, rot, scale) = match placement {
-                Ok(transform) => transform,
-                Err(e) => {
-                    warnings.push(format!(
-                        "volume '{}', placement {}: {}; skipping placement",
-                        vol.name, idx, e
-                    ));
-                    return None;
-                }
-            };
-            let id_suffix = match pv.name.as_deref() {
-                Some(name) if !name.is_empty() => {
-                    format!("/physvol[{}]({}):{}", idx, name, pv.volume_ref)
-                }
-                _ => format!("/physvol[{}]:{}", idx, pv.volume_ref),
-            };
-
-            // G4ReflectionFactory::Place keeps only a reflection: it drops a
-            // scale that is not one and refuses a reflection that is not ±1.
-            if scale.iter().any(|s| (s.abs() - 1.0).abs() > 1e-9) {
-                warnings.push(format!(
-                    "volume '{}', placement {}: scale {scale:?} is not a reflection, \
-                     which Geant4 does not apply; only its signs are drawn.",
-                    vol.name, idx
-                ));
-            }
-            build_volume_node(
-                child_vol,
-                vol_map,
-                density_map,
-                engine,
-                pos,
-                rot,
-                false,
-                visited,
-                &instance_id,
-                id_suffix,
-                warnings,
-                depth + 1,
-                budget,
-            )
-            .map(|node| SceneNode {
-                scale: scale.map(f64::signum),
-                ..node
-            })
-        })
-        .collect();
-
-    // Expand replicavol into child nodes
-    if let Some(ref replica) = vol.replica {
-        if let Some(child_vol) = vol_map.get(replica.volume_ref.as_str()) {
-            // No cap of its own: the scene budget ends the loops below, and the
-            // copies drawn keep the positions of the full count.
-            let number = engine.resolve_value(&replica.number) as usize;
-            // kPhi replicates in ANGLE, the Cartesian axes in LENGTH, so the
-            // width/offset units cannot be converted until the axis is known.
-            let is_phi = replica.curvilinear_axis.as_deref() == Some("phi");
-            let is_rho = replica.curvilinear_axis.as_deref() == Some("rho");
-            let width_val = engine.resolve_value(&replica.width);
-            let offset_val = engine.resolve_value(&replica.offset);
-            let convert = |v: f64, unit: Option<&str>| -> f64 {
-                if is_phi {
-                    crate::gdml::units::angle_to_rad(v, unit.unwrap_or("rad"))
-                } else {
-                    crate::gdml::units::length_to_mm(v, unit.unwrap_or("mm"))
-                }
-            };
-            let width = convert(width_val, replica.width_unit.as_deref());
-            let offset = convert(offset_val, replica.offset_unit.as_deref());
-
-            if is_rho {
-                // G4ReplicaNavigation::ComputeTransformation has "No setup
-                // required for radial case" for kRho -- there is no placement
-                // transform at all. Each slice is a different SOLID, its radial
-                // extent computed during navigation, which needs per-replica
-                // re-tessellation this viewer does not do. Emitting `number`
-                // coincident copies would cost N times the geometry and show
-                // exactly what one copy shows, so draw one and say so.
-                warnings.push(format!(
-                    "replicavol '{}': radial (kRho) replication subdivides the solid itself, which is not modelled; one un-subdivided copy is drawn in place of the {} slices.",
-                    replica.volume_ref, number
-                ));
-                children.extend(build_volume_node(
-                    child_vol,
-                    vol_map,
-                    density_map,
-                    engine,
-                    [0.0; 3],
-                    [0.0; 3],
-                    false,
-                    visited,
-                    &instance_id,
-                    format!("/replica[rho]:{}", replica.volume_ref),
-                    warnings,
-                    depth + 1,
-                    budget,
-                ));
-            } else {
-                // A Cartesian replica is stacked along x, y or z; a phi one is
-                // rotated instead.
-                let along = |i: usize| {
-                    let v = replica.direction[i].as_deref();
-                    v.map_or(0.0, |v| engine.resolve_value(v)).abs() > 0.5
                 };
-                let axis = if is_phi {
-                    None
-                } else if along(0) {
-                    Some(0)
-                } else if along(1) {
-                    Some(1)
-                } else {
-                    Some(2)
-                };
-                if axis.is_some() && offset.abs() > 1e-9 {
-                    // Matches Geant4: ComputeTransformation's kXAxis/kYAxis/
-                    // kZAxis cases compute the centred position from width and
-                    // replicaNo alone and never read `offset`
-                    // (G4ReplicaNavigation.cc:667-679). Said here because the
-                    // number in the file has no effect on what is drawn.
-                    warnings.push(format!(
-                        "replicavol '{}': offset ({} mm) does not move a Cartesian stack -- Geant4 ignores it here too; the stack is centred in its mother.",
-                        replica.volume_ref, offset
-                    ));
-                }
-
-                for n in 0..number {
-                    let (mut pos, mut rot) = ([0.0_f64; 3], [0.0_f64; 3]);
-                    match axis {
-                        // G4ReplicaNavigation.cc:667 --
-                        //   val = -width*0.5*(nReplicas-1) + width*replicaNo
-                        Some(axis) => {
-                            pos[axis] = -width * 0.5 * (number.saturating_sub(1) as f64)
-                                + (n as f64) * width
-                        }
-                        // G4ReplicaNavigation.cc:682 sets
-                        //   val = -(offset + width*(replicaNo + 0.5))
-                        // and applies rotateZ(val) to the physical volume. That
-                        // stored matrix is the mother-from-daughter rotation, i.e.
-                        // the inverse of the daughter's orientation, which is the
-                        // same convention SceneNode::rotation uses (the viewer
-                        // negates it) -- so `val` goes in directly.
-                        None => rot[2] = -(offset + width * (n as f64 + 0.5)),
+                let placement = engine.resolve_position(&pv.position).and_then(|pos| {
+                    let rot = engine.resolve_rotation(&pv.rotation)?;
+                    Ok((pos, rot, engine.resolve_scale(&pv.scale)?))
+                });
+                let (pos, rot, scale) = match placement {
+                    Ok(transform) => transform,
+                    Err(e) => {
+                        self.warnings.push(format!(
+                            "volume '{}', placement {}: {}; skipping placement",
+                            vol.name, idx, e
+                        ));
+                        return None;
                     }
-                    let Some(child_node) = build_volume_node(
+                };
+                let id_suffix = match pv.name.as_deref() {
+                    Some(name) if !name.is_empty() => {
+                        format!("/physvol[{}]({}):{}", idx, name, pv.volume_ref)
+                    }
+                    _ => format!("/physvol[{}]:{}", idx, pv.volume_ref),
+                };
+                // G4ReflectionFactory::Place keeps only a reflection: it drops a
+                // scale that is not one and refuses a reflection that is not ±1.
+                if scale.iter().any(|s| (s.abs() - 1.0).abs() > 1e-9) {
+                    self.warnings.push(format!(
+                        "volume '{}', placement {}: scale {scale:?} is not a reflection, \
+                         which Geant4 does not apply; only its signs are drawn.",
+                        vol.name, idx
+                    ));
+                }
+                self.node(child_vol, pos, rot, &instance_id, id_suffix, depth + 1)
+                    .map(|node| SceneNode {
+                        scale: scale.map(f64::signum),
+                        ..node
+                    })
+            })
+            .collect();
+
+        if let Some(replica) = &vol.replica {
+            if let Some(&child_vol) = self.vol_map.get(replica.volume_ref.as_str()) {
+                // No cap of its own: the scene budget ends the loops below, and the
+                // copies drawn keep the positions of the full count.
+                let number = engine.resolve_value(&replica.number) as usize;
+                // kPhi replicates in ANGLE, the Cartesian axes in LENGTH, so the
+                // width/offset units cannot be converted until the axis is known.
+                let is_phi = replica.curvilinear_axis.as_deref() == Some("phi");
+                let is_rho = replica.curvilinear_axis.as_deref() == Some("rho");
+                let convert = |v: &str, unit: Option<&str>| -> f64 {
+                    let v = engine.resolve_value(v);
+                    if is_phi {
+                        crate::gdml::units::angle_to_rad(v, unit.unwrap_or("rad"))
+                    } else {
+                        crate::gdml::units::length_to_mm(v, unit.unwrap_or("mm"))
+                    }
+                };
+                let width = convert(&replica.width, replica.width_unit.as_deref());
+                let offset = convert(&replica.offset, replica.offset_unit.as_deref());
+
+                if is_rho {
+                    // G4ReplicaNavigation::ComputeTransformation has "No setup
+                    // required for radial case" for kRho: there is no placement
+                    // transform at all. Each slice is a different SOLID, its radial
+                    // extent computed during navigation, which needs per-replica
+                    // re-tessellation this viewer does not do. Emitting `number`
+                    // coincident copies would cost N times the geometry and show
+                    // exactly what one copy shows, so draw one and say so.
+                    self.warnings.push(format!(
+                        "replicavol '{}': radial (kRho) replication subdivides the solid itself, which is not modelled; one un-subdivided copy is drawn in place of the {} slices.",
+                        replica.volume_ref, number
+                    ));
+                    let id_suffix = format!("/replica[rho]:{}", replica.volume_ref);
+                    children.extend(self.node(
                         child_vol,
-                        vol_map,
-                        density_map,
-                        engine,
-                        pos,
-                        rot,
-                        false,
-                        visited,
+                        [0.0; 3],
+                        [0.0; 3],
                         &instance_id,
-                        format!("/replica[{}]:{}", n, replica.volume_ref),
-                        warnings,
+                        id_suffix,
                         depth + 1,
-                        budget,
-                    ) else {
-                        break;
+                    ));
+                } else {
+                    // A Cartesian replica is stacked along x, y or z; a phi one is
+                    // rotated instead.
+                    let along = |i: usize| {
+                        let v = replica.direction[i].as_deref();
+                        v.map_or(0.0, |v| engine.resolve_value(v)).abs() > 0.5
                     };
-                    children.push(child_node);
+                    let axis = if is_phi {
+                        None
+                    } else if along(0) {
+                        Some(0)
+                    } else if along(1) {
+                        Some(1)
+                    } else {
+                        Some(2)
+                    };
+                    if axis.is_some() && offset.abs() > 1e-9 {
+                        // ComputeTransformation's kXAxis/kYAxis/kZAxis cases compute
+                        // the centred position from width and replicaNo alone and
+                        // never read `offset` (G4ReplicaNavigation.cc:667-679).
+                        self.warnings.push(format!(
+                            "replicavol '{}': offset ({} mm) does not move a Cartesian stack; Geant4 ignores it too, and the stack is centred in its mother.",
+                            replica.volume_ref, offset
+                        ));
+                    }
+
+                    for n in 0..number {
+                        let (mut pos, mut rot) = ([0.0_f64; 3], [0.0_f64; 3]);
+                        match axis {
+                            // G4ReplicaNavigation.cc:667:
+                            //   val = -width*0.5*(nReplicas-1) + width*replicaNo
+                            Some(axis) => {
+                                pos[axis] = -width * 0.5 * (number.saturating_sub(1) as f64)
+                                    + (n as f64) * width
+                            }
+                            // G4ReplicaNavigation.cc:682 sets
+                            //   val = -(offset + width*(replicaNo + 0.5))
+                            // and applies rotateZ(val) to the physical volume. That
+                            // stored matrix is the mother-from-daughter rotation, i.e.
+                            // the inverse of the daughter's orientation, which is the
+                            // convention SceneNode::rotation uses (the viewer negates
+                            // it), so `val` goes in directly.
+                            None => rot[2] = -(offset + width * (n as f64 + 0.5)),
+                        }
+                        let id_suffix = format!("/replica[{}]:{}", n, replica.volume_ref);
+                        let Some(child_node) =
+                            self.node(child_vol, pos, rot, &instance_id, id_suffix, depth + 1)
+                        else {
+                            break;
+                        };
+                        children.push(child_node);
+                    }
                 }
             }
         }
+
+        self.visited.remove(vol.name.as_str());
+
+        Some(SceneNode {
+            name: vol.name.clone(),
+            instance_id,
+            volume_name: vol.name.clone(),
+            solid_name: vol.solid_ref.clone(),
+            material_name: vol.material_ref.clone(),
+            color: vol
+                .auxiliaries
+                .iter()
+                .find(|a| a.auxtype.eq_ignore_ascii_case("color"))
+                .map(|a| a.auxvalue.clone()),
+            density: self.density_map.get(vol.material_ref.as_str()).copied(),
+            position,
+            rotation,
+            scale: [1.0; 3],
+            is_world: depth == 0,
+            children,
+        })
     }
-
-    visited.remove(&vol.name);
-
-    Some(SceneNode {
-        name: vol.name.clone(),
-        instance_id,
-        volume_name: vol.name.clone(),
-        solid_name: vol.solid_ref.clone(),
-        material_name: vol.material_ref.clone(),
-        color,
-        density,
-        position,
-        rotation,
-        scale: [1.0; 3],
-        is_world,
-        children,
-    })
 }
 
 // ─── NIST Materials ─────────────────────────────────────────────────────────
@@ -1497,7 +1345,6 @@ pub async fn delete_material(
     let mut state_w = state.write().await;
     let loaded = loaded(state_w.loaded.as_mut())?;
 
-    // Check if material is in use by any volume.
     let in_use_by_volume = loaded
         .document
         .structure
@@ -1505,7 +1352,6 @@ pub async fn delete_material(
         .iter()
         .any(|v| v.material_ref == req.name);
 
-    // Check if material is in use by any material component.
     let in_use_by_component =
         is_name_referenced_in_material_components(&loaded.document.materials.materials, &req.name);
 
@@ -2115,7 +1961,7 @@ mod tests {
 
     #[test]
     fn phi_replicas_are_rotated_not_stacked_along_z() {
-        // G4ReplicaNavigation.cc:682 --
+        // G4ReplicaNavigation.cc:682:
         //   val = -(offset + width*(replicaNo + 0.5)); rotateZ(val)
         // Four 90-degree slices with no offset sit at -45, -135, -225, -315
         // degrees in the stored (inverse) convention SceneNode::rotation uses.
@@ -2136,13 +1982,13 @@ mod tests {
         for (got, exp) in rz.iter().zip(want.iter()) {
             assert!((got - exp).abs() < 1e-9, "rotation {got}, expected {exp}");
         }
-        // Nothing may be displaced -- a phi replica is a pure rotation.
+        // Nothing may be displaced: a phi replica is a pure rotation.
         for c in &graph.children {
             assert_eq!(c.position, [0.0, 0.0, 0.0], "phi replica was translated");
         }
         assert!(
             warnings.is_empty(),
-            "phi replication should no longer warn: {warnings:?}"
+            "phi replication should not warn: {warnings:?}"
         );
     }
 
@@ -2193,7 +2039,7 @@ mod tests {
     #[test]
     fn cartesian_replica_offset_is_reported_as_inert() {
         // ComputeTransformation's kXAxis case never reads `offset`, so a file
-        // carrying one gets a stack that ignores it -- in Geant4 too.
+        // carrying one gets a stack that ignores it, in Geant4 too.
         let (_, warnings) = replica_scene(
             None,
             [Some("1".to_string()), None, None],
@@ -2204,9 +2050,7 @@ mod tests {
             Some("mm"),
         );
         assert!(
-            warnings
-                .iter()
-                .any(|w| w.contains("Geant4 ignores it here too")),
+            warnings.iter().any(|w| w.contains("Geant4 ignores it too")),
             "expected the offset note: {warnings:?}"
         );
     }

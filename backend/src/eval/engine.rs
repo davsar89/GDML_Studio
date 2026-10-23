@@ -10,6 +10,10 @@ use crate::gdml::model::{
 };
 use crate::gdml::units;
 
+/// Seeded names G4GDMLEvaluator lacks, so a file may define them: G4UnitsTable
+/// symbols, kept so that a `<quantity unit>` can name them.
+const NOT_GEANT4_NAMES: &[&str] = &["Ang", "fm"];
+
 pub struct EvalEngine {
     /// Every variable an expression can name, seeded once with what
     /// G4GDMLEvaluator starts with and updated as defines are evaluated.
@@ -22,19 +26,6 @@ pub struct EvalEngine {
     /// building scenes from the loaded engine at once never take each other's.
     warnings: std::sync::Mutex<HashMap<std::thread::ThreadId, Vec<String>>>,
 }
-
-/// Names seeded below that G4GDMLEvaluator does not predefine, so a file may
-/// define them: CLHEP's twopi and halfpi, the perCent family, and symbols only
-/// G4UnitsTable knows.
-const NOT_GEANT4_NAMES: &[&str] = &[
-    "twopi",
-    "halfpi",
-    "perCent",
-    "perThousand",
-    "perMillion",
-    "Ang",
-    "fm",
-];
 
 impl Default for EvalEngine {
     fn default() -> Self {
@@ -51,15 +42,13 @@ impl EvalEngine {
             scale_values: HashMap::new(),
             warnings: Default::default(),
         };
-        // setStdMath's constants and every CLHEP unit, so `2*cm` or
-        // `1.5*g/cm3` is valid in any expression. CLHEP's twopi and halfpi are
-        // kept as a convenience.
+        // What G4GDMLEvaluator starts with: setStdMath's constants and every
+        // unit setSystemOfUnits defines, so `2*cm` or `1.5*g/cm3` is valid in
+        // any expression.
         let constants = [
             ("pi", PI),
             ("e", std::f64::consts::E),
             ("gamma", std::f64::consts::EULER_GAMMA),
-            ("twopi", 2.0 * PI),
-            ("halfpi", PI / 2.0),
         ];
         for (name, value) in units::all().chain(constants) {
             engine.set(name, value);
@@ -163,16 +152,14 @@ impl EvalEngine {
         }
 
         for (name, expression, unit) in order.into_iter().map(|i| entries[i]) {
-            // A define that cannot be evaluated is a warning, not a fatal error.
-            // The identical expression appearing in a solid attribute already
-            // degrades to 0 with a warning via `resolve_value`; propagating here
-            // instead meant one bad <constant> returned HTTP 500 and the user saw
-            // nothing at all rather than a geometry with one hole in it.
+            // A define that cannot be evaluated is a warning, not a fatal error,
+            // as the same expression in a solid attribute is (`resolve_value`):
+            // a geometry with one hole in it beats no geometry at all.
             let value = match self.eval_expr(expression) {
                 Ok(v) => v,
                 Err(e) => {
                     tracing::warn!(
-                        "Failed to evaluate define '{name}' = '{expression}': {e} -- using 0.0"
+                        "Failed to evaluate define '{name}' = '{expression}': {e}; using 0.0"
                     );
                     self.record_warning(format!(
                         "Could not evaluate define \"{name}\" = \"{}\"; treated as 0. \
@@ -342,7 +329,7 @@ impl EvalEngine {
         match self.eval_expr(expr_str) {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!("Failed to evaluate '{}': {} -- using 0.0", expr_str, e);
+                tracing::warn!("Failed to evaluate '{}': {}; using 0.0", expr_str, e);
                 self.record_warning(format!(
                     "Could not evaluate expression \"{}\"; treated as 0.",
                     expr_str.trim()
@@ -366,7 +353,7 @@ impl EvalEngine {
         factor.unwrap_or_else(|| {
             self.record_warning(format!(
                 "Unknown {kind} unit \"{unit}\"; treated as {base}. Geant4 would reject \
-                 this file — check the spelling (note `micron` and `dm` are not GDML \
+                 this file. Check the spelling (note `micron` and `dm` are not GDML \
                  units; use `um` and `cm`)."
             ));
             1.0
@@ -551,8 +538,7 @@ mod tests {
     #[test]
     fn clhep_length_symbols_are_usable_in_expressions() {
         // Geant4 evaluates GDML expressions through an evaluator preloaded with
-        // CLHEP's units, so `2*cm` is valid GDML. Without these bindings the
-        // lookup failed and the whole document 500'd.
+        // CLHEP's units, so `2*cm` is valid GDML.
         let engine = EvalEngine::new();
         assert_eq!(engine.eval_expr("2*cm").unwrap(), 20.0);
         assert_eq!(engine.eval_expr("5*mm").unwrap(), 5.0);
@@ -580,7 +566,7 @@ mod tests {
     #[test]
     fn untyped_quantity_still_applies_its_unit() {
         // G4GDMLReadDefine::QuantityRead never reads `type`; it multiplies by
-        // the unit unconditionally. Gating on type left this at 5 instead of 50.
+        // the unit unconditionally.
         let mut defines = DefineSection::default();
         defines
             .quantities
@@ -602,9 +588,8 @@ mod tests {
 
     #[test]
     fn unevaluable_define_warns_instead_of_failing_the_document() {
-        // One bad expression used to abort the whole load with a 500. The same
-        // expression in a solid attribute has always degraded to 0 with a
-        // warning; defines now match.
+        // A define that cannot be evaluated degrades to 0 with a warning, as the
+        // same expression in a solid attribute does.
         let mut defines = DefineSection::default();
         defines.constants.push(constant("good", "10"));
         defines
@@ -670,11 +655,14 @@ mod tests {
     }
 
     #[test]
-    fn predefined_constants_resolve() {
+    fn predefined_names_are_geant4s() {
         let e = EvalEngine::new();
-        assert!((e.eval_expr("twopi/4").unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
-        assert!((e.eval_expr("halfpi").unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
         assert!((e.eval_expr("90*deg").unwrap() - std::f64::consts::FRAC_PI_2).abs() < 1e-9);
+        // CLHEP's SystemOfUnits.h has these, but neither G4GDMLEvaluator nor
+        // G4UnitsTable does, so a GDML file cannot use them.
+        for name in ["twopi", "halfpi", "perCent", "perThousand", "perMillion"] {
+            assert!(e.eval_expr(name).is_err(), "{name}");
+        }
     }
 
     #[test]

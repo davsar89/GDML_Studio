@@ -8,7 +8,7 @@ use tracing::debug;
 /// This must scale with the geometry, not be a fixed absolute distance.
 /// `TriangleMesh` stores positions as `f32`, so a vertex that is exactly on its
 /// own face plane in exact arithmetic lands up to ~1e-7 * |coordinate| away from
-/// it once quantised — 3.8e-5 mm for a face 1 m from the origin. Against a fixed
+/// it once quantised: 3.8e-5 mm for a face 1 m from the origin. Against a fixed
 /// 1e-5 mm tolerance those faces classify as SPANNING instead of COPLANAR, which
 /// shatters them into slivers: a coplanar subtract of two rotated 100 mm cubes
 /// (exact answer 500000 mm^3, 16 triangles) gave 622610 mm^3 and 81 triangles at
@@ -17,8 +17,8 @@ use tracing::debug;
 ///
 /// 1e-6 sits about an order of magnitude above the observed f32 drift, which is
 /// tight enough to keep genuinely distinct faces apart. Axis-aligned geometry
-/// never showed the problem at all — integers below 2^24 are exact in f32 — so
-/// it takes a rotated face, i.e. anything meshed from trigonometry.
+/// never shows the problem (integers below 2^24 are exact in f32), so it takes
+/// a rotated face, i.e. anything meshed from trigonometry.
 const EPSILON_SCALE: f64 = 1e-6;
 
 /// Floor for the scaled tolerance, for degenerate or zero-extent input.
@@ -132,14 +132,14 @@ struct Node {
 /// A convex operand builds a chain one node per face (see [`pick_splitter`]):
 /// up to 960 deep for an orb at the default 32 segments, 16k at 128.
 /// Recursion, or the recursive `Drop` of boxed children, overflows a 2 MiB
-/// worker stack at that depth -- an uncatchable abort. The depth cap that used
-/// to prevent it left plane-less leaves that kept everything below them, so
-/// box & orb came out larger than the orb.
+/// worker stack at that depth, an uncatchable abort. A depth cap instead would
+/// leave plane-less leaves that keep everything below them, so box & orb would
+/// come out larger than the orb.
 ///
 /// The tree holds planes only: it classifies space, and the polygons being
 /// clipped are passed in separately.
 ///
-/// Ponytail: the chain makes a build O(N^2) and a clip O(N) per polygon for an
+/// Cost: the chain makes a build O(N^2) and a clip O(N) per polygon for an
 /// N-face convex operand (N counted inside the overlap box). A box & orb takes
 /// 3 ms at 32 segments, 80 ms at 128 and 1.5 s at 256 (release). No face plane
 /// of a convex mesh splits the others, so a better splitter cannot help; the
@@ -243,10 +243,10 @@ impl Bsp {
 /// Sampling a handful of candidates and scoring them for balance keeps a
 /// non-convex operand near log2(N) deep. It cannot help a convex one: every
 /// other face lies behind any face plane, all candidates score alike, and the
-/// tree is a chain one node per face -- which is why [`Bsp`] never recurses.
+/// tree is a chain one node per face, which is why [`Bsp`] never recurses.
 ///
 /// Candidates are drawn by striding through the list rather than at random, so
-/// the result stays deterministic — CSG output must not vary between runs.
+/// the result stays deterministic: CSG output must not vary between runs.
 fn pick_splitter(polygons: &[CsgPolygon], eps: f64) -> Plane {
     if polygons.len() <= 2 {
         return polygons[0].plane.clone();
@@ -946,7 +946,7 @@ mod tests {
     fn deep_boolean_does_not_exhaust_the_stack() {
         // The part of the sphere inside the cutter's box builds a BSP chain
         // ~2.4k nodes deep. A recursive build aborted the process on a 2 MiB
-        // stack at segments >= 104 -- a stack overflow, not a catchable panic.
+        // stack at segments >= 104: a stack overflow, not a catchable panic.
         // 256 KiB leaves ~100 bytes per level, less than any recursive frame.
         let handle = std::thread::Builder::new()
             .stack_size(256 << 10)

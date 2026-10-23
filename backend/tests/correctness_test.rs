@@ -597,8 +597,8 @@ async fn solid_mesh(solids: &str, solid: &str) -> TriangleMesh {
 
 #[tokio::test]
 async fn boolean_with_a_finely_meshed_orb_has_the_right_volume() {
-    // A 960-face orb made a BSP chain far past the old depth cap of 192, whose
-    // plane-less leaves kept everything below them. The box's face
+    // A 960-face orb makes a BSP chain 960 deep; a depth cap would leave
+    // plane-less leaves that keep everything below them. The box's face
     // x = 0 is the orb's mirror plane, so exactly half its mesh must remain.
     let orb = r#"<orb name="O" r="50"/><box name="B" x="200" y="200" z="200"/>"#;
     let half = solid_mesh(
@@ -635,8 +635,8 @@ async fn box_and_offset_orb_intersection_is_bounded_by_both() {
 
 #[tokio::test]
 async fn chained_subtractions_stay_linear() {
-    // Every plane of each hole used to split the whole plate, and each later
-    // hole split those slivers again: 10 holes gave 148x the triangles of one.
+    // If every plane of each hole split the whole plate, each later hole would
+    // split those slivers again: 10 holes would give 148x the triangles of one.
     let plate = |n: usize| {
         let mut solids = String::from(
             r#"<box name="s0" x="200" y="80" z="10"/><tube name="T" rmax="10" z="20" deltaphi="360" aunit="deg"/>"#,
@@ -918,8 +918,8 @@ async fn sphere_deltatheta_stops_at_the_pole() {
 
 #[tokio::test]
 async fn invalid_ellipsoid_and_its_boolean_are_reported() {
-    // Crossed cuts are fatal in G4Ellipsoid::CheckParameters (G4Ellipsoid.cc:196).
-    // The empty mesh used to be kept, and the union silently became the box.
+    // Crossed cuts are fatal in G4Ellipsoid::CheckParameters (G4Ellipsoid.cc:196),
+    // so the union must not silently become the box.
     let state = load(&document(
         "",
         r#"<ellipsoid name="E" ax="10" by="10" cz="10" zcut1="5" zcut2="-5"/>
@@ -1019,7 +1019,7 @@ fn material_names(xml: &str) -> Vec<String> {
 async fn edited_forward_material_reference_is_reordered() {
     // G4GDMLReadMaterials resolves a <fraction ref> while reading the material,
     // so a mixture must follow what it is made of. M is declared before N;
-    // making M a mixture of N used to export M first, which Geant4 rejects.
+    // exporting M first after making it a mixture of N is a file Geant4 rejects.
     let state = load(&document("", r#"<box name="B" x="1" y="1" z="1"/>"#, "")).await;
     assert!(edit_material(&state, "M", "N").await);
     assert_eq!(material_names(&export(&state).await), ["N", "M"]);
@@ -1158,12 +1158,11 @@ async fn bad_position_define_warns_instead_of_rejecting() {
 async fn clhep_units_evaluate_like_geant4() {
     // G4GDMLEvaluator loads every CLHEP unit in internal units, where mm, ns
     // and MeV are 1 (setSystemOfUnits.cc, SystemOfUnits.h), so g/cm3 is
-    // 6.2415e18. kg, g, s, ns, perCent and milliradian were undefined here and
-    // evaluated to 0. A define named like a builtin (`e`) is the one used, so
-    // `w` must wait for it; the exponent in `30e-1` does not name it.
+    // 6.2415e18. A define named like a builtin (`e`) is the one used, so `w`
+    // must wait for it; the exponent in `30e-1` does not name it.
     let xml = document(
         r#"<constant name="w" value="2*e"/><constant name="e" value="k"/><constant name="k" value="30e-1"/>"#,
-        r#"<box name="U" x="kg/g*milliradian" y="50*perCent*(s/ns)*1e-9*cm" z="1e-18*g/cm3"/>
+        r#"<box name="U" x="kg/g*milliradian" y="0.5*(s/ns)*1e-9*cm" z="1e-18*g/cm3"/>
         <box name="E" x="w" y="1" z="1"/>"#,
         r#"<volume name="W"><materialref ref="M"/><solidref ref="U"/></volume>"#,
     );
@@ -1189,8 +1188,7 @@ async fn clhep_units_evaluate_like_geant4() {
 #[tokio::test]
 async fn scene_density_uses_the_evaluator() {
     // DRead evaluates `value` as an expression and multiplies by `unit`
-    // (G4GDMLReadMaterials.cc:147-191). The scene parsed the value as a bare
-    // number, so a density given through a define had none.
+    // (G4GDMLReadMaterials.cc:147-191), so a density may come from a define.
     let xml = document(
         r#"<constant name="rho" value="2700"/>"#,
         r#"<box name="B" x="1" y="1" z="1"/>"#,
@@ -1309,7 +1307,7 @@ async fn material_without_composition_is_rejected() {
 async fn quantity_is_listed_in_its_declared_unit() {
     // The Defines tab prints `evaluated` next to the declared unit, so a
     // quantity of 10 cm has to come back as 10, not the 100 mm used inside.
-    // G4UnitsTable lists g/cm3 as a unit of its own; it used to scale by 1.
+    // G4UnitsTable lists g/cm3 as a unit of its own.
     let state = load(&document(
         r#"<quantity name="q" value="10" unit="cm"/><quantity name="qa" value="90" unit="deg"/>
         <quantity name="rho" value="2.7" unit="g/cm3"/>"#,
@@ -1435,7 +1433,7 @@ async fn loop_inside_materials_survives_export() {
 async fn comment_before_a_preserved_element_survives_export() {
     // A comment anchors to the next named element, and the writer only
     // replays anchors for the elements it models, so one before an
-    // <opticalsurface> was lost on save. It now travels with the element.
+    // <opticalsurface> travels inside the preserved element instead.
     let xml = document(
         "",
         r#"<box name="B" x="1" y="1" z="1"/><!-- polished foil -->
@@ -1576,7 +1574,7 @@ async fn nested_loops_share_one_expansion_budget() {
 #[tokio::test]
 async fn loop_bounds_near_i64_max_do_not_overflow() {
     // `v += step` past i64::MAX and a bracket index minus one below i64::MIN
-    // panicked in a debug build. Stepping past the end now ends the loop.
+    // must not overflow; stepping past the end ends the loop.
     let state = load(&document(
         r#"<variable name="i" value="0"/>"#,
         r#"<box name="B" x="1" y="1" z="1"/>"#,

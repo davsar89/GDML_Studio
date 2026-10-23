@@ -237,7 +237,7 @@ function NistMaterialPicker({ material }: { material: MaterialInfo }) {
           {loading && <div className="muted" role="status">Loading…</div>}
           {results.map((n) => (
             <button key={n.name} className="plain catalog-option" onClick={() => handleApply(n)}
-              title={`${n.name}${n.formula ? ' (' + n.formula + ')' : ''} - ${n.density} g/cm3 (${n.state}, ${n.category})`}>
+              title={`${n.name}${n.formula ? ` (${n.formula})` : ''}: ${n.density} g/cm3 (${n.state}, ${n.category})`}>
               <span className="mono">{n.name}</span>
               <span className="muted">{n.formula && `${n.formula} · `}{n.density} g/cm3 · {n.state}</span>
             </button>

@@ -117,7 +117,7 @@ fn assert_closed_outward(mesh: &TriangleMesh, name: &str) {
     let rel = (v1 - v2).abs() / v1.abs();
     assert!(
         rel < 0.01,
-        "{name}: volume depends on reference point ({v1:.4} vs {v2:.4}) — \
+        "{name}: volume depends on reference point ({v1:.4} vs {v2:.4}): \
          mesh is not consistently oriented/closed"
     );
     assert_normals_match_winding(mesh, name);
@@ -518,7 +518,7 @@ fn generic_polycone_revolves_the_closing_edge() {
     assert_volume(&m, expected, 0.01, "generic polycone hollow tube");
     assert_normals_match_winding(&m, "generic polycone hollow tube");
 
-    // Reversed contour winding is legal input -- G4Polycone::Create normalises
+    // Reversed contour winding is legal input: G4Polycone::Create normalises
     // it by signed area.
     let cw: Vec<(f64, f64)> = hollow.iter().rev().copied().collect();
     let r = tessellate_generic_polycone(corners(&cw), 0.0, 2.0 * PI, SEG, None);
@@ -528,8 +528,7 @@ fn generic_polycone_revolves_the_closing_edge() {
 #[test]
 fn generic_polycone_bicone_still_correct() {
     // The shape both generic solids in solids.gdml use: a bicone whose
-    // closing edge lies on the z axis. This was already right under the old z-plane mapping, so it
-    // guards against the fix regressing the common case.
+    // closing edge lies on the z axis.
     let bicone = [(0.0, 10.0), (5.0, 20.0), (0.0, 30.0)];
     // Two cones joined base to base, each h=10, r=5.
     let expected = 2.0 * PI * 25.0 * 10.0 / 3.0;
@@ -690,8 +689,8 @@ fn generic_polyhedra_radii_are_corner_radii_not_apothems() {
     assert_volume(&m, expected, 0.01, "genericPolyhedra prism");
     assert_normals_match_winding(&m, "genericPolyhedra prism");
 
-    // Guard the specific regression: treating r as an apothem scales every
-    // radius by 1/cos(pi/n), which for n=6 is a 33.3% volume error.
+    // Treating r as an apothem would scale every radius by 1/cos(pi/n), which
+    // for n=6 is a 33.3% volume error; the tolerance above must catch that.
     let inflated = expected / (PI / n as f64).cos().powi(2);
     assert!(
         (inflated - expected).abs() / expected > 0.3,
@@ -704,9 +703,9 @@ fn twisted_tubs_is_a_hyperboloid_not_a_cylinder() {
     // The G4TwistedTubs::SetFields hyperboloid (see `twisted_tubs_mesh`),
     // which closes to r_end = r_mid / cos(twist/2).
     //
-    // Meshing at constant radius made the twist geometrically INVISIBLE for a
-    // full 2*pi sweep -- rotating a constant-radius circle about its own axis
-    // is the identity, so the mesh was bit-for-bit a plain tube.
+    // Meshing at constant radius would make the twist invisible for a full
+    // 2*pi sweep: rotating a constant-radius circle about its own axis is the
+    // identity, so the mesh would be a plain tube.
     let r_mid = 10.0;
     let z_half = 10.0;
     let twist = PI / 3.0; // 60 degrees
@@ -721,7 +720,7 @@ fn twisted_tubs_is_a_hyperboloid_not_a_cylinder() {
     assert_volume(&m, expected, 0.01, "twistedtubs hyperboloid");
     assert_normals_match_winding(&m, "twistedtubs hyperboloid");
 
-    // The regression guard: a straight tube of the waist radius is 12.2% smaller
+    // A straight tube of the waist radius is 12.2% smaller
     // here, so the assertion above genuinely distinguishes the two surfaces.
     let cylinder = PI * r_mid * r_mid * 2.0 * z_half;
     assert!(

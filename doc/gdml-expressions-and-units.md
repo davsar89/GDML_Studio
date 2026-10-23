@@ -51,21 +51,24 @@ GDML expressions are evaluated by `G4GDMLEvaluator`, which wraps CLHEP's `HepToo
 | `radian` / `rad` | 1.0 |
 | `degree` / `deg` | pi/180 |
 
-Common user-defined constants: `HALFPI = pi/2`, `TWOPI = 2*pi`.
-
 ### Matrix Access
 
-Matrices are accessed with `m[row,col]` or `m[index]` syntax (1-based indexing).
+A `<matrix>` cell is read as `m[row,col]`, or `m[i]` for a single-row or single-column matrix (1-based; `G4GDMLEvaluator::SolveBrackets`). GDML Studio does the same (`eval/engine.rs`).
 
 ### Expression Usage
 
-Expressions can be used anywhere a numeric value is expected: solid dimensions, positions, rotations, material properties. Variables are re-evaluated each use; constants cannot be redefined.
+Expressions can be used anywhere a numeric value is expected: solid dimensions, positions, rotations, material properties.
 
 ---
 
-## 2. Complete Unit System
+## 2. Units
 
-All units derive from CLHEP `SystemOfUnits.h`. Internal base units: mm, ns, MeV, radian.
+Values come from CLHEP `SystemOfUnits.h`; internal base units are mm, ns, MeV, radian. Geant4 looks a unit up in two places:
+
+- a `unit`/`lunit`/`aunit` attribute goes to `G4UnitsTable` (name or symbol). `lunit` must be a Length and `aunit` an Angle unit, or Geant4 aborts. The table covers the length, angle, time, energy, mass and pressure units below plus composites such as `g/cm3` and `g/mole`, but symbols differ: `Ang`, `fm`, `meV`, `dL`, `eplus` exist only there, while `micron`, `cc`, `Gs`, `kGs` and multiples such as `kBq`, `kW`, `kN` exist only in the evaluator;
+- a name inside an expression is a variable of the evaluator (CLHEP `setSystemOfUnits.cc`); the tables below list those.
+
+Neither knows `inch`, `foot`, `radians` or `degrees`.
 
 ### Length Units (default `lunit="mm"`)
 
@@ -77,7 +80,7 @@ All units derive from CLHEP `SystemOfUnits.h`. Internal base units: mm, ns, MeV,
 | `um` / `micrometer` | um | 1e-3 (`micron` only inside expressions) |
 | `mm` | mm | 1.0 |
 | `cm` | cm | 10.0 |
-| `decimeter` | — | 100.0 (only inside expressions; there is no `dm`) |
+| `decimeter` | | 100.0 (only inside expressions; there is no `dm`) |
 | `m` | m | 1000.0 |
 | `km` | km | 1e6 |
 | `parsec` | pc | ~3.0857e19 |
@@ -95,7 +98,7 @@ All units derive from CLHEP `SystemOfUnits.h`. Internal base units: mm, ns, MeV,
 
 | Unit | Value in MeV |
 |------|-------------|
-| `meV` | 1e-9 |
+| `millielectronvolt` (attribute: `meV`) | 1e-9 |
 | `eV` | 1e-6 |
 | `keV` | 1e-3 |
 | `MeV` | 1.0 |
@@ -149,7 +152,6 @@ Default units of material properties (`<D>`, `<atom>`, `<T>`, `<P>`, `<MEE>`): s
 
 | Unit | Description |
 |------|-------------|
-| `eplus` | Elementary charge |
 | `C` / `coulomb` | Coulomb |
 | `A` | Ampere |
 | `V` | Volt |
@@ -163,9 +165,9 @@ Default units of material properties (`<D>`, `<atom>`, `<T>`, `<P>`, `<MEE>`): s
 | Unit | Description |
 |------|-------------|
 | `mm2`, `cm2`, `m2`, `km2` | Area |
-| `barn`, `mbarn`, `microbarn`, `nanobarn`, `pbarn` | Cross-section area |
+| `barn`, `mbarn`, `microbarn`, `nanobarn`, `picobarn` | Cross-section area |
 | `mm3`, `cm3`/`cc`, `m3`, `km3` | Volume |
-| `L`, `dL`, `cL`, `mL` | Litre units |
+| `L`, `cL`, `mL` | Litre units |
 
 ### Other
 
@@ -178,7 +180,6 @@ Default units of material properties (`<D>`, `<atom>`, `<T>`, `<P>`, `<MEE>`): s
 | `Hz`, `kHz`, `MHz` | Frequency |
 | `W`, `kW`, `MW`, `GW` | Power |
 | `N`, `kN` | Force |
-| `perCent`, `perThousand`, `perMillion` | Fractions |
 
 ---
 
@@ -205,6 +206,8 @@ Textual substitution. Constants/variables from the parent file are accessible.
 
 Syntax: see [`<physvol>`](gdml-specification.md#physvol-physical-volume-placement). Each included file has its own evaluation scope. Parent constants/variables are NOT available.
 
+GDML Studio keeps a DOCTYPE but does not expand its entities (an upload endpoint resolving `SYSTEM` entities is XXE); it warns instead, and supports Method 2 through multi-file upload (`gdml/parser.rs`, `Event::DocType`).
+
 ---
 
 ## 4. GDML-to-Geant4 Class Mapping
@@ -226,7 +229,7 @@ Syntax: see [`<physvol>`](gdml-specification.md#physvol-physical-volume-placemen
 | `<polycone>` | `G4Polycone` |
 | `<genericPolycone>` | `G4GenericPolycone` |
 | `<polyhedra>` | `G4Polyhedra` |
-| `<genericPolyhedra>` | `G4GenericPolyhedra` |
+| `<genericPolyhedra>` | `G4Polyhedra` (r-z constructor; there is no `G4GenericPolyhedra`) |
 | `<eltube>` | `G4EllipticalTube` |
 | `<ellipsoid>` | `G4Ellipsoid` |
 | `<elcone>` | `G4EllipticalCone` |
@@ -264,24 +267,16 @@ Syntax: see [`<physvol>`](gdml-specification.md#physvol-physical-volume-placemen
 
 ### Top Pitfalls
 
-1. **Overlapping/protruding daughter volumes** — daughters must fit within mother
-2. **Unit mismatches** — forgetting to set `lunit`/`aunit` (defaults: mm, rad)
-3. **Half-length confusion** — GDML uses full lengths, but some docs reference Geant4 half-lengths
-4. **Omitted deltaphi** — the Geant4 reader defaults `deltaphi` to 0, not 2*pi; always set it
-5. **Name collisions** — XML IDs must be unique across the entire document
-6. **Entity vs file scope** — DOCTYPE entities share parent scope; `<file>` elements don't
-7. **Floating-point at boundaries** — daughter surfaces should not coincide with mother surfaces (use small gap)
-8. **Missing material references** — every volume needs a materialref
-9. **Expression evaluation order** — define before use; forward references not supported
-10. **Not validating against schema** — use `xsi:noNamespaceSchemaLocation` to enable validation
-
-### Best Practices
-
-- Keep the define section organized: constants first, then computed quantities, then positions/rotations
-- Use meaningful names that map to physical components
-- For large detectors, use modular files with entity inclusion
-- Always specify explicit units rather than relying on defaults
-- Use `<auxiliary>` tags for visualization hints (color, sensitivity)
+1. **Overlapping/protruding daughter volumes**: daughters must fit within mother
+2. **Unit mismatches**: forgetting to set `lunit`/`aunit` (defaults: mm, rad)
+3. **Half-length confusion**: most GDML solids take full lengths, but eltube, paraboloid and arb8 take half-lengths (see [gdml-specification.md §4](gdml-specification.md#4-solids-section))
+4. **Omitted deltaphi**: the Geant4 reader defaults `deltaphi` (and a sphere's `deltatheta`) to 0, not 2*pi. Tube, cutTube, cone, sphere and torus then refuse the solid ("Invalid dphi"); polycone and polyhedra read 0 as a full turn. Always set it
+5. **Name collisions**: names are `xs:ID`, unique across the document, and a define may not reuse a name the evaluator already has (`m`, `deg`, `pi`, ...): Geant4 aborts with "Redefinition of constant or variable"
+6. **Entity vs file scope**: DOCTYPE entities share parent scope; `<file>` elements don't
+7. **Floating-point at boundaries**: daughter surfaces should not coincide with mother surfaces (use small gap)
+8. **Missing material references**: every volume needs a materialref
+9. **Expression evaluation order**: Geant4 reads defines in document order, so a forward reference is fatal there (GDML Studio orders defines by dependency and accepts it)
+10. **Not validating against schema**: use `xsi:noNamespaceSchemaLocation` to enable validation
 
 ---
 
@@ -292,6 +287,3 @@ Syntax: see [`<physvol>`](gdml-specification.md#physvol-physical-volume-placemen
 | **ROOT** | `TGeoManager::Import("file.gdml"); gGeoManager->GetTopVolume()->Draw("ogl")` |
 | **Geant4** | Load via `G4GDMLParser`, visualize with OpenGL/Qt/HepRep/VRML/DAWN drivers |
 | **pyg4ometry** | Python library with VTK visualization |
-| **Visual GDML** | Qt-based editor and viewer |
-| **gdmlview** | JeffersonLab viewer |
-| **SWAN** | CERN Jupyter notebook visualization |

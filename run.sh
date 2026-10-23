@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GDML Studio — build backend, run tests, start backend + frontend, open browser
+# GDML Studio: build backend, run tests, start backend + frontend, open browser
 set -euo pipefail
 
 # Kill whatever we started, however we exit. Trapped before the first background
@@ -69,9 +69,7 @@ echo ""
 echo "=== Type-checking frontend ==="
 cd "$SCRIPT_DIR/frontend"
 npm install --silent
-# Build mode is required: tsconfig.json is solution-style ("files": [] plus
-# project references), so plain `tsc --noEmit` checks zero files and always
-# exits 0. Matches the `tsc -b` in package.json's build script.
+# Build mode, not --noEmit: see frontend/README.md#checks.
 npx tsc -b
 
 echo ""

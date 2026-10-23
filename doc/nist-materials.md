@@ -19,11 +19,11 @@
 
 ## 1. Elemental Materials (99)
 
-G4_WATER is index 0 (density 1.0 g/cm3, liquid). Elements from Z=1 (H) through Z=98 (Cf).
+G4_WATER is index 0, then the elements from Z=1 (H) through Z=98 (Cf).
 
 | Name | Density (g/cm3) | Z | State |
 |------|----------------|---|-------|
-| G4_WATER | 1.0 | — | Liquid |
+| G4_WATER | 1.0 | | Liquid |
 | G4_H | 8.375e-05 | 1 | Gas |
 | G4_He | 1.663e-04 | 2 | Gas |
 | G4_Li | 0.534 | 3 | Solid |
@@ -365,9 +365,7 @@ G4_WATER is index 0 (density 1.0 g/cm3, liquid). Elements from Z=1 (H) through Z
 
 ## Important Notes
 
-1. **G4_GRAPHITE** (2.21 g/cm3) is distinct from **G4_C** (2.0 g/cm3) — same element, different density.
-2. **G4_GRAPHITE_POROUS** (1.7 g/cm3) is a third carbon variant.
-3. **DNA bonded materials** (G4_DNA_*) have placeholder density 1.0 g/cm3 and account for atoms lost during chemical bonding.
-4. **Gas elements**: H, He, N, O, F, Ne, Cl, Ar, Br, Kr, Xe, Rn are in gas state.
-5. **Liquid elements**: Hg is solid in the database (despite being liquid at room temp).
-6. Materials prefixed with `l` are liquid forms: G4_lH2, G4_lN2, G4_lO2, G4_lAr, G4_lBr, G4_lKr, G4_lXe, G4_lPROPANE.
+1. **G4_GRAPHITE** (2.21 g/cm3), **G4_C** (2.0 g/cm3) and **G4_GRAPHITE_POROUS** (1.7 g/cm3) are the same element at three densities.
+2. **DNA bonded materials** (G4_DNA_*) have placeholder density 1.0 g/cm3 and account for atoms lost during chemical bonding.
+3. **G4_Hg** is solid in the database (despite being liquid at room temperature); G4_Br is a gas.
+4. Materials prefixed with `l` are liquid forms: G4_lH2, G4_lN2, G4_lO2, G4_lAr, G4_lBr, G4_lKr, G4_lXe, G4_lPROPANE.

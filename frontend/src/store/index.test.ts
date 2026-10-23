@@ -6,26 +6,7 @@ vi.mock('../components/Viewport/geometryCache', () => ({
 
 import { useAppStore } from './index';
 import { clearAllGeometries } from '../components/Viewport/geometryCache';
-import type { MaterialInfo } from './types';
-
-const material = (name: string): MaterialInfo => ({
-  name,
-  formula: null,
-  z: null,
-  state: null,
-  density: { value: '1.0', unit: 'g/cm3' },
-  density_ref: null,
-  temperature: null, temperature_ref: null, pressure_ref: null, mee_ref: null,
-  pressure: null,
-  mee: null,
-  rl: null,
-  al: null,
-  properties: [],
-  atom_value: null,
-  atom_unit: null,
-  atom_type: null,
-  components: [],
-});
+import { emptyMaterial } from '../utils/nistImport';
 
 describe('store.reset', () => {
   beforeEach(() => {
@@ -33,7 +14,7 @@ describe('store.reset', () => {
   });
 
   it('empties the document and disposes geometries', () => {
-    useAppStore.setState({ materials: [material('G4_AIR')], warnings: ['something'] });
+    useAppStore.setState({ materials: [emptyMaterial('G4_AIR')], warnings: ['something'] });
     const store = useAppStore.getState();
     store.setSelectedMaterial('G4_AIR');
     store.setError('boom');
