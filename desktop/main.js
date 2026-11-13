@@ -34,18 +34,21 @@ function freePort() {
   });
 }
 
-// If Electron itself crashes, Windows leaves this backend running until reboot.
-// Upgrade path if that matters: have the backend exit when its stdin closes.
+// The backend exits when its stdin closes: when the app quits, and also when
+// it crashes or is killed (by an installer replacing it, say), since the
+// system closes the pipe then. It stops a running import's CAD worker first.
 function startBackend(port) {
   backend = spawn(exe, [], {
     // The backend serves cwd/frontend/dist.
     cwd: root,
-    env: { ...process.env, GDML_PORT: String(port) },
+    env: { ...process.env, GDML_PORT: String(port), GDML_EXIT_WITH_STDIN: '1' },
     // A console-subsystem child of a GUI app would otherwise open a console window.
     windowsHide: true,
-    stdio: ['ignore', 'ignore', 'pipe'],
+    stdio: ['pipe', 'ignore', 'pipe'],
   });
   backend.stderr.on('data', (chunk) => { stderrTail = (stderrTail + chunk).slice(-2000); });
+  // Ending the pipe of a backend that already exited fails; 'exit' reports that.
+  backend.stdin.on('error', () => {});
   const fail = (reason) => {
     // A failed spawn can emit both 'error' and 'exit'; report once.
     if (quitting) return;
@@ -110,7 +113,7 @@ ipcMain.handle('save-file', async (event, content, filename) => {
 
 app.on('will-quit', () => {
   quitting = true;
-  backend?.kill();
+  backend?.stdin.end();
 });
 
 app.whenReady().then(async () => {

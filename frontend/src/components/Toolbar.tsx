@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAppStore } from '../store';
 import * as api from '../api/client';
 import { loadDocument } from '../utils/refresh';
+import { cancelImport, importCadFile, isCadFile, progressText } from '../utils/cadImport';
 import { runDocumentAction, resolveMaterialDraft, resolveDocumentReplacement, exportCurrentDocument, askFilename } from '../utils/documentActions';
 
 export default function Toolbar() {
@@ -10,6 +11,7 @@ export default function Toolbar() {
   const dirty = useAppStore((s) => s.dirty);
   const hasDraft = useAppStore((s) => s.materialDraft !== null);
   const documentBusy = useAppStore((s) => s.documentBusy);
+  const importProgress = useAppStore((s) => s.importProgress);
 
   // A draft lives only in this tab and applied edits only in the backend's memory;
   // a reload restores the applied ones but loses the draft.
@@ -23,13 +25,19 @@ export default function Toolbar() {
   const handleOpenFile = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.gdml';
+    input.accept = '.gdml,.stl,.step,.stp';
     input.multiple = true;
     input.onchange = async () => {
       const files = Array.from(input.files ?? []);
       if (files.length === 0) return;
+      // GDML files may be the modules of one document; a CAD file is a document of its own.
+      if (files.length > 1 && files.some((file) => isCadFile(file.name))) {
+        useAppStore.getState().setError('Open a CAD file (.stl, .step, .stp) on its own, not with other files.');
+        return;
+      }
       await runDocumentAction(async () => {
         if (!await resolveDocumentReplacement()) return;
+        if (isCadFile(files[0].name)) return importCadFile(files[0]);
         await loadDocument(async () => api.uploadFiles(Object.fromEntries(
           await Promise.all(files.map(async (file) => [file.name, await file.text()])),
         )), files.map((file) => file.name).join(', '));
@@ -64,6 +72,10 @@ export default function Toolbar() {
         {(dirty || hasDraft) && <span className="document-state" title="This document has edits that are not in any saved file">● {hasDraft ? 'unapplied changes' : 'unsaved'}</span>}
       </div>
       <div className="header-actions">
+        {importProgress && <>
+          <span className="muted" role="status">{progressText(importProgress)}</span>
+          <button className="quiet" onClick={cancelImport}>Cancel</button>
+        </>}
         <button className="primary" onClick={handleOpenFile} disabled={documentBusy} aria-busy={loading}>
           {loading ? 'Opening…' : 'Open File(s)'}
         </button>

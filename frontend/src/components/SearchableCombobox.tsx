@@ -3,13 +3,14 @@ import type { MaterialInfo, NistMaterial } from '../store/types';
 import { useNistSearch } from '../utils/useNistSearch';
 
 interface SearchableComboboxProps {
+  label?: string;
   value: string;
   materials: MaterialInfo[];
   /** `nist` is set when the pick is a catalog material not yet in the document. */
   onChange: (materialName: string, nist?: NistMaterial) => void;
 }
 
-export default function SearchableCombobox({ value, materials, onChange }: SearchableComboboxProps) {
+export default function SearchableCombobox({ label = 'Material', value, materials, onChange }: SearchableComboboxProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(-1);
@@ -51,7 +52,7 @@ export default function SearchableCombobox({ value, materials, onChange }: Searc
 
   return (
     <div ref={containerRef} className="popover-anchor" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) close(); }}>
-      <label className="field">Material
+      <label className="field">{label}
         <input role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
           aria-activedescendant={open && activeIdx >= 0 ? `${listId}-${activeIdx}` : undefined}
           value={open ? query : value} autoComplete="off"

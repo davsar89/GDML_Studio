@@ -14,3 +14,4 @@ tower-http = { version = "0.6", features = ["cors", "fs"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 anyhow = "1"
+robust = "1.2"

@@ -14,8 +14,9 @@ export async function loadDocument(upload: () => Promise<DocumentSummary>, what:
   try {
     const summary = await upload();
     uploaded = true;
-    const [meshData, defData, structData, matData] = await Promise.all([
+    const [meshData, defData, structData, matData, importReport] = await Promise.all([
       api.getMeshes(), api.getDefines(), api.getStructure(), api.getMaterials(),
+      summary.imported ? api.getImportReport() : null,
     ]);
     clearAllGeometries();
     useAppStore.setState({
@@ -25,7 +26,7 @@ export async function loadDocument(upload: () => Promise<DocumentSummary>, what:
       summary, warnings: [...summary.warnings, ...meshData.warnings],
       meshes: meshData.meshes, sceneGraph: meshData.scene_graph,
       defines: defData.defines, volumes: structData.volumes,
-      materials: matData.materials, elements: matData.elements,
+      materials: matData.materials, elements: matData.elements, importReport,
     });
   } catch (e: unknown) {
     // A rejected upload leaves the previous backend document intact.

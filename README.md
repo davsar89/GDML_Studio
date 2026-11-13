@@ -5,7 +5,8 @@
 A lightweight desktop tool for viewing [GDML](https://gdml.web.cern.ch/GDML/) (Geometry Description Markup Language) detector geometry files. GDML is the standard geometry format used by [Geant4](https://geant4.web.cern.ch/) and other particle-physics simulation frameworks. GDML Studio lets you quickly inspect these geometries without launching a full Geant4 session: it parses the GDML XML, evaluates expressions and units, tessellates solids into triangle meshes, and renders the 3D scene in a desktop window (or a browser).
 
 <p align="center">
-  <img src="screen_example.jpg" alt="GDML Studio screenshot" width="700">
+  <img src="screen_example.jpg" alt="GDML Studio screenshot" width="700"><br>
+  <sub>The SO-ARM100 robot arm (<a href="https://github.com/TheRobotStudio/SO-ARM100">TheRobotStudio</a>, Apache-2.0) imported from STEP.</sub>
 </p>
 
 ## Architecture
@@ -24,21 +25,24 @@ built frontend, which the app shows in its window.
 
 Both packages bundle everything: Rust, Node.js and a browser are not needed.
 
-**Windows:** run `GDML Studio Setup 0.1.0.exe`. It installs per user (no admin rights).
+**Windows:** run `GDML Studio Setup <version>.exe`. It installs per user (no admin rights).
 The installer is not code-signed, so Windows SmartScreen may warn on first run
-(**More info → Run anyway**).
+(**More info → Run anyway**). Over an existing installation, of the same version or
+another, it closes a running GDML Studio and replaces the old version, keeping its
+settings.
 
-**Ubuntu 20.04 or newer:** `sudo apt install ./gdml-studio_0.1.0_amd64.deb`, then start
+**Ubuntu 20.04 or newer:** `sudo apt install ./gdml-studio_<version>_amd64.deb`, then start
 **GDML Studio** from the applications menu or run `gdml-studio`. Tested by installing and
-launching on clean Ubuntu 20.04 and 24.04.
+launching on clean Ubuntu 20.04 and 24.04. The same command upgrades an older version; apt
+skips a package of the version already installed unless given `--reinstall`.
 
 To build the packages (needs the [prerequisites](#prerequisites)):
 
 ```bash
 cd desktop
 npm install
-npm run dist         # on Windows: desktop/dist/GDML Studio Setup 0.1.0.exe
-npm run dist:linux   # on Linux or WSL: desktop/dist/gdml-studio_0.1.0_amd64.deb
+npm run dist         # on Windows: desktop/dist/GDML Studio Setup <version>.exe
+npm run dist:linux   # on Linux or WSL: desktop/dist/gdml-studio_<version>_amd64.deb
 ```
 
 `dist:linux` also needs `rustup target add x86_64-unknown-linux-musl`. The Linux backend is
@@ -109,6 +113,39 @@ Vite will print a local URL (typically `http://localhost:5173`).
 ### 4. Use the application
 
 Open the Vite URL in your browser, click **Open File(s)**, and select a `.gdml` file (e.g. one from [`sample_data/`](sample_data/README.md)). A geometry split across files with `<file>` needs all of its files selected together.
+
+### CAD import (STL, STEP)
+
+**Open File(s)** also imports a single `.stl` (text or binary) or `.step`/`.stp` file
+as a new GDML document: each closed body becomes a `<tessellated>` solid in its own
+volume, placed in a `G4_Galactic` world box. Small defects are repaired (unindexed or
+unwelded vertices, inconsistent winding, repeated and degenerate facets); a surface
+that is open, non-manifold or self-intersecting is not imported, and the reason is
+shown. Parts get the placeholder material `CAD_UNASSIGNED` until you assign one.
+
+STEP files are read by the bundled CAD worker on OpenCASCADE
+([`cad-worker/`](cad-worker/README.md)), in mm whatever unit the file uses. Each solid
+is meshed along its B-rep edges, so the mesh is closed wherever the CAD solid is, and
+refined until its volume is within 0.1 % of the exact CAD volume (1 % and 0.01 % are
+offered), unless the solid's B-rep tolerance stops the refinement first. A solid whose
+mesh fails validation is meshed once more at half the chord, and left out, with the
+reason, if it still fails. The file's assemblies become `<assembly>` volumes, or,
+flattened, every part is placed in the world; a part used several times is one volume
+placed at each occurrence (copy numbers 0, 1, ...). The import looks for overlaps
+between placed parts, in the CAD file (OpenCASCADE Booleans, for up to 60 s) and between
+their meshes, and warns of each, since Geant4 reports an overlap there. The toolbar
+shows how far an import got, with a Cancel button that keeps the open document. The
+worker ships with the Linux package; `./run.sh` uses it once built with
+`cad-worker/build-linux.sh`. Windows support is planned
+([`doc/cad-import/PLAN.md`](doc/cad-import/PLAN.md)).
+
+The **Import** tab lists every part with its repairs, the parts its mesh crosses and
+(for STEP) its CAD volume, then the parts that were rejected and the overlaps in the CAD
+file. Change the STL unit (STL files carry none; mm by default), or for STEP the mesh
+volume error, the assembly hierarchy and the chordal deviation of single parts; give
+every part one material, or leave parts out, then **Re-import**. Materials you have
+assigned survive a re-import unless you change the part material. The result saves as
+ordinary GDML.
 
 ### Material Editor
 

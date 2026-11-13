@@ -22,6 +22,10 @@ export default function MeshObject({ meshData, color, selected, name, instanceId
   const [geometry, setGeometry] = useState<THREE.BufferGeometry | undefined>(() =>
     peekGeometry(solidName),
   );
+  // A load replaces meshData and frees the old geometry. Drop it in this render,
+  // or the camera fit measures the previous document (a re-import keeps the names).
+  const [drawn, setDrawn] = useState(meshData);
+  if (drawn !== meshData) { setDrawn(meshData); setGeometry(peekGeometry(solidName)); }
   useEffect(() => {
     // Acquire-on-mount; the single extra render to publish the geometry is intentional.
     // eslint-disable-next-line react-hooks/set-state-in-effect

@@ -13,6 +13,17 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let shared_state = state::app_state::create_shared_state();
+    if config::exit_with_stdin() {
+        let import = shared_state.read().await.import.clone();
+        std::thread::spawn(move || {
+            let _ = std::io::copy(&mut std::io::stdin().lock(), &mut std::io::sink());
+            // A running import kills its CAD worker within 50 ms.
+            if import.cancel() {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            std::process::exit(0);
+        });
+    }
 
     // API routes
     let api_router = api::routes::create_router(shared_state.clone());
@@ -46,7 +57,7 @@ async fn main() {
         api_router
     }
     .layer(cors)
-    .layer(DefaultBodyLimit::max(64 * 1024 * 1024)); // 64 MB for large tessellated GDML files
+    .layer(DefaultBodyLimit::max(config::MAX_UPLOAD_BYTES));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], config::port()));
     tracing::info!("GDML Studio backend starting on http://{}", addr);

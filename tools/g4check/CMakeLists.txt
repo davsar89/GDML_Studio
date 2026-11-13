@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(g4check CXX)
+find_package(Geant4 REQUIRED gdml)
+include(${Geant4_USE_FILE})
+add_executable(g4check g4check.cpp)
+target_link_libraries(g4check ${Geant4_LIBRARIES})

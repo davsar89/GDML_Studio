@@ -3,8 +3,10 @@ use axum::response::{IntoResponse, Json, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use super::errors::ApiError;
+use crate::cad;
 use crate::config;
 use crate::eval::engine::EvalEngine;
 use crate::gdml::materials as nist;
@@ -419,8 +421,23 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
         }
         None
     };
+    let mut loaded = finish_load(doc, render, segments, loop_warnings)?;
+    loaded.warnings.extend(merge_warnings);
+    Ok(loaded)
+}
+
+/// Evaluate the defines and tessellate the solids of a parsed or generated
+/// document: the part of loading that opening a GDML file and importing a CAD
+/// file share. `render` is the loop-expanded twin, when there is one;
+/// `notes` are the caller's warnings, listed after the tessellation ones.
+pub(crate) fn finish_load(
+    doc: GdmlDocument,
+    render: Option<GdmlDocument>,
+    segments: Option<u32>,
+    mut notes: Vec<String>,
+) -> Result<LoadedDocument, ApiError> {
     let geometry = render.as_ref().unwrap_or(&doc);
-    // Rebuild the final context from the document actually used for geometry.
+    let mut engine = EvalEngine::new();
     engine
         .evaluate_all(&geometry.defines)
         .map_err(|e| ApiError::bad_request(&format!("Expression evaluation error: {e}")))?;
@@ -429,7 +446,7 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
     let (meshes, mut warnings) =
         tessellator::tessellate_all_solids(&geometry.solids, &engine, segments)
             .map_err(|e| ApiError::internal(&format!("Tessellation error: {}", e)))?;
-    warnings.append(&mut loop_warnings);
+    warnings.append(&mut notes);
     // Surface non-fatal expression-evaluation failures (treated as 0) to the user.
     warnings.extend(engine.take_warnings());
     warnings.extend(raw_unknown_warnings(&doc));
@@ -438,7 +455,6 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
     if doc.setup.world_ref.is_empty() {
         warnings.push("No world volume reference found (<setup>/<world> missing or empty); the geometry may not display.".to_string());
     }
-    warnings.extend(merge_warnings);
 
     Ok(LoadedDocument {
         document: doc,
@@ -447,6 +463,7 @@ fn load_document(req: UploadFilesRequest) -> Result<LoadedDocument, ApiError> {
         meshes,
         warnings,
         unsaved: false,
+        import: None,
     })
 }
 
@@ -467,6 +484,7 @@ fn summary_json(loaded: &LoadedDocument) -> Value {
         "world_ref": doc.setup.world_ref,
         "warnings": loaded.warnings,
         "unsaved": loaded.unsaved,
+        "imported": loaded.import.is_some(),
     })
 }
 
@@ -1322,15 +1340,30 @@ pub async fn add_material(
     let mut state_w = state.write().await;
     let loaded = loaded(state_w.loaded.as_mut())?;
 
-    let mut staged =
-        with_staged_elements(&loaded.document.materials, &req.elements, &loaded.engine)?;
-    ensure_material_name_available(&staged, &req.material.name, None)?;
-    validate_material_components(&staged, &req.material, None)?;
-    validate_material_values(&req.material, None, &loaded.engine)?;
-    staged.materials.push(req.material);
-    ensure_material_order(&staged)?;
-    loaded.document.materials = staged;
+    loaded.document.materials = with_material(
+        &loaded.document.materials,
+        &req.material,
+        &req.elements,
+        &loaded.engine,
+    )?;
     Ok(edited(loaded))
+}
+
+/// `materials` plus a new `material` and the elements it needs, checked as
+/// Geant4 reads them. `materials` itself is left as it was.
+fn with_material(
+    materials: &MaterialSection,
+    material: &Material,
+    elements: &[Element],
+    engine: &EvalEngine,
+) -> Result<MaterialSection, ApiError> {
+    let mut staged = with_staged_elements(materials, elements, engine)?;
+    ensure_material_name_available(&staged, &material.name, None)?;
+    validate_material_components(&staged, material, None)?;
+    validate_material_values(material, None, engine)?;
+    staged.materials.push(material.clone());
+    ensure_material_order(&staged)?;
+    Ok(staged)
 }
 
 #[derive(Deserialize)]
@@ -1486,6 +1519,191 @@ pub async fn update_volume_material_ref(
     Ok(edited(loaded))
 }
 
+// ─── CAD import ─────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct ImportQuery {
+    pub filename: String,
+    /// `cad::Options` as JSON; the defaults when absent.
+    pub options: Option<String>,
+}
+
+/// Import a CAD file sent as the raw request body. Like an upload, the result
+/// replaces the open document; it starts unsaved, as no GDML file holds it.
+pub async fn import_cad(
+    State(state): State<SharedState>,
+    Query(query): Query<ImportQuery>,
+    body: axum::body::Bytes,
+) -> Result<Json<Value>, ApiError> {
+    let options = match query.options.as_deref() {
+        None | Some("") => cad::Options::default(),
+        Some(json) => serde_json::from_str(json)
+            .map_err(|e| ApiError::bad_request(&format!("Invalid import options: {e}")))?,
+    };
+    let bytes: Arc<[u8]> = Arc::from(body.as_ref());
+    let loaded = imported(&state, move |control| {
+        import_document(bytes, query.filename, options, None, control)
+    })
+    .await?;
+    let summary = summary_json(&loaded);
+    state.write().await.loaded = Some(loaded);
+    Ok(Json(summary))
+}
+
+#[derive(Deserialize)]
+pub struct UpdateImportRequest {
+    pub options: cad::Options,
+}
+
+/// Rebuild the open imported document with new options, keeping its
+/// materials and, unless the part material changed, each part's assignment.
+pub async fn update_import(
+    State(state): State<SharedState>,
+    Json(req): Json<UpdateImportRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let (bytes, filename, previous) = {
+        let state_r = state.read().await;
+        let current = loaded(state_r.loaded.as_ref())?;
+        let session = current.import.as_ref().ok_or_else(|| {
+            ApiError::bad_request("The open document was not imported from a CAD file")
+        })?;
+        let previous = Previous {
+            options: session.options.clone(),
+            ir: session.ir.clone(),
+            materials: current.document.materials.clone(),
+            assigned: cad::assigned_materials(session, &current.document),
+        };
+        (session.bytes.clone(), session.filename.clone(), previous)
+    };
+    let loaded = imported(&state, move |control| {
+        import_document(bytes, filename, req.options, Some(previous), control)
+    })
+    .await?;
+    let summary = summary_json(&loaded);
+    state.write().await.loaded = Some(loaded);
+    Ok(Json(summary))
+}
+
+/// How far the running import got, `{phase, done, total}`; null when none runs.
+pub async fn get_import_progress(State(state): State<SharedState>) -> Json<Value> {
+    let control = state.read().await.import.clone();
+    Json(json!(control.progress()))
+}
+
+/// Stop the running import, which then fails with 409 and leaves the open
+/// document as it was.
+pub async fn cancel_import(State(state): State<SharedState>) -> Json<Value> {
+    let control = state.read().await.import.clone();
+    Json(json!({ "cancelled": control.cancel() }))
+}
+
+pub async fn get_import_report(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
+    let state_r = state.read().await;
+    let session = loaded(state_r.loaded.as_ref())?
+        .import
+        .as_ref()
+        .ok_or_else(|| ApiError::not_found("The open document was not imported from a CAD file"))?;
+    Ok(Json(cad::report::report(session)))
+}
+
+/// Run `work` as the one import in progress, off the async threads. A second
+/// import meanwhile, or a cancelled one, fails with 409.
+async fn imported(
+    state: &SharedState,
+    work: impl FnOnce(&cad::Control) -> Result<LoadedDocument, ApiError> + Send + 'static,
+) -> Result<LoadedDocument, ApiError> {
+    let conflict = |message: &str| ApiError {
+        status: axum::http::StatusCode::CONFLICT,
+        message: message.to_string(),
+    };
+    let control = state.read().await.import.clone();
+    let running = control
+        .start()
+        .ok_or_else(|| conflict("Another import is running"))?;
+    tokio::task::spawn_blocking(move || {
+        let result = work(running.control());
+        match running.control().cancelled() {
+            true => Err(conflict("Import cancelled")),
+            false => result,
+        }
+    })
+    .await
+    .map_err(|e| ApiError::internal(&format!("Import failed: {e}")))?
+}
+
+/// What a re-import keeps of the document it replaces.
+struct Previous {
+    options: cad::Options,
+    ir: Arc<cad::ir::CadImport>,
+    materials: MaterialSection,
+    /// Each part's material, by definition id.
+    assigned: std::collections::BTreeMap<String, String>,
+}
+
+/// Read a CAD file, or reuse the parts a previous import read when the new
+/// options do not change them, and build its document. A re-import keeps
+/// the previous materials, and each part's material unless the part
+/// material option changed.
+fn import_document(
+    bytes: Arc<[u8]>,
+    filename: String,
+    options: cad::Options,
+    previous: Option<Previous>,
+    control: &cad::Control,
+) -> Result<LoadedDocument, ApiError> {
+    options.validate().map_err(|e| ApiError::bad_request(&e))?;
+    let ir = match &previous {
+        Some(p) if !p.options.rereads(&options, p.ir.format) => p.ir.clone(),
+        _ => Arc::new(
+            cad::read(&bytes, &filename, &options, control)
+                .map_err(|e| ApiError::bad_request(&e))?,
+        ),
+    };
+    control.set("build", 0, 1);
+    let (mut materials, kept) = match previous {
+        Some(p) if p.options.part_material_name() == options.part_material_name() => {
+            (p.materials, p.assigned)
+        }
+        Some(p) => (p.materials, Default::default()),
+        None => Default::default(),
+    };
+    if let Some(part) = &options.part_material {
+        if !materials
+            .materials
+            .iter()
+            .any(|m| m.name == part.material.name)
+        {
+            materials = with_material(
+                &materials,
+                &part.material,
+                &part.elements,
+                &EvalEngine::new(),
+            )?;
+        }
+    }
+    let default = options
+        .part_material_name()
+        .unwrap_or(cad::PLACEHOLDER_MATERIAL)
+        .to_string();
+    let built = cad::build::document(&filename, &ir, &options, materials, |def| {
+        kept.get(&def.id)
+            .cloned()
+            .unwrap_or_else(|| default.clone())
+    })
+    .map_err(|e| ApiError::bad_request(&e))?;
+    let warnings = cad::warnings(&ir, &built.lv_of_def);
+    let mut loaded = finish_load(built.document, None, None, warnings)?;
+    loaded.unsaved = true;
+    loaded.import = Some(cad::Session {
+        filename,
+        bytes,
+        options,
+        ir,
+        lv_of_def: built.lv_of_def,
+    });
+    Ok(loaded)
+}
+
 // ─── Export ─────────────────────────────────────────────────────────────────
 
 pub async fn export_gdml(State(state): State<SharedState>) -> Result<Json<Value>, ApiError> {
@@ -1540,6 +1758,7 @@ mod tests {
             meshes: HashMap::new(),
             warnings: Vec::new(),
             unsaved: false,
+            import: None,
         });
         state
     }

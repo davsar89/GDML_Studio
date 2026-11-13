@@ -1,0 +1,172 @@
+solid one
+facet normal 0 0 0
+outer loop
+vertex -5 -10 15
+vertex -5 10 -15
+vertex -5 -10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex -5 -10 15
+vertex -5 10 15
+vertex -5 10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 -10 15
+vertex 5 -10 -15
+vertex 5 10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 -10 15
+vertex 5 10 -15
+vertex 5 10 15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 -10 15
+vertex -5 -10 -15
+vertex 5 -10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 -10 15
+vertex -5 -10 15
+vertex -5 -10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 10 15
+vertex 5 10 -15
+vertex -5 10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 10 15
+vertex -5 10 -15
+vertex -5 10 15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 10 -15
+vertex -5 -10 -15
+vertex -5 10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 10 -15
+vertex 5 -10 -15
+vertex -5 -10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 10 15
+vertex -5 10 15
+vertex -5 -10 15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 5 10 15
+vertex -5 -10 15
+vertex 5 -10 15
+endloop
+endfacet
+endsolid one
+solid two
+facet normal 0 0 0
+outer loop
+vertex 25 -10 15
+vertex 25 10 -15
+vertex 25 -10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 25 -10 15
+vertex 25 10 15
+vertex 25 10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 -10 15
+vertex 35 -10 -15
+vertex 35 10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 -10 15
+vertex 35 10 -15
+vertex 35 10 15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 -10 15
+vertex 25 -10 -15
+vertex 35 -10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 -10 15
+vertex 25 -10 15
+vertex 25 -10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 10 15
+vertex 35 10 -15
+vertex 25 10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 10 15
+vertex 25 10 -15
+vertex 25 10 15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 10 -15
+vertex 25 -10 -15
+vertex 25 10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 10 -15
+vertex 35 -10 -15
+vertex 25 -10 -15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 10 15
+vertex 25 10 15
+vertex 25 -10 15
+endloop
+endfacet
+facet normal 0 0 0
+outer loop
+vertex 35 10 15
+vertex 25 -10 15
+vertex 35 -10 15
+endloop
+endfacet
+endsolid two

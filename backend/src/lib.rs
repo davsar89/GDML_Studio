@@ -1,4 +1,5 @@
 pub mod api;
+pub mod cad;
 pub mod config;
 pub mod eval;
 pub mod gdml;

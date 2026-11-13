@@ -21,7 +21,7 @@ const makeMaterial = (name = 'M'): MaterialInfo => ({
   atom_value: null, atom_unit: null, atom_type: null, components: [],
 });
 const summary: DocumentSummary = { filename: 'original.gdml', defines_count: 0, positions_count: 0, rotations_count: 0,
-  materials_count: 2, elements_count: 0, solids_count: 0, volumes_count: 0, meshes_count: 0, world_ref: 'W', warnings: [], unsaved: false };
+  materials_count: 2, elements_count: 0, solids_count: 0, volumes_count: 0, meshes_count: 0, world_ref: 'W', warnings: [], unsaved: false, imported: false };
 const scene: SceneNode = { name: 'W', volume_name: 'W', instance_id: '/W', solid_name: '', material_name: 'M',
   color: null, density: 1, position: [0,0,0], rotation: [0,0,0], scale: [1,1,1], is_world: true, children: [] };
 const nist: NistMaterial = { name: 'CatalogMaterial', formula: 'H', density: 0.5, state: 'Gas', category: 'HEP',

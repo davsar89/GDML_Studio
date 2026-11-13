@@ -34,6 +34,15 @@ async fn require_local_host(req: Request, next: Next) -> Response {
 pub fn create_router(state: SharedState) -> Router {
     Router::new()
         .route("/api/files/upload-multi", post(handlers::upload_files))
+        // CAD import
+        .route("/api/import", post(handlers::import_cad))
+        .route("/api/import/update", post(handlers::update_import))
+        .route("/api/import/progress", get(handlers::get_import_progress))
+        .route("/api/import/cancel", post(handlers::cancel_import))
+        .route(
+            "/api/document/import-report",
+            get(handlers::get_import_report),
+        )
         .route("/api/document/summary", get(handlers::get_summary))
         .route("/api/document/meshes", get(handlers::get_meshes))
         .route("/api/document/scene", get(handlers::get_scene))

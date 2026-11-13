@@ -14,3 +14,17 @@ CLAUDE.md
 # Electron shell: dependencies and built installer
 desktop/node_modules/
 desktop/dist/
+
+# Geant4 check harness build
+tools/g4check/build/
+
+# CAD import investigation archives (kept outside the repository)
+CAD_integration/
+
+# CAD worker: OCCT source and build, worker build and staging
+cad-worker/third_party/
+cad-worker/build-linux/
+cad-worker/dist/
+
+# Real CAD models for the ignored tests (backend/tests/data/real/fetch.sh)
+backend/tests/data/real/*.step

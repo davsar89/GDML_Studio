@@ -22,6 +22,8 @@ pub struct LoadedDocument {
     pub warnings: Vec<String>,
     /// Edits applied since the load or the last export.
     pub unsaved: bool,
+    /// The CAD file this document was imported from, if it was.
+    pub import: Option<crate::cad::Session>,
 }
 
 impl LoadedDocument {
@@ -134,6 +136,9 @@ pub type SharedState = Arc<RwLock<AppState>>;
 #[derive(Default)]
 pub struct AppState {
     pub loaded: Option<LoadedDocument>,
+    /// The CAD import in progress, which progress and cancel requests reach
+    /// while it runs without holding this state's lock.
+    pub import: Arc<crate::cad::Control>,
 }
 
 pub fn create_shared_state() -> SharedState {

@@ -165,6 +165,7 @@ dependencies = [
  "axum",
  "evalexpr",
  "quick-xml",
+ "robust",
  "serde",
  "serde_json",
  "tokio",
@@ -424,6 +425,12 @@ checksum = "ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d"
 dependencies = [
  "bitflags",
 ]
+
+[[package]]
+name = "robust"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e27ee8bb91ca0adcf0ecb116293afa12d393f9c2b9b9cd54d33e8078fe19839"
 
 [[package]]
 name = "ryu"

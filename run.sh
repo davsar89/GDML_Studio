@@ -78,6 +78,9 @@ cd "$SCRIPT_DIR/backend"
 # Launch the built binary directly, not via `cargo run`: cargo does not exec the
 # binary, so $! would be the cargo wrapper and killing it would leave the server
 # alive on port 4001. The release build already happened above.
+# STEP import runs the worker that cad-worker/build-linux.sh stages, if built.
+WORKER="$SCRIPT_DIR/cad-worker/dist/cad/gdml-cad-worker"
+[ -x "$WORKER" ] && export GDML_CAD_WORKER="$WORKER"
 "$SCRIPT_DIR/target/release/gdml-studio-backend" &
 BACKEND_PID=$!
 

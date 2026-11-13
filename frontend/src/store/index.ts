@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { runDocumentAction, resolveMaterialDraft } from '../utils/documentActions';
 import type { DocumentDecision } from '../utils/documentActions';
-import type { SceneNode, MeshData, DocumentSummary, DefineValue, VolumeInfo, MaterialInfo, ElementInfo, SnapPoint, Measurement } from './types';
+import type { SceneNode, MeshData, DocumentSummary, DefineValue, VolumeInfo, MaterialInfo, ElementInfo, SnapPoint, Measurement, ImportProgress, ImportReport } from './types';
 import { clearAllGeometries } from '../components/Viewport/geometryCache';
+
+export type TreeTab = 'structure' | 'defines' | 'materials' | 'import';
 
 interface AppState {
   /** Set only by loadDocument, which runs inside a document action, so `documentBusy` covers it. */
@@ -34,9 +36,13 @@ interface AppState {
   volumes: VolumeInfo[];
   materials: MaterialInfo[];
   elements: ElementInfo[];
+  /** Set for a document imported from a CAD file. */
+  importReport: ImportReport | null;
+  /** Set while an import request runs (`utils/cadImport.ts`). */
+  importProgress: ImportProgress | null;
   selectedVolume: string | null;
   selectedMaterial: string | null;
-  activeTreeTab: 'structure' | 'defines' | 'materials';
+  activeTreeTab: TreeTab;
   meshOpacity: number;
   hiddenInstances: Set<string>;
   contextMenu: {
@@ -59,7 +65,7 @@ interface AppState {
   clearWarnings: () => void;
   setSelectedVolume: (name: string | null) => void;
   setSelectedMaterial: (name: string | null) => void;
-  setActiveTreeTab: (tab: 'structure' | 'defines' | 'materials') => void;
+  setActiveTreeTab: (tab: TreeTab) => void;
   setMeshOpacity: (opacity: number) => void;
   toggleInstanceVisibility: (instanceId: string) => void;
   openContextMenu: (x: number, y: number, items: { label: string; action: () => void }[]) => void;
@@ -76,7 +82,7 @@ interface AppState {
 
 /** Everything that belongs to the open document; loading or resetting replaces all of it. */
 export const emptyDocument = () => ({
-  summary: null, warnings: [], meshes: {}, sceneGraph: null, defines: [], volumes: [], materials: [], elements: [],
+  summary: null, warnings: [], meshes: {}, sceneGraph: null, defines: [], volumes: [], materials: [], elements: [], importReport: null,
   dirty: false, editRevision: 0, materialDraft: null, draftError: null,
   selectedVolume: null, selectedMaterial: null, hiddenInstances: new Set<string>(), contextMenu: null,
   measureMode: false, measurements: [], pendingPoint: null, hoverSnap: null, hoverCandidates: [], surfaceCandidates: [],
@@ -85,6 +91,7 @@ export const emptyDocument = () => ({
 const initialState = () => ({
   ...emptyDocument(),
   loading: false, error: null, documentBusy: false, decision: null, activeTreeTab: 'structure', meshOpacity: 1.0,
+  importProgress: null,
 }) satisfies Partial<AppState>;
 
 export const useAppStore = create<AppState>((set, get) => ({

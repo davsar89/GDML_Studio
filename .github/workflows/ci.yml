@@ -30,6 +30,30 @@ jobs:
       - name: Tests
         run: cargo test --workspace --release
 
+  step-import:
+    name: STEP import (CAD worker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The OCCT build (about 30 minutes) depends only on these two files.
+      - uses: actions/cache@v4
+        with:
+          path: cad-worker/third_party/occt-*-linux
+          key: occt-${{ hashFiles('cad-worker/occt-source.txt', 'cad-worker/occt-options.cmake') }}
+
+      - name: Build the worker
+        run: cad-worker/build-linux.sh
+
+      - name: STEP tests
+        run: >
+          GDML_CAD_WORKER=$PWD/cad-worker/dist/cad/gdml-cad-worker
+          cargo test --release --test cad_import_test -- --include-ignored step
+
   frontend:
     name: Frontend (TypeScript)
     runs-on: ubuntu-latest

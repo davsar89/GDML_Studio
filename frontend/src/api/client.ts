@@ -1,4 +1,4 @@
-import type { DocumentSummary, MeshData, SceneNode, DefineValue, VolumeInfo, MaterialInfo, ElementInfo, NistMaterial } from '../store/types';
+import type { DocumentSummary, MeshData, SceneNode, DefineValue, VolumeInfo, MaterialInfo, ElementInfo, NistMaterial, ImportOptions, ImportProgress, ImportReport } from '../store/types';
 import { useAppStore } from '../store';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -44,6 +44,36 @@ function send<T>(method: 'POST' | 'PUT', url: string, body: unknown): Promise<T>
 /** Upload one file or a modular set; the backend keeps the result as the open document. */
 export async function uploadFiles(files: Record<string, string>) {
   return send<DocumentSummary>('POST', '/api/files/upload-multi', { files, main_file: detectMainFile(files) });
+}
+
+/**
+ * Import a CAD file; the backend keeps the result as the open document. The
+ * file goes as the raw body, not text in JSON: meshes run to hundreds of MB.
+ */
+export async function importCad(file: File, options: ImportOptions) {
+  const query = new URLSearchParams({ filename: file.name, options: JSON.stringify(options) });
+  return fetchJson<DocumentSummary>(`/api/import?${query}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: file,
+  });
+}
+
+/** Rebuild the open imported document with new options. */
+export async function updateImport(options: ImportOptions) {
+  return send<DocumentSummary>('POST', '/api/import/update', { options });
+}
+
+export async function getImportReport() {
+  return fetchJson<ImportReport>('/api/document/import-report');
+}
+
+/** How far the running import got; null when none runs. */
+export async function getImportProgress() {
+  return fetchJson<ImportProgress | null>('/api/import/progress');
+}
+
+/** Stop the running import; the open document stays as it was. */
+export async function cancelImport() {
+  return send<{ cancelled: boolean }>('POST', '/api/import/cancel', {});
 }
 
 export async function getSummary() {

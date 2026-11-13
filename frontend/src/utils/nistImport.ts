@@ -12,9 +12,13 @@ export function emptyMaterial(name: string): MaterialInfo {
   };
 }
 
-/** Prepare a material and its missing elements without changing the document. */
-export async function prepareNistMaterial(nist: NistMaterial): Promise<{ material: MaterialInfo; elements: ElementInfo[] }> {
-  const existing = useAppStore.getState().elements;
+/**
+ * Prepare a material and the elements it needs that are not in `existing`,
+ * without changing the document. `existing` defaults to the open document's.
+ */
+export async function prepareNistMaterial(
+  nist: NistMaterial, existing: ElementInfo[] = useAppStore.getState().elements,
+): Promise<{ material: MaterialInfo; elements: ElementInfo[] }> {
   const elements: ElementInfo[] = [];
   const elementName = new Map<string, string>();
   for (const ref of new Set(nist.components.map((comp) => comp.ref))) {
