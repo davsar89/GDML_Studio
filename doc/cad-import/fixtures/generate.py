@@ -13,10 +13,11 @@ from pathlib import Path
 import struct
 
 import numpy as np
-from OCP.BRep import BRep_Tool
+from OCP.BRep import BRep_Builder, BRep_Tool
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
-from OCP.BRepBuilderAPI import (BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakePolygon,
-                               BRepBuilderAPI_MakeSolid, BRepBuilderAPI_Sewing,
+from OCP.BRepBuilderAPI import (BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeFace,
+                               BRepBuilderAPI_MakePolygon, BRepBuilderAPI_MakeSolid,
+                               BRepBuilderAPI_MakeWire, BRepBuilderAPI_Sewing,
                                BRepBuilderAPI_Transform)
 from OCP.BRepFilletAPI import BRepFilletAPI_MakeFillet
 from OCP.BRepLib import BRepLib
@@ -25,6 +26,7 @@ from OCP.BRepPrimAPI import (BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCone,
                             BRepPrimAPI_MakeCylinder, BRepPrimAPI_MakePrism,
                             BRepPrimAPI_MakeRevol, BRepPrimAPI_MakeSphere,
                             BRepPrimAPI_MakeTorus)
+from OCP.GC import GC_MakeArcOfCircle
 from OCP.Geom import Geom_BezierSurface
 from OCP.GeomConvert import GeomConvert
 from OCP.IFSelect import IFSelect_RetDone
@@ -51,6 +53,17 @@ def box(x, y, z, origin=None):
 def cyl(r, h, x=0, y=0, z=None, angle=2*math.pi):
     return BRepPrimAPI_MakeCylinder(gp_Ax2(gp_Pnt(x,y,-h/2 if z is None else z),
                                          gp_Dir(0,0,1)),r,h,angle).Shape()
+
+
+def cone(r1, r2, z1, z2):
+    """Frustum from radius r1 at z1 to r2 at z2 about the z axis."""
+    return BRepPrimAPI_MakeCone(gp_Ax2(gp_Pnt(0,0,z1),gp_Dir(0,0,1)),r1,r2,z2-z1).Shape()
+
+
+def oblique(shape):
+    """`shape` turned about a non-principal axis and moved off the origin."""
+    t=gp_Trsf();t.SetRotation(gp_Ax1(gp_Pnt(),gp_Dir(1,2,3)),0.7);t.SetTranslationPart(gp_Vec(30,-20,10))
+    return BRepBuilderAPI_Transform(shape,t,True).Shape()
 
 
 def face(points):
@@ -117,37 +130,47 @@ def main(out):
     expected={}
     shapes={}
 
-    def add(name, shape, volume, bbox, formula, **extra):
+    # `family` is what the importer must make of it (doc/cad-import/PLAN.md,
+    # algorithm D): a GDML solid, "<stock> - <n> cut-outs", or "tessellated".
+    def add(name, shape, volume, bbox, formula, family=None, **extra):
         shapes[name]=shape
-        expected[name]={'volume_mm3':volume,'bbox_mm':bbox,'formula':formula,**extra}
+        expected[name]={'volume_mm3':volume,'bbox_mm':bbox,'formula':formula,'family':family,**extra}
         write_step(shape,out/(name+'.step'))
 
-    add('box',box(10,20,30),6000,[-5,-10,-15,5,10,15],'10*20*30')
+    add('box',box(10,20,30),6000,[-5,-10,-15,5,10,15],'10*20*30',
+        family='box')
     add('tube',BRepAlgoAPI_Cut(cyl(10,20),cyl(8,22)).Shape(),720*math.pi,
-        [-10,-10,-10,10,10,10],'pi*(10^2-8^2)*20')
+        [-10,-10,-10,10,10,10],'pi*(10^2-8^2)*20',
+        family='tube')
     sector=BRepAlgoAPI_Cut(cyl(10,12,angle=1.5*math.pi),cyl(4,14)).Shape()
     add('tube_sector',sector,756*math.pi,[-10,-10,-6,10,10,6],
-        '(270/360)*pi*(10^2-4^2)*12')
-    cone=BRepPrimAPI_MakeCone(gp_Ax2(gp_Pnt(0,0,-10),gp_Dir(0,0,1)),10,5,20).Shape()
-    add('cone',cone,3500*math.pi/3,[-10,-10,-10,10,10,10],
-        'pi*20*(10^2+10*5+5^2)/3')
+        '(270/360)*pi*(10^2-4^2)*12',
+        family='tube')
+    add('cone',cone(10,5,-10,10),3500*math.pi/3,[-10,-10,-10,10,10,10],
+        'pi*20*(10^2+10*5+5^2)/3',
+        family='cone')
     add('sphere',BRepPrimAPI_MakeSphere(10).Shape(),4000*math.pi/3,
-        [-10,-10,-10,10,10,10],'4*pi*10^3/3')
+        [-10,-10,-10,10,10,10],'4*pi*10^3/3',
+        family='orb')
     add('torus',BRepPrimAPI_MakeTorus(20,4).Shape(),640*math.pi**2,
-        [-24,-24,-4,24,24,4],'2*pi^2*20*4^2')
+        [-24,-24,-4,24,24,4],'2*pi^2*20*4^2',
+        family='torus')
     profile=face([(0,0,-10),(10,0,-10),(10,0,0),(5,0,10),(0,0,10)])
     poly=BRepPrimAPI_MakeRevol(profile,gp_Ax1(gp_Pnt(),gp_Dir(0,0,1)),2*math.pi).Shape()
     add('polycone',poly,math.pi*(1000+1750/3),[-10,-10,-10,10,10,10],
-        'pi*(10^2*10 + 10*(10^2+10*5+5^2)/3)')
+        'pi*(10^2*10 + 10*(10^2+10*5+5^2)/3)',
+        family='genericPolycone')
     polygon=[(0,0),(20,0),(20,5),(5,5),(5,15),(0,15)]
     extrusion=BRepPrimAPI_MakePrism(face([(x,y,-5) for x,y in polygon]),gp_Vec(0,0,10)).Shape()
-    add('l_extrusion',extrusion,1500,[0,0,-5,20,15,5],'(20*5+5*10)*10')
+    add('l_extrusion',extrusion,1500,[0,0,-5,20,15,5],'(20*5+5*10)*10',
+        family='xtru')
     plate=box(40,30,10)
     for x in (-10,10):
         plate=BRepAlgoAPI_Cut(plate,cyl(3,12,x=x)).Shape()
     plate=BRepAlgoAPI_Cut(plate,cyl(5,4,x=-10,z=2)).Shape()
     add('hole_plate',plate,12000-228*math.pi,[-20,-15,-5,20,15,5],
-        '40*30*10 - 2*pi*3^2*10 - pi*(5^2-3^2)*3')
+        '40*30*10 - 2*pi*3^2*10 - pi*(5^2-3^2)*3',
+        family='box - 2 cut-outs')
     # Edges must belong to the same input shape.
     original=box(20,16,12)
     fillet=BRepFilletAPI_MakeFillet(original)
@@ -158,7 +181,8 @@ def main(out):
     r=2; a,b,c=16,12,8
     rounded=a*b*c+2*r*(a*b+a*c+b*c)+math.pi*r*r*(a+b+c)+4*math.pi*r**3/3
     add('filleted_block',fillet.Shape(),rounded,[-10,-8,-6,10,8,6],
-        'a*b*c+2*r*(a*b+a*c+b*c)+pi*r^2*(a+b+c)+4*pi*r^3/3; a=16,b=12,c=8,r=2')
+        'a*b*c+2*r*(a*b+a*c+b*c)+pi*r^2*(a+b+c)+4*pi*r^3/3; a=16,b=12,c=8,r=2',
+        family='tessellated')
     # Exact biquadratic roof, z=10+3*(1-(x/10)^2)*(1-(y/8)^2).
     # Integral of the product bump is area*4/9. The central pole is not the max.
     poles=TColgp_Array2OfPnt(1,3,1,3)
@@ -177,11 +201,14 @@ def main(out):
     roof=BRepBuilderAPI_MakeSolid(TopoDS.Shell_s(sewing.SewedShape())).Solid()
     assert BRepLib.OrientClosedSolid_s(roof)
     add('bspline_roof',roof,320*(10+4*3/9),[-10,-8,0,10,8,13],
-        'area*(H+4*A/9); area=20*16,H=10,A=3')
+        'area*(H+4*A/9); area=20*16,H=10,A=3',
+        family='tessellated')
     add('closed_cavity',BRepAlgoAPI_Cut(box(10,10,10),box(6,6,6)).Shape(),784,
-        [-5,-5,-5,5,5,5],'10^3-6^3')
+        [-5,-5,-5,5,5,5],'10^3-6^3',
+        family='box - 1 cut-out')
     add('inch_box',box(25.4,50.8,76.2),6*25.4**3,
-        [-12.7,-25.4,-38.1,12.7,25.4,38.1],'1*2*3*25.4^3')
+        [-12.7,-25.4,-38.1,12.7,25.4,38.1],'1*2*3*25.4^3',
+        family='box')
     write_step(shapes['inch_box'],out/'inch_box.step','INCH')
 
     # True XCAF assembly with shared part definition and nested assembly.
@@ -237,9 +264,69 @@ def main(out):
     for name in ('tube','sphere','torus','closed_cavity','bspline_roof'):
         stl_binary(out/(name+'.stl'),mesh(shapes[name]))
     # The clearance/overlap examples use exact concentric cylinders.
-    add('shaft',cyl(8,20),1280*math.pi,[-8,-8,-10,8,8,10],'pi*8^2*20')
+    add('shaft',cyl(8,20),1280*math.pi,[-8,-8,-10,8,8,10],'pi*8^2*20',
+        family='tube')
     add('interfering_shaft',cyl(8.1,20),20*math.pi*8.1**2,
-        [-8.1,-8.1,-10,8.1,8.1,10],'pi*8.1^2*20')
+        [-8.1,-8.1,-10,8.1,8.1,10],'pi*8.1^2*20',
+        family='tube')
+
+    # Recognition: families placed obliquely, faces split at seams, and
+    # lookalikes that must not become the family they resemble.
+    add('oblique_cone',oblique(BRepAlgoAPI_Cut(cone(10,6,-10,10),cone(4.1,1.9,-11,11)).Shape()),
+        1120*math.pi,None,'pi*20/3*((10^2+10*6+6^2)-(4^2+4*2+2^2))',family='cone')
+    t0,t1,rmin,rmax,dphi=0.5,2.0,5,10,4.0
+    def polar(r,t): return gp_Pnt(r*math.sin(t),0,r*math.cos(t))
+    arc=lambda r: BRepBuilderAPI_MakeEdge(GC_MakeArcOfCircle(polar(r,t0),polar(r,(t0+t1)/2),polar(r,t1)).Value()).Edge()
+    wire=BRepBuilderAPI_MakeWire(arc(rmax),BRepBuilderAPI_MakeEdge(polar(rmax,t1),polar(rmin,t1)).Edge(),
+                                 arc(rmin),BRepBuilderAPI_MakeEdge(polar(rmin,t0),polar(rmax,t0)).Edge()).Wire()
+    shell=BRepPrimAPI_MakeRevol(BRepBuilderAPI_MakeFace(wire,True).Face(),gp_Ax1(gp_Pnt(),gp_Dir(0,0,1)),dphi).Shape()
+    add('oblique_sphere_shell',oblique(shell),dphi/3*(rmax**3-rmin**3)*(math.cos(t0)-math.cos(t1)),None,
+        'dphi/3*(10^3-5^3)*(cos 0.5-cos 2); dphi=4',family='sphere')
+    torus=BRepAlgoAPI_Cut(BRepPrimAPI_MakeTorus(gp_Ax2(),20,4,1.5*math.pi).Shape(),
+                          BRepPrimAPI_MakeTorus(gp_Ax2(),20,2,1.5*math.pi).Shape()).Shape()
+    add('oblique_hollow_torus',oblique(torus),1.5*math.pi*math.pi*20*(4**2-2**2),None,
+        '1.5pi*pi*20*(4^2-2^2)',family='torus')
+    half=cyl(10,20,angle=math.pi)
+    turn=gp_Trsf();turn.SetRotation(gp_Ax1(gp_Pnt(),gp_Dir(0,0,1)),math.pi)
+    halves=BRepAlgoAPI_Fuse(half,BRepBuilderAPI_Transform(half,turn,True).Shape()).Shape()
+    add('seam_split_tube',BRepAlgoAPI_Cut(halves,cyl(8,22)).Shape(),720*math.pi,
+        [-10,-10,-10,10,10,10],'pi*(10^2-8^2)*20, built from two halves',family='tube')
+    add('eccentric_bore',BRepAlgoAPI_Cut(cyl(10,20),cyl(8,22,x=0.01)).Shape(),720*math.pi,
+        [-10,-10,-10,10,10,10],'pi*(10^2-8^2)*20, bore 0.01 off the axis',family='tessellated')
+    k=math.tan(math.radians(0.1)); r2=8-20*k
+    add('tapered_bore',BRepAlgoAPI_Cut(cyl(10,20),cone(8+k,8-21*k,-11,11)).Shape(),
+        math.pi*(100*20-20/3*(64+8*r2+r2*r2)),[-10,-10,-10,10,10,10],
+        'pi*(10^2*20 - 20/3*(8^2+8*r2+r2^2)), r2=8-20*tan(0.1 deg)',family='cone')
+
+    # Bounded CSG: a stock minus up to 16 cut-outs.
+    flange=BRepAlgoAPI_Cut(cyl(30,6),cyl(5,8)).Shape()
+    for i in range(6):
+        a=math.radians(60*i)
+        flange=BRepAlgoAPI_Cut(flange,cyl(2.5,8,x=20*math.cos(a),y=20*math.sin(a))).Shape()
+    add('flange',flange,math.pi*((30**2-5**2)*6-6*2.5**2*6),[-30,-30,-3,30,30,3],
+        'pi*((30^2-5^2)*6 - 6*2.5^2*6)',family='tube - 6 cut-outs')
+    # The pocket is turned and off-centre, so a wrong operand rotation shows.
+    turn=gp_Trsf();turn.SetRotation(gp_Ax1(gp_Pnt(),gp_Dir(0,0,1)),math.radians(30));turn.SetTranslationPart(gp_Vec(5,2,0))
+    pocket=BRepBuilderAPI_Transform(box(20,10,5,origin=(-10,-5,1)),turn,True).Shape()
+    add('pocket_block',BRepAlgoAPI_Cut(box(40,30,10),pocket).Shape(),12000-20*10*4,[-20,-15,-5,20,15,5],
+        '40*30*10 - 20*10*4, the pocket turned 30 deg about z',family='box - 1 cut-out')
+    shifted=box(40,30,10)
+    for x in (-10,10):
+        shifted=BRepAlgoAPI_Cut(shifted,cyl(3,12,x=x)).Shape()
+    shifted=BRepAlgoAPI_Cut(shifted,cyl(5,4,x=-10,z=2.001)).Shape()
+    add('counterbore_shift',shifted,12000-math.pi*(2*9*10+16*2.999),[-20,-15,-5,20,15,5],
+        '40*30*10 - pi*(2*3^2*10 + (5^2-3^2)*2.999)',family='box - 2 cut-outs')
+    holes=box(100,100,5)
+    for i in range(17):
+        holes=BRepAlgoAPI_Cut(holes,cyl(1,7,x=-40+5*i)).Shape()
+    add('plate_17_holes',holes,50000-17*math.pi*5,[-50,-50,-2.5,50,50,2.5],'100*100*5 - 17*pi*1^2*5',
+        family='tessellated')
+
+    # A shaft in a bore of its radius: two solids that touch without interfering.
+    pair=TopoDS_Compound();builder=BRep_Builder();builder.MakeCompound(pair)
+    for solid in (shapes['tube'],shapes['shaft']):
+        builder.Add(pair,solid)
+    write_step(pair,out/'shaft_in_bore.step')
     expected['shaft_in_bore']={'intersection_mm3':0,'formula':'equal radii, boundary contact only'}
     expected['interference']={'intersection_mm3':20*math.pi*(8.1**2-8**2),
                               'formula':'pi*(8.1^2-8^2)*20'}

@@ -30,7 +30,8 @@ function remembered(): Remembered {
 
 /** The phases of an import (backend `cad` and its STEP worker), as the toolbar names them. */
 const PHASES: Record<string, string> = {
-  read: 'reading the file', mesh: 'meshing', interfere: 'checking interferences', validate: 'validating meshes',
+  read: 'reading the file', mesh: 'meshing and recognizing solids', interfere: 'checking interferences and contacts',
+  validate: 'validating meshes',
   remesh: 'remeshing', check: 'checking for crossing meshes', build: 'building the document',
 };
 

@@ -44,14 +44,6 @@ std::string name(const TDF_Label& label) {
   return TCollection_AsciiString(attribute->Get()).ToCString();
 }
 
-std::array<double, 12> matrix(const TopLoc_Location& location) {
-  const gp_Trsf t = location.Transformation();
-  std::array<double, 12> m{};
-  for (int i = 1; i <= 3; ++i)
-    for (int j = 1; j <= 4; ++j) m[(i - 1) * 4 + (j - 1)] = t.Value(i, j);
-  return m;
-}
-
 /// A part's solids, and the faces outside any solid sewn within their
 /// tolerance: each closed shell becomes a solid, the rest is reported.
 void part(const TopoDS_Shape& shape, Label& l) {
@@ -142,7 +134,7 @@ Document read_step(const std::string& bytes) {
           continue;
         }
         const TopLoc_Location location = XCAFDoc_ShapeTool::GetLocation(components(i));
-        l.components.push_back({entry(target), matrix(location), location});
+        l.components.push_back({entry(target), matrix(location.Transformation()), location});
         pending.push_back(target);
       }
     } else {

@@ -34,6 +34,7 @@ fi
 
 cmake -G Ninja -S . -B build-linux -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$PWD/$prefix"
 cmake --build build-linux
+(cd build-linux && ctest --output-on-failure)
 
 # dist/cad: the worker (RUNPATH $ORIGIN/lib), the OCCT libraries it loads, licenses.
 rm -rf dist/cad

@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
+use super::ir::Analytic;
 use super::Control;
 
 #[derive(Deserialize)]
@@ -21,6 +22,9 @@ pub struct Output {
     pub labels: Vec<Label>,
     /// Placed solids whose interiors overlap.
     pub interferences: Vec<Interference>,
+    /// Placed solids closer than their meshes' chordal deviations, without
+    /// interfering: where a mesh beside an exact solid can cut into it.
+    pub contacts: Vec<Interference>,
     /// Pairs of placed solids the interference check did not decide.
     pub unchecked: usize,
     /// About the file as a whole.
@@ -59,6 +63,9 @@ pub struct Solid {
     /// Minimum x, y, z, then maximum.
     pub bounds_mm: [f64; 6],
     pub mesh: Mesh,
+    /// Its exact GDML solid, or why there is none.
+    pub exact: Option<Analytic>,
+    pub exact_reason: String,
     pub issues: Vec<String>,
 }
 

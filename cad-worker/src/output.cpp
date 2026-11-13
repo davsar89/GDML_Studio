@@ -11,8 +11,11 @@ namespace {
 // Declared first so that the templates below find them.
 void put(std::string& o, const Component& c);
 void put(std::string& o, const Mesh& m);
+void put(std::string& o, const Primitive& p);
+void put(std::string& o, const Exact& e);
 void put(std::string& o, const Solid& s);
-void put(std::string& o, const std::optional<Solid>& s);
+template <class T>
+void put(std::string& o, const std::optional<T>& x);
 void put(std::string& o, const Label& l);
 void put(std::string& o, const Interference& i);
 
@@ -77,13 +80,28 @@ void put(std::string& o, const Mesh& m) {
   object(o, "positions", m.positions, "triangles", m.triangles, "chord_mm", m.chord_mm, "issues", m.issues);
 }
 
-void put(std::string& o, const Solid& s) {
-  object(o, "valid", s.valid, "tolerance_mm", s.tolerance_mm, "volume_mm3", s.volume_mm3,
-         "area_mm2", s.area_mm2, "bounds_mm", s.bounds_mm, "mesh", s.mesh, "issues", s.issues);
+void put(std::string& o, const Primitive& p) {
+  o += '{';
+  fields(o, "solid", p.solid);
+  for (const auto& [key, value] : p.values) fields(o, key, value);
+  if (!p.points.empty()) fields(o, "points", p.points);
+  fields(o, "frame", matrix(p.frame));
+  o += '}';
 }
 
-void put(std::string& o, const std::optional<Solid>& s) {
-  if (s) put(o, *s);
+void put(std::string& o, const Exact& e) {
+  object(o, "epsilon_mm", e.epsilon_mm, "stock", e.stock, "tools", e.tools);
+}
+
+void put(std::string& o, const Solid& s) {
+  object(o, "valid", s.valid, "tolerance_mm", s.tolerance_mm, "volume_mm3", s.volume_mm3,
+         "area_mm2", s.area_mm2, "bounds_mm", s.bounds_mm, "mesh", s.mesh, "exact", s.exact,
+         "exact_reason", s.exact_reason, "issues", s.issues);
+}
+
+template <class T>
+void put(std::string& o, const std::optional<T>& x) {
+  if (x) put(o, *x);
   else o += "null";
 }
 
@@ -100,8 +118,8 @@ void put(std::string& o, const Interference& i) {
 
 void write(std::FILE* out, const Document& doc) {
   std::string json;
-  object(json, "roots", doc.roots, "labels", doc.labels, "interferences", doc.interferences, "unchecked",
-         doc.unchecked, "issues", doc.issues);
+  object(json, "roots", doc.roots, "labels", doc.labels, "interferences", doc.interferences, "contacts",
+         doc.contacts, "unchecked", doc.unchecked, "issues", doc.issues);
   std::fwrite(json.data(), 1, json.size(), out);
   std::fflush(out);
 }

@@ -208,6 +208,8 @@ Solid analyze(TopoDS_Shape& shape, double volume_target, double chord) {
   try {
     OCC_CATCH_SIGNALS
     s.valid = BRepCheck_Analyzer(shape).IsValid();
+    if (s.valid) s.exact = recognize(shape, s.exact_reason);
+    else s.exact_reason = "OpenCASCADE finds its B-rep invalid";
     s.tolerance_mm = ShapeAnalysis_ShapeTolerance().Tolerance(shape, 1);
     const std::array<double, 2> source = measure(shape);
     s.volume_mm3 = source[0];

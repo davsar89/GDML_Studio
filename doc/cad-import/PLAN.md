@@ -299,9 +299,8 @@ Status (2026-11-13): done; all acceptance items pass, with the deviations below.
   the target (8 in SO101: 6 such thin swept parts and 2 screws).
 - Algorithm I: `BRepAlgoAPI_Common` on the placed solids whose boxes, grown by the tolerance,
   overlap; an interference is an overlap above 1e-6 of the smaller volume. Pairs run on up to
-  8 threads; those not started within 60 s are counted as unchecked. The contact half
-  (`BRepExtrema_DistShapeShape`) is not built: what Geant4 sees of contacts, the Rust
-  mesh-crossing check reports.
+  8 threads; those not started within 60 s are counted as unchecked. Contacts came with
+  Phase 4; between meshes, the Rust mesh-crossing check reports what Geant4 sees.
 - Rust: assemblies kept as `<assembly>` volumes (those with nothing included left out) or
   flattened; ids `<label entry>.<solid>.<body>`. Placed meshes are checked for crossings
   (a BVH over the facets in the common box); a pair counts only where triangles pierce each
@@ -336,39 +335,80 @@ Status (2026-11-13): done; all acceptance items pass, with the deviations below.
 - The desktop backend exits when the app's pipe to it closes, cancelling a running import
   (worker killed): no backend or worker outlives a crashed, killed or upgraded app.
 
-### Phase 4: analytic recognition (algorithms D and E)
-1. Worker `recognize.cpp` and `verify.cpp`. Each body's output carries its primitive (in GDML
-   parameter semantics, plus a right-handed body frame), the verification numbers and the
-   rejected candidates with reasons. The mesh is always output too.
-2. Rust emits primitives with their frame composed into every physvol of that LV. The report
-   shows the alternatives, and switching Auto/Tessellated rebuilds from the session IR without
-   re-running the worker.
-3. Generator additions (committed outputs): every family rotated about non-principal axes and
-   translated; seam-split faces; lookalikes that must be rejected (bore 0.01 mm eccentric,
-   0.1 degree taper, wrong-cavity box, extended counterbore floor); the tube sector and
-   polycone the spike skipped.
+### Phase 4: exact GDML solids (algorithms D, E, F)
+1. Worker: `recognize.cpp` reads a candidate off each valid, unhealed solid; `certify.cpp`
+   owns what GDML numbers mean (`shape()`) and the certificate. Each solid's output carries
+   `exact: {epsilon_mm, stock, tools}` (each primitive: GDML values in mm and rad and a
+   right-handed 3 x 4 frame in the solid's frame) or `exact_reason`. The mesh is always output,
+   so switching representation never re-runs the worker.
+2. Rust: `ir::Analytic`, emitted by `build.rs` when the part's representation is Auto. The
+   names `<base>`, `<base>_stock`, `<base>_tool<k>` and `<base>_tools` are claimed either way,
+   so volume and solid names stay when switching. Physvols place the primitive's frame
+   (`at.after(frame)`); Boolean operands place theirs relative to the stock (algorithm G).
+3. Fixtures (generator, committed): the families on oblique axes, faces split at seams, a
+   hollow theta-cut sphere sector, a hollow torus sector, and lookalikes: a bore 0.01 mm off
+   its axis (tessellated) and one tapered by 0.1 degree (a correct cone). `expected.json` holds
+   each part's `family`.
 
-Acceptance:
-- Each fixture gets its expected family and every lookalike is rejected.
-- Geant4 volumes of the primitives equal the analytic volumes (1e-12 relative); world bounds
-  match the transformed analytic bounds.
+Acceptance: each fixture gets its family and every lookalike its correct outcome; Geant4
+volumes of the primitives equal the formulas; the exact solids sit where the CAD solids do.
 
-### Phase 5: bounded CSG
-1. Stock: an oriented box from the extreme orthogonal plane pairs, or the outer surface of
-   revolution, accepted only if `vol(part - stock)` is within the allowance.
-2. Tools are the connected solids of `stock - part` (BRepAlgoAPI_Cut), each recognized with
-   the Phase 4 recognizer. Tool faces coplanar with the stock boundary are extended outward by
-   `delta = max(10 tau, 1e-3 D)` (outside the stock, so nothing extra is removed); blind floors
-   stay exact.
-3. Emit `subtraction(stock, tool)` for one tool, `subtraction(stock, multiUnion(tools))` for 2
-   to 16; above that, tessellate. Verify the whole tree with the Phase 4 check.
+Status (2026-11-14): done.
+- All 25 STEP part fixtures get their family (`step_parts_have_their_formula_volumes_and_families`),
+  and the viewer's mesh of each document solid is within 3 % of the formula (32 segments per
+  turn make a sphere 1.6 % small), so the GDML numbers mean what was certified.
+- `recognize-test` (ctest; `build-linux.sh` runs it): the certificate accepts true candidates
+  and rejects a face 1e-3 mm off, an xtru vertex 1e-3 mm off, a box with a cavity against the
+  plain box, the other half of a half tube and a spherical shell against the ball; a half
+  tube reads as deltaphi pi, the shell as rmin 5.
+- Geant4 11.4.2 (`g4check`) on the GDML exported from every STEP fixture: no warnings, overlaps
+  or stuck tracks; primitive volumes equal the formulas within 6e-13. Sampling 2e6 points with
+  Geant4's navigator, each part's exact and tessellated exports disagree only by the mesh sag:
+  0 mm³ for every planar part, including a pocket turned 30 degrees (which pins the operand
+  rotation convention), and 1.6 to 13.6 mm³ for curved ones.
+- Deviations: no `recognize` option and no progress phase of its own. Recognition runs in the
+  `mesh` phase on every valid solid; the per-part choice (Auto, Tessellated, Exclude)
+  replaces the option.
+- The oblique sphere fixture found a bug: `gp_Dir::Crossed` normalizes, which made every sweep
+  but 1.5 pi wrong; sweeps use `gp_Vec`.
 
-Acceptance:
-- `hole_plate` becomes exact CSG; its Geant4 MC volume is within its statistical error of
-  11,283.716875 mm³.
-- Filleted parts stay tessellated.
-- At 16 tools, preview construction stays under 1 s and Geant4 navigation is no slower than
-  the tessellated version (`g4check` timing).
+### Phase 5: bounded CSG (algorithm D, CSG)
+A solid that is a stock primitive minus at most 16 primitive cut-outs is written as
+`subtraction(stock, tool)` or `subtraction(stock, multiUnion(tools))`, certified as a whole.
+
+Acceptance: `hole_plate` and `closed_cavity` become CSG with Geant4 Monte Carlo volumes within
+1 % of their formulas; a flange with 6 bolt holes (revolution stock), a turned blind pocket and
+a counterbore floor 1e-3 mm off its expected depth (its true floor is kept) become CSG; a
+17-hole plate and the filleted and B-spline parts stay tessellated with their reasons.
+
+Status (2026-11-14): done.
+- `hole_plate`: box minus multiUnion(tube, genericPolycone), the counterbore and its hole
+  being one stepped tool; `closed_cavity`: box minus box; `flange`: tube minus 6 tubes;
+  `pocket_block`: box minus a turned box; `counterbore_shift` keeps its floor 2.001 mm deep;
+  `plate_17_holes`: "a box minus 17 cut-outs, more than 16". Geant4 Monte Carlo volumes are
+  within 9e-5 of the formulas (hole_plate 11282.72 against 11283.72 mm³).
+- A plate with 16 holes (box minus 16 tubes) imports in 0.58 s, its preview included. Geant4
+  tracks 200,000 geantinos through it in 0.47 s; through its tessellated version (4,108
+  facets), 18.8 s for the same 642,000 steps.
+- Real models (worker alone, this workstation under load; recognition time is the sum over
+  solids):
+
+  | File | Solids | Exact | Families | Recognition | Worker |
+  |---|---|---|---|---|---|
+  | SO100 | 15 | 1 | genericPolycone | 3.5 s | 18 s |
+  | SO101 | 90 | 10 | box 2, xtru 7, box - 1 cut-out | 14 s | 126 s |
+  | SO101 upper arm | 1 | 0 | (B-spline faces) | 0 s | 0.8 s |
+  | 7 local instrument files | 80 | 57 | box 21, xtru 20, tube 10, xtru - 2 cut-outs 5, genericPolycone 1 | 3.7 s | 7.7 s |
+
+  The robot arm parts are mostly free-form or filleted. The instrument parts that stay
+  tessellated are mostly trays and frames whose cut-out is two primitives (a wide pocket, then
+  a narrower window), or whose tool ends on an inner face of the stock: both deferred below.
+  Two measures halved recognition time: stocks are built in turn (the eight meridian sections
+  of a revolution stock only after the prisms fail), and a stock the solid sticks out of is
+  skipped before its Boolean.
+- Deferred (fallback: tessellated): a connected cut-out made of several primitives, tools
+  that intersect or end on inner faces of the stock, oblique xtru, B-spline-encoded analytic
+  faces, sectors of revolution stocks.
 
 ### Phase 6: Windows worker and installer
 Use the same `occt-options.cmake` and worker `CMakeLists.txt` with MSVC, through a PowerShell
@@ -430,47 +470,67 @@ start at `chord = clamp(min(0.05 mm, 1e-3 D), tau, ...)` and `angle = 0.2 rad`; 
 `|V_mesh - V_exact| / V_exact > target` (default 1e-3; presets 1e-2, 1e-3, 1e-4) and facets are
 below 250k per body, halve both and re-mesh after `BRepTools::Clean`. Record the final values.
 
-**D. Recognition** (worker, per solid, in its definition frame):
-- Collect each face's `BRepAdaptor_Surface` type and parameters and its material side; cluster
-  faces lying on the same support within `epsilon` (this merges seam-split faces).
-- **Planar bodies:** box (exactly 3 orthogonal pairs of parallel plane clusters); xtru (two
-  parallel caps with one outer wire of line edges, all other planes parallel to the cap
-  normal; polygon in cap coordinates, two sections with scale 1 and offset 0).
-- **Axisymmetric bodies:** every curved support is a cylinder, cone, sphere or torus about one
-  common axis, and every plane is either perpendicular to it (cap) or contains it (phi cut).
-  Intersect the solid with the half-plane in the middle of its angular range; the section's
-  single outer wire is the meridian in (r, z). The meridian then gives:
+**D. Recognition** (worker `recognize.cpp`, per valid unhealed solid, in its definition frame).
+Only native analytic faces count (plane, cylinder, cone, sphere, torus): a B-spline or offset
+face means tessellated, since OCCT's canonical recognition only fits on a fixed 21 x 21 grid
+(`GeomConvert_SurfToAnaSurf.cxx:660`). Templates propose; only the certificate (E) decides.
+- **Revolution**, when any face is curved. The axis is that of a cylinder, cone or torus, else
+  a sphere's centre with the planes' normal. Every face must be coaxial, a cap or a phi cut;
+  the phi cuts' material sides give the start ray (frame x, startphi 0) and deltaphi. The
+  section with the half-plane at mid-sweep (`BRepAlgoAPI_Common`, then
+  `ShapeUpgrade_UnifySameDomain` to merge seam splits) must be one face; its loops give:
 
   | Meridian | GDML solid |
   |---|---|
   | rectangle | tube |
-  | trapezoid with two caps | cone |
-  | lines only | genericPolycone |
-  | half-disk on the axis | orb, or sphere when a phi cut is present |
-  | annular half-disk | sphere(rmin, rmax) |
-  | disk or annulus off the axis | torus |
+  | trapezoid with horizontal ends, inner radii both zero or both positive | cone |
+  | other polygon | genericPolycone |
+  | arcs about one centre on the axis, radial segments | sphere (rmin, theta range), or orb |
+  | circle or two concentric circles off the axis | torus |
 
-  Anything else falls back. Phi cuts set startphi = 0 (frame x along the first cut) and
-  deltaphi. Frames are always right-handed.
-- **CSG:** Phase 5 step list.
+  Geant4 changes some parameters behind the reader's back, so: a cone with one zero inner
+  radius is a genericPolycone (`G4Cons.cc:120`); a torus needs `rtor >= rmax + 1e-6 mm` and
+  `rmin = 0` or `>= 1e-7 mm` (`G4Torus.cc`); full sweeps are exactly 2 pi; gaps below 1e-6 rad
+  are refused (the viewer reads them as full turns).
+- **Prism**, all faces planar. Plane directions by decreasing area; the first along which every
+  face is across or along and whose mid-extent section's outer loop gives a certified
+  candidate: a box (four right angles) or an xtru (written clockwise, as Geant4 expects).
+- **CSG.** Stocks in turn: prisms along the three main plane directions (the outer loop of the
+  mid section), then the full revolution about the largest cylinder or cone (the largest
+  single-face meridian of eight). A stock the solid sticks out of is skipped. The cut-outs are
+  the solids of `Cut(stock, S)` (slivers of volume below eps times area ignored), at most 16,
+  each read by the templates above and certified alone. A tool end on a stock plane moves
+  outward by `delta = max(1e-3 D, 1e-3 mm)`, but only when the whole stock lies inside that
+  plane: then the subtraction removes nothing more and leaves Geant4 no coincident surface.
+  Box faces and xtru ends shift; end vertices of revolution profiles move along their side
+  edges. Blind floors stay. The whole tree is then certified; the first stock that passes
+  wins, and a failure reports the first stock's reason.
 
-**E. Verification gate.** Build the candidate in OCCT from exactly the GDML parameters and
-frame (MakeBox, MakeCylinder/Cone with angle, MakeRevol of the rz polygon, MakeSphere,
-MakeTorus, MakePrism; Cut with a fused tool set for CSG). Accept only if all of these hold:
-- support-set equivalence (each source support has a matching candidate support within
-  epsilon, and the reverse);
-- the same number of shells and cavities;
-- `vol(source - cand)` and `vol(cand - source)` are both `<= min(A epsilon, 1e-5 V)` (both
-  Booleans valid, no fuzzy value);
-- bounds within epsilon.
+**E. Certificate** (`certify.cpp`). `shape()` builds each primitive from exactly its GDML numbers
+and frame (revolving its meridian, extruding its polygon; CSG is one Cut with all tools), so
+source and candidate compare surface to surface. `certify(S, C, eps)` accepts only if:
+1. every face of both is native analytic;
+2. the faces fall into the same surfaces, each compared with its cluster's first face over the
+   diagonal D (planes: `|n1 x n2| D + offset`; cylinders, cones, tori: axis tilt times D plus
+   offset, and radii, or apex and half-angle; spheres: centre and radius; all `<= eps`), and
+   every surface has faces of both;
+3. on each surface every face of each solid has the same material side
+   (`BRepGProp_Face::Normal` at the UV centre against the plane normal, or away from the axis,
+   centre or minor circle);
+4. on each surface, area within `eps P + num` and first moment within `eps (A + P D) + num`, P
+   being the candidate's edge length there;
+5. volume within `eps A + num` and its first moment within `(eps A + num) D`; the `num` terms
+   are the error estimates of the adaptive `BRepGProp` integrations (Eps 1e-9).
 
-Record both volumes, the allowance and epsilon.
+Both boundaries then lie on one finite set of surfaces, so both solids are unions of cells of
+that arrangement and can differ only by whole cells; each changes some surface's side, area
+or moment, or the volume. Complements fail 3, wrong trims 4, eccentric or needle defects 2. An
+empty Boolean difference is never the evidence: fuzzy values stop at `Precision::Confusion()`
+= 1e-7 mm (`BOPAlgo_Options.cxx:107`).
 
-**F. Tolerances.**
-- `tau = max(the STEP uncertainty for that representation, the solid's maximum vertex/edge
-  tolerance, 1e-9 mm)`.
-- `epsilon = min(5 tau, 1e-4 D)`. Matching is never loosened to raise recognition.
-- Angular tolerance `epsilon / D`.
+**F. Tolerances.** `eps = max(the solid's largest face tolerance, 1e-7 mm)`; a solid with
+`eps > 1e-4 D` is not recognized. Directions match within eps over D. Genuine primitives deviate
+by about 1e-12 mm; the lookalikes by 1e-3 mm or more.
 
 **G. Transforms.**
 - Decompose `R = Rz(g) Ry(b) Rx(a)`: `b = atan2(-R20, hypot(R00, R10))`,
@@ -506,11 +566,16 @@ Record both volumes, the allowance and epsilon.
 
   The unassigned count is derived in the frontend from `volumes`, not stored.
 
-**I. Interference and contact** (worker).
-- Candidate pairs are occurrences whose world AABBs overlap after expanding by `tau`.
+**I. Interference and contact** (worker `interfere.cpp`).
+- Candidate pairs are placed solids whose boxes, grown by their tolerance, overlap.
 - Interference: `BRepAlgoAPI_Common` volume `> 1e-6 min(Va, Vb)`.
-- Contact: `BRepExtrema_DistShapeShape <= max(tau, chord)` without interference.
-- A time budget applies (option); pairs left unchecked are reported as "not checked".
+- Contact: otherwise, the triangulations (the GDML meshes) come within
+  `chord_a + chord_b + max(tolerance)` of each other (`BRepExtrema_ShapeProximity`), so every
+  gap narrower than a chord is found. The report lists the contacts of an exact and a
+  tessellated part, for the current choice: there the mesh can cut into the exact solid by up
+  to its chord. (`BRepExtrema_DistShapeShape` took 7 of the 9.6 s of one 7-solid assembly;
+  the proximity test costs nothing measurable.)
+- Up to 8 threads; pairs not started within 60 s are reported as not checked.
 
 ## 6. API, state and worker protocol
 

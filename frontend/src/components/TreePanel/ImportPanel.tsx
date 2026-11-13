@@ -12,26 +12,30 @@ const STL_UNITS: [string, number][] = [['mm', 1], ['cm', 10], ['m', 1000], ['in'
 /** The mesh volume errors offered for STEP parts. */
 const QUALITIES: [string, number][] = [['Coarse: 1 %', 1e-2], ['Standard: 0.1 %', 1e-3], ['Fine: 0.01 %', 1e-4]];
 
+type Representation = ImportOverride['representation'];
+
 /** The options being edited; Re-import applies them. Chords are typed per part, in mm. */
 interface Draft extends Omit<ImportOptions, 'part_material' | 'overrides'> {
   material: MaterialChoice | null;
-  excluded: Set<string>;
+  representations: Record<string, Representation>;
   chords: Record<string, string>;
 }
 
-const draftOf = ({ options, definitions }: ImportReport): Draft => ({
+const draftOf = ({ options }: ImportReport): Draft => ({
   stl_unit_mm: options.stl_unit_mm,
   volume_target: options.volume_target,
   hierarchy: options.hierarchy,
   material: options.part_material && { name: options.part_material.material.name },
-  excluded: new Set(definitions.filter((d) => d.excluded).map((d) => d.id)),
+  representations: Object.fromEntries(Object.entries(options.overrides).map(([id, o]) => [id, o.representation])),
   chords: Object.fromEntries(Object.entries(options.overrides).flatMap(([id, o]) => o.chord_mm ? [[id, String(o.chord_mm)]] : [])),
 });
 
 /** The per-part choices of `draft`, as the backend takes them. */
 function overridesOf(draft: Draft): Record<string, ImportOverride> {
   const out: Record<string, ImportOverride> = {};
-  for (const id of draft.excluded) out[id] = { representation: 'exclude' };
+  for (const [id, representation] of Object.entries(draft.representations)) {
+    if (representation !== 'auto') out[id] = { representation };
+  }
   for (const [id, chord] of Object.entries(draft.chords)) {
     if (chord.trim()) out[id] = { representation: out[id]?.representation ?? 'auto', chord_mm: Number(chord) };
   }
@@ -86,14 +90,12 @@ function ImportForm({ report }: { report: ImportReport }) {
   }
   const interferences = [...report.interferences].sort((a, b) => b.volume_mm3 - a.volume_mm3);
   const imported = report.definitions.filter((d) => !d.excluded).length;
+  const exact = report.definitions.filter((d) => !d.excluded && d.representation === 'exact').length;
   const changed = draftKey(draft) !== draftKey(draftOf(report));
   const materialChanged = (draft.material?.name ?? null) !== (report.options.part_material?.material.name ?? null);
 
-  const toggle = (id: string) => {
-    const excluded = new Set(draft.excluded);
-    if (!excluded.delete(id)) excluded.add(id);
-    setDraft({ ...draft, excluded });
-  };
+  const choose = (id: string, representation: Representation) =>
+    setDraft({ ...draft, representations: { ...draft.representations, [id]: representation } });
   const apply = () => runDocumentAction(async () => {
     if (!await resolveMaterialDraft()) return;
     const { stl_unit_mm, volume_target, hierarchy } = draft;
@@ -106,7 +108,10 @@ function ImportForm({ report }: { report: ImportReport }) {
         <dl className="properties">
           <dt>File</dt><dd>{report.filename} ({report.format.toUpperCase()}, {size(report.bytes)})</dd>
           <dt>Parts</dt>
-          <dd>{imported} of {report.definitions.length} imported{report.rejected.length > 0 && `, ${report.rejected.length} rejected`}</dd>
+          <dd>
+            {imported} of {report.definitions.length} imported{exact > 0 && ` (${exact} exact, ${imported - exact} tessellated)`}
+            {report.rejected.length > 0 && `, ${report.rejected.length} rejected`}
+          </dd>
           <dt>Facets</dt><dd>{report.facets.toLocaleString('en-US')}</dd>
           <dt>GDML size</dt><dd>about {size(report.gdml_bytes_estimate)}</dd>
         </dl>
@@ -154,7 +159,12 @@ function ImportForm({ report }: { report: ImportReport }) {
             const notes = repairs(d);
             return (
               <li key={d.id} className="list-row" data-selected={d.volume !== null && d.volume === selectedVolume}>
-                <input type="checkbox" checked={!draft.excluded.has(d.id)} onChange={() => toggle(d.id)} aria-label={`Import ${d.label}`} />
+                <select value={draft.representations[d.id] ?? 'auto'} aria-label={`Representation of ${d.label}`}
+                  onChange={(e) => choose(d.id, e.target.value as Representation)}>
+                  <option value="auto">{d.analytic ? 'Exact' : 'Mesh'}</option>
+                  {d.analytic && <option value="tessellated">Mesh</option>}
+                  <option value="exclude">Exclude</option>
+                </select>
                 <button className="plain row-name" disabled={!d.volume} onClick={() => d.volume && setSelectedVolume(d.volume)}
                   title={d.volume ?? 'Not in the document'}>
                   <span className="mono">{d.label}</span>
@@ -167,6 +177,10 @@ function ImportForm({ report }: { report: ImportReport }) {
                       CAD volume {quantity(d.exact.volume_mm3)} mm³, mesh {percent(d.volume_mm3 / d.exact.volume_mm3 - 1)}
                     </small>
                   )}
+                  {d.analytic && (
+                    <small title={`Proven equal to the CAD solid within ${quantity(d.epsilon_mm!)} mm`}>GDML {d.analytic}</small>
+                  )}
+                  {report.format === 'step' && d.analytic_reason && <small>No exact GDML solid: {d.analytic_reason}</small>}
                   {notes.length > 0 && <small>Repaired: {notes.join(', ')}</small>}
                   {d.issues.length > 0 && <small className="attention">{d.issues.join('; ')}</small>}
                   {crossed.has(d.id) && <small className="attention">Mesh crosses {crossed.get(d.id)!.join(', ')}</small>}
@@ -207,6 +221,20 @@ function ImportForm({ report }: { report: ImportReport }) {
           {report.unchecked > 0 && (
             <p className="attention">{count(report.unchecked, 'pair')} of solids close enough to overlap were not checked: the check ran out of time.</p>
           )}
+        </section>
+      )}
+
+      {report.mixed_contacts.length > 0 && (
+        <section className="form-section">
+          <h3>Exact parts touching meshes</h3>
+          <p className="field-hint">
+            A mesh can cut into an exact solid it touches by up to its chordal deviation, which Geant4 reports as an overlap.
+          </p>
+          <ul className="import-rejected">
+            {report.mixed_contacts.map(([a, b], k) => (
+              <li key={k}><span className="mono">{labelOf.get(a)}</span> and <span className="mono">{labelOf.get(b)}</span></li>
+            ))}
+          </ul>
         </section>
       )}
 

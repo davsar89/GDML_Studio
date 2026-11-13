@@ -9,6 +9,11 @@ To regenerate, run the generator into an empty directory outside the repository 
 files listed here. Regeneration with another OCCT version may change the STEP text and
 triangulations while representing the same geometry; the expectations stay valid.
 
+Each STEP part's `family` in `expected.json` is what the importer must make of it: a GDML
+solid, `<stock> - <n> cut-outs`, or `tessellated` (the lookalikes `eccentric_bore` and
+`plate_17_holes` must stay meshes). `shaft_in_bore.step` holds a tube and a shaft that touch
+along the bore without interfering.
+
 The large curved STL outputs of the generator (sphere, torus, tube, bspline_roof) are not kept:
 curved geometry is covered by the STEP fixtures.
 

@@ -174,7 +174,14 @@ export interface ImportDefinition {
   /** Its logical volume; null when excluded. */
   volume: string | null;
   excluded: boolean;
-  representation: string;
+  /** What the document holds for it: its exact GDML solid, or its mesh. */
+  representation: 'exact' | 'tessellated';
+  /** Its exact GDML solid ("tube", "box - 2 cut-outs"), proven equal to the CAD solid; null when it has none. */
+  analytic: string | null;
+  /** Why it has no exact GDML solid. */
+  analytic_reason: string | null;
+  /** The tolerance in mm of that proof. */
+  epsilon_mm: number | null;
   /** Its placements in the world (assembly occurrences). */
   instances: number;
   /** The CAD kernel's properties of the solid (STEP only). */
@@ -216,6 +223,8 @@ export interface ImportReport {
   unchecked: number;
   /** Pairs of definition ids some placements of which have crossing meshes. */
   crossings: [string, string][];
+  /** Pairs of definition ids of touching parts, one shown exact and one tessellated. */
+  mixed_contacts: [string, string][];
   /** Facets of the included parts. */
   facets: number;
   gdml_bytes_estimate: number;

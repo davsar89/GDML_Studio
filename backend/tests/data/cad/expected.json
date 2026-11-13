@@ -9,7 +9,8 @@
       10,
       15
     ],
-    "formula": "10*20*30"
+    "formula": "10*20*30",
+    "family": "box"
   },
   "tube": {
     "volume_mm3": 2261.946710584651,
@@ -21,7 +22,8 @@
       10,
       10
     ],
-    "formula": "pi*(10^2-8^2)*20"
+    "formula": "pi*(10^2-8^2)*20",
+    "family": "tube"
   },
   "tube_sector": {
     "volume_mm3": 2375.0440461138837,
@@ -33,7 +35,8 @@
       10,
       6
     ],
-    "formula": "(270/360)*pi*(10^2-4^2)*12"
+    "formula": "(270/360)*pi*(10^2-4^2)*12",
+    "family": "tube"
   },
   "cone": {
     "volume_mm3": 3665.1914291880917,
@@ -45,7 +48,8 @@
       10,
       10
     ],
-    "formula": "pi*20*(10^2+10*5+5^2)/3"
+    "formula": "pi*20*(10^2+10*5+5^2)/3",
+    "family": "cone"
   },
   "sphere": {
     "volume_mm3": 4188.790204786391,
@@ -57,7 +61,8 @@
       10,
       10
     ],
-    "formula": "4*pi*10^3/3"
+    "formula": "4*pi*10^3/3",
+    "family": "orb"
   },
   "torus": {
     "volume_mm3": 6316.54681669719,
@@ -69,7 +74,8 @@
       24,
       4
     ],
-    "formula": "2*pi^2*20*4^2"
+    "formula": "2*pi^2*20*4^2",
+    "family": "torus"
   },
   "polycone": {
     "volume_mm3": 4974.18836818384,
@@ -81,7 +87,8 @@
       10,
       10
     ],
-    "formula": "pi*(10^2*10 + 10*(10^2+10*5+5^2)/3)"
+    "formula": "pi*(10^2*10 + 10*(10^2+10*5+5^2)/3)",
+    "family": "genericPolycone"
   },
   "l_extrusion": {
     "volume_mm3": 1500,
@@ -93,7 +100,8 @@
       15,
       5
     ],
-    "formula": "(20*5+5*10)*10"
+    "formula": "(20*5+5*10)*10",
+    "family": "xtru"
   },
   "hole_plate": {
     "volume_mm3": 11283.716874981526,
@@ -105,7 +113,8 @@
       15,
       5
     ],
-    "formula": "40*30*10 - 2*pi*3^2*10 - pi*(5^2-3^2)*3"
+    "formula": "40*30*10 - 2*pi*3^2*10 - pi*(5^2-3^2)*3",
+    "family": "box - 2 cut-outs"
   },
   "filleted_block": {
     "volume_mm3": 3685.8996637552214,
@@ -117,7 +126,8 @@
       8,
       6
     ],
-    "formula": "a*b*c+2*r*(a*b+a*c+b*c)+pi*r^2*(a+b+c)+4*pi*r^3/3; a=16,b=12,c=8,r=2"
+    "formula": "a*b*c+2*r*(a*b+a*c+b*c)+pi*r^2*(a+b+c)+4*pi*r^3/3; a=16,b=12,c=8,r=2",
+    "family": "tessellated"
   },
   "bspline_roof": {
     "volume_mm3": 3626.666666666667,
@@ -129,7 +139,8 @@
       8,
       13
     ],
-    "formula": "area*(H+4*A/9); area=20*16,H=10,A=3"
+    "formula": "area*(H+4*A/9); area=20*16,H=10,A=3",
+    "family": "tessellated"
   },
   "closed_cavity": {
     "volume_mm3": 784,
@@ -141,7 +152,8 @@
       5,
       5
     ],
-    "formula": "10^3-6^3"
+    "formula": "10^3-6^3",
+    "family": "box - 1 cut-out"
   },
   "inch_box": {
     "volume_mm3": 98322.38399999999,
@@ -153,7 +165,8 @@
       25.4,
       38.1
     ],
-    "formula": "1*2*3*25.4^3"
+    "formula": "1*2*3*25.4^3",
+    "family": "box"
   },
   "assembly": {
     "volume_mm3": 13500,
@@ -259,7 +272,8 @@
       8,
       10
     ],
-    "formula": "pi*8^2*20"
+    "formula": "pi*8^2*20",
+    "family": "tube"
   },
   "interfering_shaft": {
     "volume_mm3": 4122.397880040527,
@@ -271,7 +285,117 @@
       8.1,
       10
     ],
-    "formula": "pi*8.1^2*20"
+    "formula": "pi*8.1^2*20",
+    "family": "tube"
+  },
+  "oblique_cone": {
+    "volume_mm3": 3518.583772020568,
+    "bbox_mm": null,
+    "formula": "pi*20/3*((10^2+10*6+6^2)-(4^2+4*2+2^2))",
+    "family": "cone"
+  },
+  "oblique_sphere_shell": {
+    "volume_mm3": 1509.3509648437675,
+    "bbox_mm": null,
+    "formula": "dphi/3*(10^3-5^3)*(cos 0.5-cos 2); dphi=4",
+    "family": "sphere"
+  },
+  "oblique_hollow_torus": {
+    "volume_mm3": 3553.057584392169,
+    "bbox_mm": null,
+    "formula": "1.5pi*pi*20*(4^2-2^2)",
+    "family": "torus"
+  },
+  "seam_split_tube": {
+    "volume_mm3": 2261.946710584651,
+    "bbox_mm": [
+      -10,
+      -10,
+      -10,
+      10,
+      10,
+      10
+    ],
+    "formula": "pi*(10^2-8^2)*20, built from two halves",
+    "family": "tube"
+  },
+  "eccentric_bore": {
+    "volume_mm3": 2261.946710584651,
+    "bbox_mm": [
+      -10,
+      -10,
+      -10,
+      10,
+      10,
+      10
+    ],
+    "formula": "pi*(10^2-8^2)*20, bore 0.01 off the axis",
+    "family": "tessellated"
+  },
+  "tapered_bore": {
+    "volume_mm3": 2279.467172159298,
+    "bbox_mm": [
+      -10,
+      -10,
+      -10,
+      10,
+      10,
+      10
+    ],
+    "formula": "pi*(10^2*20 - 20/3*(8^2+8*r2+r2^2)), r2=8-20*tan(0.1 deg)",
+    "family": "cone"
+  },
+  "flange": {
+    "volume_mm3": 15786.50308428871,
+    "bbox_mm": [
+      -30,
+      -30,
+      -3,
+      30,
+      30,
+      3
+    ],
+    "formula": "pi*((30^2-5^2)*6 - 6*2.5^2*6)",
+    "family": "tube - 6 cut-outs"
+  },
+  "pocket_block": {
+    "volume_mm3": 11200,
+    "bbox_mm": [
+      -20,
+      -15,
+      -5,
+      20,
+      15,
+      5
+    ],
+    "formula": "40*30*10 - 20*10*4, the pocket turned 30 deg about z",
+    "family": "box - 1 cut-out"
+  },
+  "counterbore_shift": {
+    "volume_mm3": 11283.767140463984,
+    "bbox_mm": [
+      -20,
+      -15,
+      -5,
+      20,
+      15,
+      5
+    ],
+    "formula": "40*30*10 - pi*(2*3^2*10 + (5^2-3^2)*2.999)",
+    "family": "box - 2 cut-outs"
+  },
+  "plate_17_holes": {
+    "volume_mm3": 49732.96462444487,
+    "bbox_mm": [
+      -50,
+      -50,
+      -2.5,
+      50,
+      50,
+      2.5
+    ],
+    "formula": "100*100*5 - 17*pi*1^2*5",
+    "family": "tessellated"
   },
   "shaft_in_bore": {
     "intersection_mm3": 0,

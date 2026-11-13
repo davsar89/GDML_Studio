@@ -14,7 +14,7 @@ pub mod transform;
 pub mod worker;
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -84,8 +84,8 @@ pub struct Override {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Representation {
-    /// The most exact representation the import can verify; for now that is
-    /// the mesh itself.
+    /// The exact solid when the import proved one equal to the part, else
+    /// the mesh.
     #[default]
     Auto,
     Tessellated,
@@ -322,6 +322,7 @@ fn read_stl(bytes: &[u8], filename: &str, options: &Options) -> Result<CadImport
                 id: format!("{}.{}", body.source, count[body.source] - 1),
                 label: solids[body.source].name.clone(),
                 exact: None,
+                analytic: Err("an STL file holds only triangles".to_string()),
                 shells: body.shells,
                 repairs: logs[body.source].clone(),
                 reversed_facets: body.reversed,
@@ -344,6 +345,7 @@ fn read_stl(bytes: &[u8], filename: &str, options: &Options) -> Result<CadImport
         interferences: Vec::new(),
         unchecked: 0,
         crossings: Vec::new(),
+        contacts: Vec::new(),
     })
 }
 
@@ -515,6 +517,11 @@ fn read_step(bytes: &[u8], options: &Options, control: &Control) -> Result<CadIm
                         tolerance_mm: solid.tolerance_mm,
                         chord_mm: solid.mesh.chord_mm,
                     }),
+                    analytic: match (single, &solid.exact) {
+                        (true, Some(a)) => Ok(a.clone()),
+                        (true, None) => Err(solid.exact_reason.clone()),
+                        (false, _) => Err("its solid makes several bodies".to_string()),
+                    },
                     shells: body.shells,
                     repairs: c.log.clone(),
                     reversed_facets: body.reversed,
@@ -575,6 +582,10 @@ fn read_step(bytes: &[u8], options: &Options, control: &Control) -> Result<CadIm
             })
         })
         .collect();
+    let contacts: BTreeSet<(usize, usize)> = (out.contacts.iter())
+        .filter_map(|c| Some((occurrence(&c.a)?.1?, occurrence(&c.b)?.1?)))
+        .map(|(a, b)| (a.min(b), a.max(b)))
+        .collect();
     Ok(CadImport {
         format: Format::Step,
         definitions,
@@ -584,6 +595,7 @@ fn read_step(bytes: &[u8], options: &Options, control: &Control) -> Result<CadIm
         interferences,
         unchecked: out.unchecked,
         crossings: Vec::new(),
+        contacts: contacts.into_iter().collect(),
     })
 }
 

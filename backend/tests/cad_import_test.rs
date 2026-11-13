@@ -17,7 +17,7 @@ use gdml_studio_backend::{
     },
     eval::engine::EvalEngine,
     gdml::materials::serialize_gdml,
-    gdml::model::GdmlDocument,
+    gdml::model::{GdmlDocument, Solid, TessellatedFacet},
     gdml::parser::parse_gdml_from_bytes,
     state::app_state::{create_shared_state, SharedState},
 };
@@ -155,15 +155,34 @@ async fn step_import_needs_the_worker() {
 // GDML_CAD_WORKER=$PWD/cad-worker/dist/cad/gdml-cad-worker \
 //     cargo test --test cad_import_test -- --include-ignored
 
+/// The volume of the viewer's mesh of the solid of volume `lv`.
+async fn preview_volume(state: &SharedState, lv: &str) -> f64 {
+    let state = state.read().await;
+    let loaded = state.loaded.as_ref().unwrap();
+    let doc = loaded.geometry();
+    let volume = doc.structure.volumes.iter().find(|v| v.name == lv).unwrap();
+    let mesh = &loaded.meshes[&volume.solid_ref];
+    let p =
+        |i: u32| std::array::from_fn::<f64, 3, _>(|k| mesh.positions[3 * i as usize + k] as f64);
+    (mesh.indices.chunks(3))
+        .map(|t| {
+            let [a, b, c] = [p(t[0]), p(t[1]), p(t[2])];
+            (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0])
+                + a[2] * (b[0] * c[1] - b[1] * c[0]))
+                / 6.0
+        })
+        .sum()
+}
+
 #[tokio::test]
 #[ignore = "needs the STEP worker in GDML_CAD_WORKER"]
-async fn step_parts_have_their_formula_volumes() {
+async fn step_parts_have_their_formula_volumes_and_families() {
     let expected: Value = serde_json::from_slice(&fixture("expected.json")).unwrap();
     let mut checked = 0;
     for (name, e) in expected.as_object().unwrap() {
         let file = format!("{name}.step");
-        if name == "assembly" || e["bbox_mm"].is_null() {
-            continue;
+        if e["family"].is_null() {
+            continue; // the assembly, and parts that are not STEP files
         }
         let state = create_shared_state();
         import(&state, &file).await.unwrap();
@@ -172,7 +191,17 @@ async fn step_parts_have_their_formula_volumes() {
         let [d] = r["definitions"].as_array().unwrap().as_slice() else {
             panic!("{name}: {r}")
         };
+        let family = d["analytic"].as_str().unwrap_or("tessellated");
+        assert_eq!(family, e["family"], "{name}: {}", d["analytic_reason"]);
         let volume = e["volume_mm3"].as_f64().unwrap();
+        // The document's solid, as the viewer meshes it, has the formula
+        // volume: its GDML numbers mean what the worker certified. (The
+        // viewer's 32 segments per turn make a sphere 1.6 % small.)
+        let shown = preview_volume(&state, d["volume"].as_str().unwrap()).await;
+        assert!(
+            (shown / volume - 1.0).abs() < 0.03,
+            "{name}: preview volume {shown}"
+        );
         assert!(close(&d["exact"]["volume_mm3"], volume), "{name}: {d}");
         let mesh_error = d["volume_mm3"].as_f64().unwrap() / volume - 1.0;
         assert!(
@@ -182,7 +211,7 @@ async fn step_parts_have_their_formula_volumes() {
         // The worker's bounds are exact; mesh vertices lie on the surface, at
         // most a chord inside them.
         let chord = d["exact"]["chord_mm"].as_f64().unwrap();
-        for k in 0..6 {
+        for k in (0..6).filter(|_| !e["bbox_mm"].is_null()) {
             let mesh = d["bounds_mm"][k / 3][k % 3].as_f64().unwrap();
             let exact = d["exact"]["bounds_mm"][k].as_f64().unwrap();
             let formula = e["bbox_mm"][k].as_f64().unwrap();
@@ -193,7 +222,38 @@ async fn step_parts_have_their_formula_volumes() {
         }
         checked += 1;
     }
-    assert_eq!(checked, 15);
+    assert_eq!(checked, 25);
+}
+
+#[tokio::test]
+#[ignore = "needs the STEP worker in GDML_CAD_WORKER"]
+async fn step_contacts_between_exact_and_tessellated_parts_are_reported() {
+    let state = create_shared_state();
+    import(&state, "shaft_in_bore.step").await.unwrap();
+    let r = report(&state).await;
+    assert_eq!(r["interferences"], json!([]), "{r}");
+    let defs = r["definitions"].as_array().unwrap();
+    assert!(defs.iter().all(|d| d["analytic"] == "tube"), "{r}");
+    // Both exact: no mesh can cut into the other.
+    assert_eq!(r["mixed_contacts"], json!([]));
+    let shaft = defs[1]["id"].as_str().unwrap();
+    let mut options = r["options"].clone();
+    options["overrides"] = json!({ shaft: { "representation": "tessellated" } });
+    update(&state, options).await.unwrap();
+    let r = report(&state).await;
+    let [pair] = r["mixed_contacts"].as_array().unwrap().as_slice() else {
+        panic!("{r}")
+    };
+    let mut ids: Vec<&str> = pair
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap())
+        .collect();
+    ids.sort();
+    let mut all: Vec<&str> = defs.iter().map(|d| d["id"].as_str().unwrap()).collect();
+    all.sort();
+    assert_eq!(ids, all);
 }
 
 /// The rotation Geant4 gives a physvol with angles `[x, y, z]` in rad:
@@ -243,20 +303,118 @@ fn placements(doc: &GdmlDocument, engine: &EvalEngine, name: &str, at: M34) -> V
     out
 }
 
+/// The corners of the solid of volume `lv` in its own frame: a box's, an
+/// xtru's, or a tessellated solid's vertices.
+fn corners(doc: &GdmlDocument, engine: &EvalEngine, lv: &str) -> Vec<[f64; 3]> {
+    let volume = doc.structure.volumes.iter().find(|v| v.name == lv).unwrap();
+    let solid = (doc.solids.solids.iter())
+        .find(|s| s.name() == volume.solid_ref)
+        .unwrap();
+    let v = |x: &str| engine.eval_expr(x).unwrap();
+    match solid {
+        Solid::Box(b) => cuboid([&b.x, &b.y, &b.z].map(|x| v(x) / 2.0)),
+        Solid::Xtru(x) => (x.sections.iter())
+            .flat_map(|s| (x.vertices.iter()).map(|p| [v(&p.x), v(&p.y), v(&s.z_position)]))
+            .collect(),
+        Solid::Tessellated(t) => {
+            let mut names: Vec<&String> = (t.facets.iter())
+                .flat_map(|f| match f {
+                    TessellatedFacet::Triangular {
+                        vertex1,
+                        vertex2,
+                        vertex3,
+                        ..
+                    } => [vertex1, vertex2, vertex3],
+                    _ => unreachable!(),
+                })
+                .collect();
+            names.sort();
+            names.dedup();
+            (names.iter())
+                .map(|n| engine.named_position(n).unwrap())
+                .collect()
+        }
+        other => panic!("{lv}: {other:?}"),
+    }
+}
+
+/// The corners of a box with half-lengths `half` about the origin.
+fn cuboid(half: [f64; 3]) -> Vec<[f64; 3]> {
+    (0..8)
+        .map(|i| std::array::from_fn(|k| if i >> k & 1 == 1 { half[k] } else { -half[k] }))
+        .collect()
+}
+
+/// Whether the points `a` and `b` are the same set, within `tolerance`.
+fn same_points(a: &[[f64; 3]], b: &[[f64; 3]], tolerance: f64) -> bool {
+    let near = |p: &[f64; 3], q: &[f64; 3]| (0..3).all(|k| (p[k] - q[k]).abs() <= tolerance);
+    a.len() == b.len() && a.iter().all(|p| b.iter().any(|q| near(p, q)))
+}
+
+fn apply(m: &M34, p: [f64; 3]) -> [f64; 3] {
+    std::array::from_fn(|i| m[i][3] + (0..3).map(|k| m[i][k] * p[k]).sum::<f64>())
+}
+
 #[tokio::test]
 #[ignore = "needs the STEP worker in GDML_CAD_WORKER"]
 async fn a_step_assembly_places_every_occurrence() {
     let expected = &serde_json::from_slice::<Value>(&fixture("expected.json")).unwrap()["assembly"];
+    // Where Geant4 must put each box's corners and the mirrored L's: the
+    // file writes directions to 12 significant digits, so its matrices
+    // differ from the generator's by up to about 1e-12, 1e-10 mm over 40 mm.
+    let box_corners = cuboid([5.0, 10.0, 15.0]);
+    let l_corners: Vec<[f64; 3]> = [
+        (0.0, 0.0),
+        (20.0, 0.0),
+        (20.0, 5.0),
+        (5.0, 5.0),
+        (5.0, 15.0),
+        (0.0, 15.0),
+    ]
+    .iter()
+    .flat_map(|&(x, y)| [-5.0, 5.0].map(|z| [-x, y - 40.0, z]))
+    .collect();
     let mut placed_by = Vec::new();
-    for hierarchy in ["keep", "flatten"] {
+    for (hierarchy, representation) in [
+        ("keep", "auto"),
+        ("flatten", "auto"),
+        ("keep", "tessellated"),
+    ] {
         let state = create_shared_state();
         let options = json!({ "hierarchy": hierarchy });
-        import_bytes(&state, "assembly.step", fixture("assembly.step"), options)
-            .await
-            .unwrap();
+        import_bytes(
+            &state,
+            "assembly.step",
+            fixture("assembly.step"),
+            options.clone(),
+        )
+        .await
+        .unwrap();
         let r = report(&state).await;
         let defs = r["definitions"].as_array().unwrap();
         assert_eq!(defs.len(), 2);
+        let overrides: serde_json::Map<String, Value> = (defs.iter())
+            .map(|d| {
+                (
+                    d["id"].as_str().unwrap().to_string(),
+                    json!({ "representation": representation }),
+                )
+            })
+            .collect();
+        update(
+            &state,
+            json!({ "hierarchy": hierarchy, "overrides": overrides }),
+        )
+        .await
+        .unwrap();
+        let r = report(&state).await;
+        let defs = r["definitions"].as_array().unwrap();
+        let shown = if representation == "auto" {
+            "exact"
+        } else {
+            "tessellated"
+        };
+        assert!(defs.iter().all(|d| d["representation"] == shown), "{r}");
         let instances = |d: &Value| d["instances"].as_f64().unwrap();
         assert_eq!(defs.iter().map(instances).sum::<f64>(), 3.0);
         let volume: f64 = defs
@@ -267,11 +425,6 @@ async fn a_step_assembly_places_every_occurrence() {
         let part = defs.iter().find(|d| instances(d) == 2.0).unwrap();
         assert_eq!(part["label"], "part 0x bad & name");
 
-        // As Geant4 reads the saved document, each box occurrence sits at its
-        // composed world matrix, and the mirrored L (a separate definition in
-        // the file) at its translation. The file writes directions to 12
-        // significant digits, so the matrices it holds differ from the
-        // generator's by up to about 1e-12, and 1e-10 mm over 40 mm lever arms.
         let saved = export_gdml(State(state.clone())).await.unwrap().0;
         let doc =
             parse_gdml_from_bytes(saved["gdml"].as_str().unwrap().as_bytes(), "a.gdml".into())
@@ -288,33 +441,35 @@ async fn a_step_assembly_places_every_occurrence() {
         let mut placed = placements(&doc, &engine, "World", identity);
         placed.sort_by(|a, b| a.1[0][3].total_cmp(&b.1[0][3]));
         let lv = part["volume"].as_str().unwrap();
-        let boxes = placed.iter().filter(|p| p.0 == lv);
-        for ((_, m), e) in boxes.zip(expected["box_world_matrices"].as_array().unwrap()) {
-            for i in 0..3 {
-                for j in 0..4 {
-                    let tolerance = if j == 3 { 1e-10 } else { 2e-12 };
-                    assert!(
-                        (m[i][j] - e[i][j].as_f64().unwrap()).abs() <= tolerance,
-                        "{m:?} vs {e}"
-                    );
-                }
-            }
+        let world = |(name, m): &(String, M34)| -> Vec<[f64; 3]> {
+            corners(&doc, &engine, name)
+                .into_iter()
+                .map(|p| apply(m, p))
+                .collect()
+        };
+        let boxes: Vec<_> = placed.iter().filter(|p| p.0 == lv).collect();
+        assert_eq!(boxes.len(), 2);
+        for (b, e) in boxes
+            .iter()
+            .zip(expected["box_world_matrices"].as_array().unwrap())
+        {
+            let e: M34 =
+                std::array::from_fn(|i| std::array::from_fn(|j| e[i][j].as_f64().unwrap()));
+            let want: Vec<_> = box_corners.iter().map(|&p| apply(&e, p)).collect();
+            assert!(
+                same_points(&world(b), &want, 1e-10),
+                "{:?} vs {want:?}",
+                world(b)
+            );
         }
-        let [(_, l)] = placed.iter().filter(|p| p.0 != lv).collect::<Vec<_>>()[..] else {
+        let [l] = placed.iter().filter(|p| p.0 != lv).collect::<Vec<_>>()[..] else {
             panic!("{placed:?}")
         };
-        assert_eq!(
-            *l,
-            [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, -40.0],
-                [0.0, 0.0, 1.0, 0.0]
-            ]
-        );
+        assert!(same_points(&world(l), &l_corners, 1e-12), "{:?}", world(l));
         placed_by.push(placed);
     }
     // Kept or flattened, Geant4 places the same volumes at the same transforms.
-    let [keep, flat] = &placed_by[..] else {
+    let [keep, flat, _] = &placed_by[..] else {
         unreachable!()
     };
     for ((a, m), (b, n)) in keep.iter().zip(flat) {

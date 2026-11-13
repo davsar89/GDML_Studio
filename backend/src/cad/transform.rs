@@ -70,23 +70,42 @@ impl Affine {
         if reflected {
             q.iter_mut().for_each(|row| row[0] = -row[0]);
         }
-        let r = |i: usize, j: usize| q[j][i]; // R = Q^T
-        let (x, y, z) = if r(0, 0).hypot(r(1, 0)) < 1e-12 {
-            // cos y = 0: only x - z (or x + z) is defined; take z = 0.
-            ((-r(1, 2)).atan2(r(1, 1)), (-r(2, 0)).atan2(0.0), 0.0)
-        } else {
-            (
-                r(2, 1).atan2(r(2, 2)),
-                (-r(2, 0)).atan2(r(0, 0).hypot(r(1, 0))),
-                r(1, 0).atan2(r(0, 0)),
-            )
-        };
         Placement {
             position: self.t,
-            angles_deg: [x, y, z].map(f64::to_degrees),
+            angles_deg: angles_deg(&[0, 1, 2].map(|i| [0, 1, 2].map(|j| q[j][i]))), // R = Q^T
             reflected,
         }
     }
+
+    /// A Boolean or multiUnion operand is placed at `[R, t]`, with `R` built
+    /// from its angles as for a physvol (G4GDMLReadSolids::BooleanRead,
+    /// MultiUnionNodeRead): the position and angles in degrees of a rigid
+    /// `self`.
+    pub fn operand(&self) -> (P, [f64; 3]) {
+        (self.t, angles_deg(&self.r))
+    }
+
+    /// The inverse of a rigid transform.
+    pub fn inverse(&self) -> Affine {
+        let r = [0, 1, 2].map(|i| [0, 1, 2].map(|j| self.r[j][i]));
+        let t = [0, 1, 2].map(|i| -(0..3).map(|j| r[i][j] * self.t[j]).sum::<f64>());
+        Affine { r, t }
+    }
+}
+
+/// The angles (x, y, z) in degrees with `r = Rz(z) Ry(y) Rx(x)`.
+fn angles_deg(r: &[[f64; 3]; 3]) -> [f64; 3] {
+    let (x, y, z) = if r[0][0].hypot(r[1][0]) < 1e-12 {
+        // cos y = 0: only x - z (or x + z) is defined; take z = 0.
+        ((-r[1][2]).atan2(r[1][1]), (-r[2][0]).atan2(0.0), 0.0)
+    } else {
+        (
+            r[2][1].atan2(r[2][2]),
+            (-r[2][0]).atan2(r[0][0].hypot(r[1][0])),
+            r[1][0].atan2(r[0][0]),
+        )
+    };
+    [x, y, z].map(f64::to_degrees)
 }
 
 fn det(m: &[[f64; 3]; 3]) -> f64 {
@@ -162,6 +181,22 @@ mod tests {
                 }
             }
             assert_eq!(back.t, m.t);
+            if !p.reflected {
+                // An operand's angles rebuild r itself, and inverse() undoes m.
+                let (_, angles) = m.operand();
+                let [x, y, z] =
+                    angles.map(|a| format!("{a:?}").parse::<f64>().unwrap().to_radians());
+                let r = rot(rz(z)).after(&rot(ry(y))).after(&rot(rx(x)));
+                let one = m.inverse().after(&m);
+                for i in 0..3 {
+                    assert!(
+                        (0..3).all(|j| (r.r[i][j] - m.r[i][j]).abs() < 1e-12),
+                        "{m:?}"
+                    );
+                    assert!((0..3).all(|j| (one.r[i][j] - Affine::IDENTITY.r[i][j]).abs() < 1e-12));
+                    assert!(one.t[i].abs() < 1e-9);
+                }
+            }
         }
     }
 

@@ -1,5 +1,6 @@
-//! The import report: what each part became and what was repaired, rejected,
-//! excluded or found to overlap, for the Import panel.
+//! The import report: what each part became (its exact solid, or why it has
+//! none) and what was repaired, rejected, excluded or found to overlap, for
+//! the Import panel.
 
 use serde_json::{json, Value};
 
@@ -16,6 +17,9 @@ pub fn report(session: &Session) -> Value {
     for (d, _) in ir.instances() {
         instances[d] += 1;
     }
+    let shown_exact = |d: &super::ir::Definition| {
+        session.options.representation(&d.id) == Representation::Auto && d.analytic.is_ok()
+    };
     let definitions: Vec<Value> = ir
         .definitions
         .iter()
@@ -27,7 +31,10 @@ pub fn report(session: &Session) -> Value {
                 "label": d.label,
                 "volume": session.lv_of_def.get(&d.id),
                 "excluded": session.options.representation(&d.id) == Representation::Exclude,
-                "representation": "tessellated",
+                "representation": if shown_exact(d) { "exact" } else { "tessellated" },
+                "analytic": d.analytic.as_ref().ok().map(|a| a.summary()),
+                "analytic_reason": d.analytic.as_ref().err(),
+                "epsilon_mm": d.analytic.as_ref().ok().map(|a| a.epsilon_mm),
                 "instances": instances,
                 "exact": d.exact,
                 "issues": d.issues,
@@ -55,8 +62,16 @@ pub fn report(session: &Session) -> Value {
     let crossings: Vec<[&String; 2]> = (ir.crossings.iter())
         .map(|&(a, b)| [id(a), id(b)])
         .collect();
-    let included = (ir.definitions.iter()).filter(|d| session.lv_of_def.contains_key(&d.id));
-    let (vertices, facets) = included.fold((0, 0), |(v, f), d| {
+    // An exact solid touching a mesh: the mesh can cut into it by its chord.
+    let included = |d: usize| session.lv_of_def.contains_key(id(d));
+    let exact = |d: usize| shown_exact(&ir.definitions[d]);
+    let mixed_contacts: Vec<[&String; 2]> = (ir.contacts.iter())
+        .filter(|&&(a, b)| included(a) && included(b) && exact(a) != exact(b))
+        .map(|&(a, b)| [id(a), id(b)])
+        .collect();
+    let tessellated = (ir.definitions.iter())
+        .filter(|d| session.lv_of_def.contains_key(&d.id) && !shown_exact(d));
+    let (vertices, facets) = tessellated.fold((0, 0), |(v, f), d| {
         (v + d.mesh.positions.len(), f + d.mesh.triangles.len())
     });
     json!({
@@ -70,6 +85,7 @@ pub fn report(session: &Session) -> Value {
         "interferences": interferences,
         "unchecked": ir.unchecked,
         "crossings": crossings,
+        "mixed_contacts": mixed_contacts,
         "facets": facets,
         "gdml_bytes_estimate": vertices * GDML_BYTES_PER_VERTEX + facets * GDML_BYTES_PER_FACET,
     })

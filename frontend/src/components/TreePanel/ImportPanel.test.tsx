@@ -17,7 +17,8 @@ const summary: DocumentSummary = { filename: 'part.gdml', defines_count: 0, posi
 const aluminium: NistMaterial = { name: 'G4_Al', formula: 'Al', density: 2.699, state: 'Solid', category: 'Elemental',
   z: 13, atom_value: 26.982, components: [] };
 const definition = (id: string, label: string): ImportDefinition => ({
-  id, label, volume: `${label}_lv`, excluded: false, representation: 'tessellated', instances: 1, exact: null, issues: [],
+  id, label, volume: `${label}_lv`, excluded: false, representation: 'tessellated', analytic: null,
+  analytic_reason: 'an STL file holds only triangles', epsilon_mm: null, instances: 1, exact: null, issues: [],
   facets: 12, vertices: 8, shells: 1,
   volume_mm3: 1000, area_mm2: 600, bounds_mm: [[0, 0, 0], [10, 10, 10]],
   repairs: { welded_vertices: 0, weld_max_mm: 0, dropped_facets: 0, collapsed_edges: 0, flipped_edges: 0 },
@@ -38,8 +39,10 @@ let release: () => void;
 function importWith(options: ImportOptions) {
   const material = options.part_material?.material.name ?? 'CAD_UNASSIGNED';
   const definitions = report.definitions.map((d) => {
-    const excluded = options.overrides[d.id]?.representation === 'exclude';
-    return { ...d, excluded, volume: excluded ? null : `${d.label}_lv` };
+    const chosen = options.overrides[d.id]?.representation ?? 'auto';
+    const excluded = chosen === 'exclude';
+    const representation = chosen === 'auto' && d.analytic ? 'exact' as const : 'tessellated' as const;
+    return { ...d, excluded, representation, volume: excluded ? null : `${d.label}_lv` };
   });
   report = { ...report, options, definitions };
   volumes = definitions.filter((d) => d.volume).map((d) => volume(d.volume!, material));
@@ -60,7 +63,7 @@ beforeEach(() => {
       definition('1.0', 'plate'),
     ],
     rejected: [{ label: 'lid', reason: 'open surface: 4 edges have a facet on one side only (longest 2 mm)' }],
-    interferences: [], unchecked: 0, crossings: [['0.0', '1.0']],
+    interferences: [], unchecked: 0, crossings: [['0.0', '1.0']], mixed_contacts: [],
     facets: 24, gdml_bytes_estimate: 2_520,
   };
   importWith(report.options);
@@ -152,7 +155,7 @@ describe('CAD import', () => {
     await screen.findByRole('button', { name: 'Import' });
 
     await user.selectOptions(screen.getByRole('combobox', { name: 'STL unit' }), 'in');
-    await user.click(screen.getByRole('checkbox', { name: 'Import plate' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Representation of plate' }), 'Exclude');
     await user.type(screen.getByRole('combobox', { name: 'Part material' }), 'Al');
     await user.click(await screen.findByRole('option', { name: /G4_Al/ }));
     expect(screen.getByText(/replaces the material of every part/)).toBeInTheDocument();
@@ -166,7 +169,7 @@ describe('CAD import', () => {
     expect(options.part_material).toMatchObject({ material: { name: 'G4_Al', z: '13', atom_value: '26.982',
       density: { value: '2.699', unit: 'g/cm3' }, state: 'solid' }, elements: [] });
     expect(screen.getByText('1 of 2 imported, 1 rejected')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: 'Import plate' })).not.toBeChecked();
+    expect(screen.getByRole('combobox', { name: 'Representation of plate' })).toHaveValue('exclude');
     expect(screen.getByRole('button', { name: /plate.*excluded/ })).toBeDisabled();
 
     // The imported document is unsaved, so opening the next file asks first.
@@ -209,6 +212,33 @@ describe('CAD import', () => {
     expect(screen.queryByRole('button', { name: 'Re-import' })).toBeNull();
   });
 
+  it('offers the exact GDML solid of a STEP part, says why another has none, and lists mixed contacts', async () => {
+    report = {
+      ...report, filename: 'arm.step', format: 'step', rejected: [], crossings: [], mixed_contacts: [['0.0', '1.0']],
+      definitions: [
+        { ...definition('0.0', 'bracket'), analytic: 'box - 2 cut-outs', analytic_reason: null, epsilon_mm: 1e-7 },
+        { ...definition('1.0', 'plate'), analytic_reason: '3 of its faces are free-form' },
+      ],
+    };
+    importWith(report.options);
+    const user = mount();
+    await open(user, new File(['ISO-10303-21;'], 'arm.step'));
+    await screen.findByRole('button', { name: 'Import' });
+
+    expect(screen.getByText('2 of 2 imported (1 exact, 1 tessellated)')).toBeInTheDocument();
+    expect(screen.getByText('GDML box - 2 cut-outs')).toHaveAttribute('title', 'Proven equal to the CAD solid within 0.0000001 mm');
+    expect(screen.getByText('No exact GDML solid: 3 of its faces are free-form')).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem').map((li) => li.textContent)).toContain('bracket and plate');
+    const plate = screen.getByRole('combobox', { name: 'Representation of plate' });
+    expect(within(plate).getAllByRole('option').map((o) => o.textContent)).toEqual(['Mesh', 'Exclude']);
+
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Representation of bracket' }), 'Mesh');
+    await user.click(screen.getByRole('button', { name: 'Re-import' }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1].options.overrides).toEqual({ '0.0': { representation: 'tessellated' } });
+    expect(await screen.findByText('2 of 2 imported')).toBeInTheDocument();
+  });
+
   it('shows how far an import got, and Cancel keeps the open document', async () => {
     const user = mount();
     await open(user, stl('part.stl'));
@@ -218,7 +248,7 @@ describe('CAD import', () => {
     holdImports = true;
     await open(user, stl('next.stl'));
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Discard' }));
-    expect(await screen.findByText('Importing: meshing 12/90', undefined, { timeout: 2000 })).toBeInTheDocument();
+    expect(await screen.findByText('Importing: meshing and recognizing solids 12/90', undefined, { timeout: 2000 })).toBeInTheDocument();
     await user.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Cancel' }));
 
     await waitFor(() => expect(screen.queryByText(/^Importing/)).toBeNull());

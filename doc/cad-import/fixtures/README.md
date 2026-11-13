@@ -33,6 +33,17 @@ All dimensions below are millimetres except the explicit inch fixture. Centered 
 | Inch box | `6*25.4³ = 98322.384` | 1 by 2 by 3 inches, centered |
 | Shaft | `pi*8²*20` | Exact contact with tube cavity |
 | Interfering shaft | `pi*8.1²*20` | Analytic intersection with tube `pi*(8.1²-8²)*20` |
+| Oblique cone | `pi*20/3*((10²+10*6+6²)-(4²+4*2+2²))` | Hollow frustum turned about (1,2,3) and moved; family cone |
+| Oblique sphere shell | `dphi/3*(10³-5³)*(cos 0.5-cos 2)`, dphi 4 | Theta 0.5 to 2 rad, phi 4 rad, turned and moved; family sphere |
+| Oblique hollow torus | `1.5*pi*pi*20*(4²-2²)` | 270-degree sector, turned and moved; family torus |
+| Seam-split tube | `720*pi` | The tube built from two halves; family tube |
+| Eccentric bore | `720*pi` | Bore 0.01 off the axis; must stay tessellated |
+| Tapered bore | `pi*(10²*20-20/3*(8²+8 r2+r2²))`, `r2=8-20 tan(0.1 deg)` | Bore tapered by 0.1 degree; family cone |
+| Flange | `pi*((30²-5²)*6-6*2.5²*6)` | Tube minus 6 bolt holes on r=20 |
+| Pocket block | `40*30*10-20*10*4` | Blind pocket turned 30 degrees about z, centred at (5,2) |
+| Counterbore shift | `40*30*10-pi*(2*3²*10+(5²-3²)*2.999)` | Counterbore floor at 2.001, not 2 |
+| 17-hole plate | `100*100*5-17*pi*1²*5` | One hole more than the CSG limit; must stay tessellated |
+| Shaft in bore | | The tube and the shaft in one file, touching along the bore |
 | Nested assembly | `2*6000+1500 = 13500` | Two shared boxes, nested rotations about (1,2,3) and (2,1,3), mirrored asymmetric extrusion; bounds from transformed vertices |
 
 The STEP writer must set both declared units and coordinate conversion for the inch fixture. Changing only the global unit label caused an incorrect scale during the investigation and was caught by these independent expectations.

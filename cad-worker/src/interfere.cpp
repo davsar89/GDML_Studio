@@ -1,9 +1,12 @@
 // Source interference (algorithm I): placed solids whose interiors overlap,
-// and by how much. Geant4 reports an overlap wherever they do.
+// and by how much, since Geant4 reports an overlap wherever they do; and the
+// solids closer than their meshes' chordal deviations, where a mesh beside an
+// exact solid can cut into it.
 #include "worker.hpp"
 
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepBndLib.hxx>
+#include <BRepExtrema_ShapeProximity.hxx>
 #include <BRepGProp.hxx>
 #include <Bnd_Box.hxx>
 #include <GProp_GProps.hxx>
@@ -33,7 +36,7 @@ struct Placed {
   std::vector<int> path;
   TopoDS_Shape shape;
   Bnd_Box box;
-  double volume_mm3;
+  double volume_mm3, tolerance_mm, chord_mm;
 };
 
 /// Every solid under label `entry`, which `at` places, in the world.
@@ -49,11 +52,27 @@ void place(const Document& doc, const std::string& entry, const TopLoc_Location&
   for (size_t s = 0; s < l->shapes.size(); ++s) {
     const std::optional<Solid>& solid = l->solids[s];
     if (!solid || solid->mesh.triangles.empty()) continue;
-    Placed p{path, l->shapes[s].Moved(at), {}, std::abs(solid->volume_mm3)};
+    Placed p{path, l->shapes[s].Moved(at), {}, std::abs(solid->volume_mm3), solid->tolerance_mm,
+             solid->mesh.chord_mm};
     p.path.push_back(int(s));
     BRepBndLib::Add(p.shape, p.box);
     p.box.Enlarge(solid->tolerance_mm);
     out.push_back(std::move(p));
+  }
+}
+
+/// Whether the meshes of `a` and `b`, which do not interfere, come within
+/// their chordal deviations of each other (the meshes are the triangulations
+/// the shapes carry). Any gap narrower than a chord is found.
+bool touch(const Placed& a, const Placed& b) {
+  try {
+    OCC_CATCH_SIGNALS
+    BRepExtrema_ShapeProximity near(a.shape, b.shape,
+                                    a.chord_mm + b.chord_mm + std::max(a.tolerance_mm, b.tolerance_mm));
+    near.Perform();
+    return near.IsDone() && !near.OverlapSubShapes1().IsEmpty();
+  } catch (const Standard_Failure&) {
+    return false;
   }
 }
 
@@ -93,6 +112,11 @@ void interfere(Document& doc) {
   const unsigned threads = std::clamp(std::thread::hardware_concurrency(), 1u, MAX_THREADS);
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(BUDGET_SECONDS);
   std::vector<std::optional<double>> volume(pairs.size());
+  std::vector<char> touching(pairs.size());
+  const auto contact = [&](size_t k) {
+    const Placed &a = placed[pairs[k].first], &b = placed[pairs[k].second];
+    return volume[k] && *volume[k] <= CONTACT_FRACTION * std::min(a.volume_mm3, b.volume_mm3);
+  };
   std::atomic<size_t> next{0};
   std::mutex lock;
   size_t done = 0;
@@ -103,6 +127,7 @@ void interfere(Document& doc) {
       for (size_t k; (k = next++) < pairs.size() && std::chrono::steady_clock::now() < deadline;) {
         // A Boolean uses all threads itself only when there are fewer pairs.
         volume[k] = common_volume(placed[pairs[k].first], placed[pairs[k].second], pairs.size() < threads);
+        touching[k] = contact(k) && touch(placed[pairs[k].first], placed[pairs[k].second]);
         std::lock_guard<std::mutex> hold(lock);
         progress("interfere", ++done, pairs.size());
       }
@@ -112,8 +137,8 @@ void interfere(Document& doc) {
   for (size_t k = 0; k < pairs.size(); ++k) {
     const Placed &a = placed[pairs[k].first], &b = placed[pairs[k].second];
     if (!volume[k]) ++doc.unchecked;
-    else if (*volume[k] > CONTACT_FRACTION * std::min(a.volume_mm3, b.volume_mm3))
-      doc.interferences.push_back({a.path, b.path, *volume[k]});
+    else if (touching[k]) doc.contacts.push_back({a.path, b.path, *volume[k]});
+    else if (!contact(k)) doc.interferences.push_back({a.path, b.path, *volume[k]});
   }
 }
 

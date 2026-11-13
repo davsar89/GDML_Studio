@@ -11,13 +11,20 @@ string(REPLACE "version=" "" occt_version "${occt_version}")
 find_package(OpenCASCADE ${occt_version} EXACT REQUIRED CONFIG)
 find_package(Threads REQUIRED)
 
-add_executable(gdml-cad-worker src/main.cpp src/read.cpp src/mesh.cpp src/interfere.cpp src/output.cpp)
-target_include_directories(gdml-cad-worker PRIVATE ${OpenCASCADE_INCLUDE_DIR})
-# OCC_CATCH_SIGNALS turns faults into exceptions only with this defined.
-target_compile_definitions(gdml-cad-worker PRIVATE OCC_CONVERT_SIGNALS)
-target_link_libraries(gdml-cad-worker PRIVATE
-  TKDESTEP TKXCAF TKLCAF TKCAF TKXSBase TKDE TKMesh TKBO TKShHealing TKTopAlgo
-  TKGeomAlgo TKGeomBase TKBRep TKG3d TKG2d TKMath TKernel Threads::Threads)
+add_executable(gdml-cad-worker src/main.cpp src/read.cpp src/mesh.cpp src/interfere.cpp src/output.cpp
+  src/recognize.cpp src/certify.cpp)
+# The certificate and recognition on known solids: ctest.
+add_executable(recognize-test test/recognize_test.cpp src/recognize.cpp src/certify.cpp)
+enable_testing()
+add_test(NAME recognize COMMAND recognize-test)
+foreach(target gdml-cad-worker recognize-test)
+  target_include_directories(${target} PRIVATE ${OpenCASCADE_INCLUDE_DIR})
+  # OCC_CATCH_SIGNALS turns faults into exceptions only with this defined.
+  target_compile_definitions(${target} PRIVATE OCC_CONVERT_SIGNALS)
+  target_link_libraries(${target} PRIVATE
+    TKDESTEP TKXCAF TKLCAF TKCAF TKXSBase TKDE TKMesh TKBO TKPrim TKShHealing TKTopAlgo
+    TKGeomAlgo TKGeomBase TKBRep TKG3d TKG2d TKMath TKernel Threads::Threads)
+endforeach()
 # Installed next to its libraries' directory: cad/gdml-cad-worker, cad/lib/.
 set_target_properties(gdml-cad-worker PROPERTIES INSTALL_RPATH "$ORIGIN/lib")
 install(TARGETS gdml-cad-worker RUNTIME DESTINATION .)

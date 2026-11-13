@@ -1,8 +1,9 @@
 //! The GdmlDocument of an import (algorithm H in `doc/cad-import/PLAN.md`).
 //!
-//! Each included definition becomes a `<tessellated>` solid and a logical
-//! volume. The source's assemblies become `<assembly>` volumes placed as the
-//! source places them, or, flattened, every part is placed in the world at
+//! Each included definition becomes a logical volume of its exact solid
+//! (Auto, when the worker proved one) or of a `<tessellated>` solid. The
+//! source's assemblies become `<assembly>` volumes placed as the source
+//! places them, or, flattened, every part is placed in the world at
 //! its composed transform; Geant4 places the same solids either way. The
 //! world is a box around the source origin. Coordinates stay those of the
 //! source, in mm, written with Rust's shortest round-trip formatting so that
@@ -11,7 +12,7 @@
 use std::collections::BTreeMap;
 
 use super::intersect::Aabb;
-use super::ir::{CadImport, Child, Definition, Target};
+use super::ir::{Analytic, CadImport, Child, Definition, Shape, Target};
 use super::mesh::Mesh;
 use super::names::Names;
 use super::transform::Affine;
@@ -65,6 +66,11 @@ pub fn document(
     if world.is_empty() {
         return Err("Every part is excluded; include at least one to import.".to_string());
     }
+    // The exact solid of each definition shown as one, in its stock's frame.
+    let exact: BTreeMap<Target, &Analytic> = (ir.definitions.iter().enumerate())
+        .filter(|(_, d)| options.representation(&d.id) == Representation::Auto)
+        .filter_map(|(i, d)| Some((Target::Definition(i), d.analytic.as_ref().ok()?)))
+        .collect();
     let mut count: BTreeMap<Target, usize> = BTreeMap::new();
     for (target, _) in assemblies.iter().flat_map(|(_, c)| c).chain(&world) {
         *count.entry(*target).or_default() += 1;
@@ -88,6 +94,20 @@ pub fn document(
             Target::Assembly(a) => (&ir.assemblies[a].label, &["_asm"]),
         };
         let mut suffixes: Vec<String> = own.iter().map(|s| s.to_string()).collect();
+        // Names for the exact solid's operands whether or not it is shown,
+        // so that switching keeps every name.
+        if let Target::Definition(d) = target {
+            let tools = ir.definitions[d]
+                .analytic
+                .as_ref()
+                .map_or(0, |a| a.tools.len());
+            if tools > 0 {
+                suffixes.extend(["_stock".to_string(), "_tools".to_string()]);
+            }
+            for k in 0..tools {
+                suffixes.extend(["", "_pos", "_rot"].map(|s| format!("_tool{k}{s}")));
+            }
+        }
         for i in 0..n {
             suffixes.extend(["", "_pos", "_rot", "_scl"].map(|s| format!("{}{s}", pv(n, i))));
         }
@@ -103,11 +123,12 @@ pub fn document(
             .map(|(target, at)| {
                 let (n, i) = (count[target], placed.entry(*target).or_default());
                 *i += 1;
+                let at = exact.get(target).map_or(*at, |a| at.after(&a.stock.at()));
                 physvol(
                     &format!("{}{}", base[target], pv(n, *i - 1)),
                     &volume_name(target),
                     (n > 1).then_some(*i - 1),
-                    at,
+                    &at,
                 )
             })
             .collect()
@@ -123,12 +144,15 @@ pub fn document(
         };
         let def = &ir.definitions[d];
         let name = &base[target];
-        solids.push(Solid::Tessellated(tessellated(
-            name,
-            k,
-            &def.mesh,
-            &mut defines.positions,
-        )));
+        match exact.get(target) {
+            Some(a) => analytic(name, a, &mut solids),
+            None => solids.push(Solid::Tessellated(tessellated(
+                name,
+                k,
+                &def.mesh,
+                &mut defines.positions,
+            ))),
+        }
         volumes.push(volume(
             &volume_name(target),
             Some((material_of(def), name)),
@@ -245,31 +269,13 @@ fn num(x: f64) -> String {
 /// the identity.
 fn physvol(name: &str, lv: &str, copy: Option<usize>, at: &Affine) -> PhysVol {
     let p = at.placement();
-    let [x, y, z] = p.position.map(|c| Some(num(c)));
-    let [ax, ay, az] = p.angles_deg.map(|a| Some(num(a)));
     PhysVol {
         name: Some(name.to_string()),
         volume_ref: lv.to_string(),
         copynumber: copy.map(|i| i.to_string()),
         file_ref: None,
-        position: (p.position != [0.0; 3]).then(|| {
-            PlacementPos::Inline(Position {
-                name: format!("{name}_pos"),
-                x,
-                y,
-                z,
-                unit: Some("mm".to_string()),
-            })
-        }),
-        rotation: (p.angles_deg != [0.0; 3]).then(|| {
-            PlacementRot::Inline(Rotation {
-                name: format!("{name}_rot"),
-                x: ax,
-                y: ay,
-                z: az,
-                unit: Some("deg".to_string()),
-            })
-        }),
+        position: position(name, p.position),
+        rotation: rotation(name, p.angles_deg),
         scale: p.reflected.then(|| {
             PlacementScale::Inline(Scale {
                 name: format!("{name}_scl"),
@@ -277,6 +283,212 @@ fn physvol(name: &str, lv: &str, copy: Option<usize>, at: &Affine) -> PhysVol {
                 y: Some("1".to_string()),
                 z: Some("1".to_string()),
             })
+        }),
+    }
+}
+
+/// `<position name="<name>_pos">` in mm, unless it is the origin.
+fn position(name: &str, t: [f64; 3]) -> Option<PlacementPos> {
+    let [x, y, z] = t.map(|c| Some(num(c)));
+    (t != [0.0; 3]).then(|| {
+        PlacementPos::Inline(Position {
+            name: format!("{name}_pos"),
+            x,
+            y,
+            z,
+            unit: Some("mm".to_string()),
+        })
+    })
+}
+
+/// `<rotation name="<name>_rot">` in degrees, unless it is none.
+fn rotation(name: &str, angles_deg: [f64; 3]) -> Option<PlacementRot> {
+    let [x, y, z] = angles_deg.map(|a| Some(num(a)));
+    (angles_deg != [0.0; 3]).then(|| {
+        PlacementRot::Inline(Rotation {
+            name: format!("{name}_rot"),
+            x,
+            y,
+            z,
+            unit: Some("deg".to_string()),
+        })
+    })
+}
+
+/// The solids of `a`, operands first: the stock as `name`, or the
+/// subtraction `name` of `<name>_stock` and `<name>_tool0` (or of the
+/// multiUnion `<name>_tools` of `<name>_tool<k>`), each tool placed in the
+/// stock's frame.
+fn analytic(name: &str, a: &Analytic, solids: &mut Vec<Solid>) {
+    if a.tools.is_empty() {
+        solids.push(primitive(name, &a.stock.shape));
+        return;
+    }
+    let stock = format!("{name}_stock");
+    solids.push(primitive(&stock, &a.stock.shape));
+    let to_stock = a.stock.at().inverse();
+    let mut nodes: Vec<MultiUnionNode> = Vec::new();
+    for (k, tool) in a.tools.iter().enumerate() {
+        let tool_name = format!("{name}_tool{k}");
+        solids.push(primitive(&tool_name, &tool.shape));
+        let (t, angles) = to_stock.after(&tool.at()).operand();
+        nodes.push(MultiUnionNode {
+            name: None,
+            position: position(&tool_name, t),
+            rotation: rotation(&tool_name, angles),
+            solid_ref: tool_name,
+        });
+    }
+    let (second_ref, position, rotation) = match nodes.len() {
+        1 => {
+            let node = nodes.remove(0);
+            (node.solid_ref, node.position, node.rotation)
+        }
+        _ => {
+            let tools = format!("{name}_tools");
+            solids.push(Solid::MultiUnion(MultiUnionSolid {
+                name: tools.clone(),
+                nodes,
+            }));
+            (tools, None, None)
+        }
+    };
+    solids.push(Solid::Boolean(BooleanSolid {
+        name: name.to_string(),
+        operation: BooleanOp::Subtraction,
+        first_ref: stock,
+        second_ref,
+        position,
+        rotation,
+        first_position: None,
+        first_rotation: None,
+    }));
+}
+
+/// `shape` as GDML solid `name`, lengths in mm and angles in rad.
+fn primitive(name: &str, shape: &Shape) -> Solid {
+    let name = name.to_string();
+    let n = |x: &f64| num(*x);
+    let some = |x: &f64| Some(num(*x));
+    let (mm, rad, zero) = (
+        Some("mm".to_string()),
+        Some("rad".to_string()),
+        Some("0".to_string()),
+    );
+    match shape {
+        Shape::Box { x, y, z } => Solid::Box(BoxSolid {
+            name,
+            x: n(x),
+            y: n(y),
+            z: n(z),
+            lunit: mm,
+        }),
+        Shape::Xtru { points, z1, z2 } => Solid::Xtru(XtruSolid {
+            name,
+            lunit: mm,
+            vertices: (points.iter())
+                .map(|p| TwoDimVertex {
+                    x: num(p[0]),
+                    y: num(p[1]),
+                })
+                .collect(),
+            sections: [z1, z2]
+                .iter()
+                .enumerate()
+                .map(|(i, z)| XtruSection {
+                    z_order: i.to_string(),
+                    z_position: n(z),
+                    x_offset: "0".to_string(),
+                    y_offset: "0".to_string(),
+                    scaling_factor: "1".to_string(),
+                })
+                .collect(),
+        }),
+        Shape::Tube {
+            rmin,
+            rmax,
+            z,
+            deltaphi,
+        } => Solid::Tube(TubeSolid {
+            name,
+            rmin: some(rmin),
+            rmax: n(rmax),
+            z: n(z),
+            startphi: zero,
+            deltaphi: some(deltaphi),
+            aunit: rad,
+            lunit: mm,
+        }),
+        Shape::Cone {
+            rmin1,
+            rmax1,
+            rmin2,
+            rmax2,
+            z,
+            deltaphi,
+        } => Solid::Cone(ConeSolid {
+            name,
+            rmin1: some(rmin1),
+            rmax1: n(rmax1),
+            rmin2: some(rmin2),
+            rmax2: n(rmax2),
+            z: n(z),
+            startphi: zero,
+            deltaphi: some(deltaphi),
+            aunit: rad,
+            lunit: mm,
+        }),
+        Shape::GenericPolycone { points, deltaphi } => {
+            Solid::GenericPolycone(GenericPolyconeSolid {
+                name,
+                startphi: zero,
+                deltaphi: some(deltaphi),
+                aunit: rad,
+                lunit: mm,
+                rzpoints: (points.iter())
+                    .map(|p| RZPoint {
+                        r: num(p[0]),
+                        z: num(p[1]),
+                    })
+                    .collect(),
+            })
+        }
+        Shape::Sphere {
+            rmin,
+            rmax,
+            deltaphi,
+            starttheta,
+            deltatheta,
+        } => Solid::Sphere(SphereSolid {
+            name,
+            rmin: some(rmin),
+            rmax: n(rmax),
+            startphi: zero,
+            deltaphi: some(deltaphi),
+            starttheta: some(starttheta),
+            deltatheta: some(deltatheta),
+            aunit: rad,
+            lunit: mm,
+        }),
+        Shape::Orb { r } => Solid::Orb(OrbSolid {
+            name,
+            r: n(r),
+            lunit: mm,
+        }),
+        Shape::Torus {
+            rmin,
+            rmax,
+            rtor,
+            deltaphi,
+        } => Solid::Torus(TorusSolid {
+            name,
+            rmin: some(rmin),
+            rmax: n(rmax),
+            rtor: n(rtor),
+            startphi: zero,
+            deltaphi: some(deltaphi),
+            aunit: rad,
+            lunit: mm,
         }),
     }
 }

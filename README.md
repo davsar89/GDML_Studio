@@ -117,15 +117,19 @@ Open the Vite URL in your browser, click **Open File(s)**, and select a `.gdml` 
 ### CAD import (STL, STEP)
 
 **Open File(s)** also imports a single `.stl` (text or binary) or `.step`/`.stp` file
-as a new GDML document: each closed body becomes a `<tessellated>` solid in its own
-volume, placed in a `G4_Galactic` world box. Small defects are repaired (unindexed or
+as a new GDML document: each closed body becomes a solid in its own volume, placed in
+a `G4_Galactic` world box. Small defects are repaired (unindexed or
 unwelded vertices, inconsistent winding, repeated and degenerate facets); a surface
 that is open, non-manifold or self-intersecting is not imported, and the reason is
-shown. Parts get the placeholder material `CAD_UNASSIGNED` until you assign one.
+shown. Parts get the placeholder material `CAD_UNASSIGNED` until you assign one. An STL
+body becomes a `<tessellated>` solid.
 
 STEP files are read by the bundled CAD worker on OpenCASCADE
-([`cad-worker/`](cad-worker/README.md)), in mm whatever unit the file uses. Each solid
-is meshed along its B-rep edges, so the mesh is closed wherever the CAD solid is, and
+([`cad-worker/`](cad-worker/README.md)), in mm whatever unit the file uses. A solid
+that is a GDML box, xtru, tube, cone, genericPolycone, sphere, orb or torus, or one of
+them minus up to 16 others, becomes that exact solid (a `subtraction` of a `multiUnion`
+for cut-outs) when OpenCASCADE proves it equal to the CAD solid within the solid's own
+tolerance; every other solid becomes a `<tessellated>` mesh. Each solid is also meshed along its B-rep edges, so the mesh is closed wherever the CAD solid is, and
 refined until its volume is within 0.1 % of the exact CAD volume (1 % and 0.01 % are
 offered), unless the solid's B-rep tolerance stops the refinement first. A solid whose
 mesh fails validation is meshed once more at half the chord, and left out, with the
@@ -133,17 +137,19 @@ reason, if it still fails. The file's assemblies become `<assembly>` volumes, or
 flattened, every part is placed in the world; a part used several times is one volume
 placed at each occurrence (copy numbers 0, 1, ...). The import looks for overlaps
 between placed parts, in the CAD file (OpenCASCADE Booleans, for up to 60 s) and between
-their meshes, and warns of each, since Geant4 reports an overlap there. The toolbar
+their meshes, and warns of each, since Geant4 reports an overlap there; it also lists
+exact parts that touch meshed ones, where a mesh can cut into its neighbour by its chord. The toolbar
 shows how far an import got, with a Cancel button that keeps the open document. The
 worker ships with the Linux package; `./run.sh` uses it once built with
 `cad-worker/build-linux.sh`. Windows support is planned
 ([`doc/cad-import/PLAN.md`](doc/cad-import/PLAN.md)).
 
 The **Import** tab lists every part with its repairs, the parts its mesh crosses and
-(for STEP) its CAD volume, then the parts that were rejected and the overlaps in the CAD
-file. Change the STL unit (STL files carry none; mm by default), or for STEP the mesh
-volume error, the assembly hierarchy and the chordal deviation of single parts; give
-every part one material, or leave parts out, then **Re-import**. Materials you have
+(for STEP) its CAD volume and its exact GDML solid or why it has none, then the parts
+that were rejected and the overlaps in the CAD file. Change the STL unit (STL files carry
+none; mm by default), or for STEP the mesh volume error, the assembly hierarchy and the
+chordal deviation of single parts; give every part one material; write a part as its
+exact solid or its mesh, or leave it out; then **Re-import**. Materials you have
 assigned survive a re-import unless you change the part material. The result saves as
 ordinary GDML.
 

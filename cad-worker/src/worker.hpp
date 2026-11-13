@@ -1,11 +1,14 @@
 // gdml-cad-worker: reads a STEP file with OpenCASCADE and writes, for each
-// solid, its exact properties and a closed triangle mesh (algorithm C in
-// doc/cad-import/PLAN.md), and where placed solids interpenetrate (algorithm I).
-// The backend turns the result into GDML.
+// solid, its exact properties, a closed triangle mesh (algorithm C in
+// doc/cad-import/PLAN.md) and, where one is proven equal to it, an exact GDML
+// solid (algorithms D and E), and where placed solids interpenetrate or come
+// closer than their meshes' chords (algorithm I). The backend turns the result
+// into GDML.
 #pragma once
 
 #include <TopLoc_Location.hxx>
 #include <TopoDS_Shape.hxx>
+#include <gp_Trsf.hxx>
 
 #include <array>
 #include <cstdint>
@@ -36,6 +39,24 @@ struct Mesh {
   std::vector<std::string> issues;
 };
 
+/// A GDML solid in its own frame, with GDML's meaning of its numbers (mm,
+/// rad, startphi 0; certify.cpp builds it). The backend writes it as it is.
+struct Primitive {
+  std::string solid;  // the GDML element: box, xtru, tube, cone, genericPolycone, sphere, orb, torus
+  std::vector<std::pair<const char*, double>> values;  // its other attributes
+  std::vector<std::array<double, 2>> points;           // xtru (x, y) vertices; genericPolycone (r, z)
+  gp_Trsf frame;                                       // to the part's frame, rigid and right-handed
+  double value(const char* key) const;
+};
+
+/// A solid as `stock` minus the union of `tools`, proven equal to the
+/// source within `epsilon_mm`.
+struct Exact {
+  Primitive stock;
+  std::vector<Primitive> tools;
+  double epsilon_mm = 0;
+};
+
 struct Solid {
   bool valid = false;
   double tolerance_mm = 0;
@@ -43,6 +64,8 @@ struct Solid {
   double area_mm2 = 0;
   std::array<double, 6> bounds_mm{};  // exact: minimum x, y, z, then maximum
   Mesh mesh;
+  std::optional<Exact> exact;
+  std::string exact_reason;  // why there is no exact solid
   std::vector<std::string> issues;
 };
 
@@ -74,8 +97,9 @@ struct Document {
   std::vector<Label> labels;
   std::vector<std::string> roots;  // entries of the free (top-level) labels
   std::vector<Interference> interferences;
-  int unchecked = 0;                // candidate pairs the interference check did not decide
-  std::vector<std::string> issues;  // about the file as a whole
+  std::vector<Interference> contacts;  // closer than their meshes' chords, not interfering
+  int unchecked = 0;                   // candidate pairs the interference check did not decide
+  std::vector<std::string> issues;     // about the file as a whole
 };
 
 /// The file is not STEP, or nothing in it could be transferred (exit code 3).
@@ -95,7 +119,23 @@ Document read_step(const std::string& bytes);
 /// mesh tried; a positive `chord` fixes the chordal deviation instead.
 Solid analyze(TopoDS_Shape& solid, double volume_target, double chord);
 
-/// The volumes where placed solids overlap.
+/// The exact GDML solid of an untouched B-rep `solid`, or none with the
+/// reason in `why`.
+std::optional<Exact> recognize(const TopoDS_Shape& solid, std::string& why);
+
+/// The solid that `p`, or `e`, describes, in the part's frame.
+TopoDS_Shape shape(const Primitive& p);
+TopoDS_Shape shape(const Exact& e);
+
+/// Whether `source` and `candidate` are the same solid within `eps` mm:
+/// empty when they are, else why not.
+std::string certify(const TopoDS_Shape& source, const TopoDS_Shape& candidate, double eps);
+
+/// 3 x 4, row-major: rotation, then translation in mm.
+std::array<double, 12> matrix(const gp_Trsf& t);
+
+/// The volumes where placed solids overlap, and the pairs closer than their
+/// meshes' chords.
 void interfere(Document& doc);
 
 /// The document as one JSON object.

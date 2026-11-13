@@ -2,7 +2,7 @@
 //! its GDML document: what was found in the file, in mm, with what was
 //! repaired and what was rejected.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::mesh::{Mesh, RepairLog};
 use super::transform::Affine;
@@ -29,9 +29,13 @@ pub struct CadImport {
     pub unchecked: usize,
     /// Pairs of definitions some placements of which have crossing meshes.
     pub crossings: Vec<(usize, usize)>,
+    /// Pairs of definitions some placements of which come closer than their
+    /// meshes' chordal deviations (STEP), in order.
+    pub contacts: Vec<(usize, usize)>,
 }
 
-/// One solid of the source: one `<tessellated>` solid and its volume.
+/// One solid of the source: one `<tessellated>` solid, or an exact one, and
+/// its volume.
 #[derive(Clone, Debug)]
 pub struct Definition {
     /// Stable across re-imports of the same file: overrides and material
@@ -43,6 +47,8 @@ pub struct Definition {
     pub mesh: Mesh,
     /// The CAD kernel's properties of the solid (STEP only).
     pub exact: Option<Exact>,
+    /// The exact GDML solid proven equal to it, or why there is none.
+    pub analytic: Result<Analytic, String>,
     pub shells: usize,
     pub repairs: RepairLog,
     /// Facets whose winding was reversed.
@@ -61,6 +67,112 @@ pub struct Exact {
     pub tolerance_mm: f64,
     /// The chordal deviation of the mesh.
     pub chord_mm: f64,
+}
+
+/// A part as `stock` minus the union of `tools`, which the STEP worker
+/// proved equal to its CAD solid within `epsilon_mm` (algorithm E).
+#[derive(Clone, Debug, Deserialize)]
+pub struct Analytic {
+    pub epsilon_mm: f64,
+    pub stock: Primitive,
+    pub tools: Vec<Primitive>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Primitive {
+    #[serde(flatten)]
+    pub shape: Shape,
+    /// Its frame in the part's frame: 3 x 4, row-major, translation in mm.
+    pub frame: [f64; 12],
+}
+
+/// A GDML solid in its own frame, with GDML's meaning of its numbers: mm,
+/// rad, `startphi` 0, box/tube/cone `z` a full length, points coordinates
+/// (cad-worker/src/certify.cpp builds the same solid from them).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "solid", rename_all = "camelCase")]
+pub enum Shape {
+    Box {
+        x: f64,
+        y: f64,
+        z: f64,
+    },
+    /// A prism of the (x, y) polygon `points`, clockwise, from `z1` to `z2`.
+    Xtru {
+        points: Vec<[f64; 2]>,
+        z1: f64,
+        z2: f64,
+    },
+    Tube {
+        rmin: f64,
+        rmax: f64,
+        z: f64,
+        deltaphi: f64,
+    },
+    Cone {
+        rmin1: f64,
+        rmax1: f64,
+        rmin2: f64,
+        rmax2: f64,
+        z: f64,
+        deltaphi: f64,
+    },
+    /// Swept by the (r, z) polygon `points`.
+    GenericPolycone {
+        points: Vec<[f64; 2]>,
+        deltaphi: f64,
+    },
+    Sphere {
+        rmin: f64,
+        rmax: f64,
+        deltaphi: f64,
+        starttheta: f64,
+        deltatheta: f64,
+    },
+    Orb {
+        r: f64,
+    },
+    Torus {
+        rmin: f64,
+        rmax: f64,
+        rtor: f64,
+        deltaphi: f64,
+    },
+}
+
+impl Analytic {
+    /// "tube", or "box - 2 cut-outs".
+    pub fn summary(&self) -> String {
+        let stock = self.stock.shape.name();
+        match self.tools.len() {
+            0 => stock.to_string(),
+            1 => format!("{stock} - 1 cut-out"),
+            n => format!("{stock} - {n} cut-outs"),
+        }
+    }
+}
+
+impl Primitive {
+    /// Its frame: where its own coordinates sit in the part's frame.
+    pub fn at(&self) -> Affine {
+        Affine::from_rows(&self.frame)
+    }
+}
+
+impl Shape {
+    /// Its GDML element.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Shape::Box { .. } => "box",
+            Shape::Xtru { .. } => "xtru",
+            Shape::Tube { .. } => "tube",
+            Shape::Cone { .. } => "cone",
+            Shape::GenericPolycone { .. } => "genericPolycone",
+            Shape::Sphere { .. } => "sphere",
+            Shape::Orb { .. } => "orb",
+            Shape::Torus { .. } => "torus",
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
