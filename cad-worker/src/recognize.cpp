@@ -32,7 +32,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 
 namespace worker {
 namespace {
@@ -42,6 +41,7 @@ constexpr double MAX_RELATIVE_EPS = 1e-4;  // of the diagonal: coarser solids ar
 constexpr double MIN_GAP = 1e-6;           // rad: narrower angular gaps read as full turns
 constexpr size_t MAX_TOOLS = 16;
 constexpr double TURN = 2 * M_PI;
+const char* const BOX_SIDES[3] = {"x", "y", "z"};  // a box's lengths along its frame axes
 
 struct Body {
   TopoDS_Shape shape;
@@ -83,11 +83,6 @@ gp_Ax3 axes(const gp_Trsf& t) {
 Primitive make(const char* solid, std::vector<std::pair<const char*, double>> values, const gp_Ax3& frame,
                std::vector<std::array<double, 2>> points = {}) {
   return {solid, std::move(values), std::move(points), placement(frame)};
-}
-
-double tilt(const gp_Dir& a, const gp_Dir& b) {
-  const double angle = a.Angle(b);
-  return std::min(angle, M_PI - angle);
 }
 
 /// A section edge in its plane's coordinates: a segment, or an arc.
@@ -215,9 +210,10 @@ std::optional<Primitive> revolved(const std::vector<Loop>& loops, gp_Ax3 frame, 
     frame.SetLocation(frame.Location().Translated(gp_Vec(frame.Direction()) * z));
   };
   if (!arcs) {
-    if (loops.size() == 1) return polygon_solid(corners(loops[0], eps), frame, dphi, eps);
-    why = "its meridian has a hole";
-    return std::nullopt;
+    const std::vector<gp_Pnt2d> rz = loops.size() == 1 ? corners(loops[0], eps) : std::vector<gp_Pnt2d>();
+    // G4GenericPolycone refuses a meridian narrower than kCarTolerance (1e-9 mm2).
+    why = loops.size() > 1 ? "its meridian has a hole" : "its meridian is too thin for Geant4";
+    return std::abs(area(rz)) < 1e-9 ? std::nullopt : std::optional(polygon_solid(rz, frame, dphi, eps));
   }
   // A torus: a full circle off the axis, perhaps with a concentric one inside.
   const auto circle = [&](const Loop& l) { return l.size() == 1 && l[0].arc && l[0].a.Distance(l[0].b) <= eps; };
@@ -236,22 +232,15 @@ std::optional<Primitive> revolved(const std::vector<Loop>& loops, gp_Ax3 frame, 
   // A sphere: arcs about one centre on the axis, radial segments between them.
   const Loop& l = loops[0];
   const auto arc = std::find_if(l.begin(), l.end(), [](const Edge2& e) { return e.arc; });
-  if (arc == l.end() || loops.size() > 1 || std::abs(arc->centre.X()) > eps) {
+  if (arc == l.end() || loops.size() > 1 || std::abs(arc->centre.X()) > eps ||
+      std::any_of(l.begin(), l.end(), [&](const Edge2& e) { return e.arc && e.centre.Distance(arc->centre) > eps; })) {
     why = "its meridian has arcs no GDML solid of revolution has";
     return std::nullopt;
   }
   const gp_Pnt2d c = arc->centre;
   double rmin = HUGE_VAL, rmax = 0, t0 = HUGE_VAL, t1 = -HUGE_VAL;
-  bool concentric = true;
   for (const Edge2& e : l)
-    if (e.arc) {
-      concentric &= e.centre.Distance(c) <= eps;
-      rmin = std::min(rmin, e.radius), rmax = std::max(rmax, e.radius);
-    }
-  if (!concentric) {
-    why = "its meridian has arcs no GDML solid of revolution has";
-    return std::nullopt;
-  }
+    if (e.arc) rmin = std::min(rmin, e.radius), rmax = std::max(rmax, e.radius);
   if (rmax - rmin <= eps) rmin = 0;
   for (const Edge2& e : l)
     if (e.arc && rmax - e.radius <= eps)
@@ -333,16 +322,11 @@ std::optional<Primitive> prism_along(const Body& b, const gp_Dir& n, std::string
   return prism(largest[0], at, z1 - z0, b.eps, why);
 }
 
-/// The meridian frame for revolution about `axis`: origin on it nearest the
-/// centre of `b`, x along `start` (or chosen) and the half-plane at `angle`.
+/// The half-plane through the z axis of `frame` at `angle` from its x axis,
+/// with plane coordinates (r, z).
 gp_Ax3 meridian_plane(const gp_Ax3& frame, double angle) {
   const gp_Dir u(gp_Vec(frame.XDirection()) * std::cos(angle) + gp_Vec(frame.YDirection()) * std::sin(angle));
   return gp_Ax3(frame.Location(), u.Crossed(frame.Direction()), u);
-}
-
-gp_Pnt foot(const gp_Pnt& p, const gp_Ax1& axis) {
-  const gp_Vec v(axis.Location(), p), z(axis.Direction());
-  return axis.Location().Translated(z * v.Dot(z));
 }
 
 std::optional<Primitive> revolution(const Body& b, std::string& why) {
@@ -476,47 +460,49 @@ std::optional<Primitive> primitive(const Body& b, std::string& why) {
   return std::nullopt;
 }
 
-/// The ends of a tool that may lie on the stock: (axis of its frame, side,
-/// coordinate), with axis 0, 1, 2 for x, y, z.
-std::vector<std::array<double, 3>> ends(const Primitive& t) {
-  if (t.solid == "box")
-    return {{0, -1, -t.value("x") / 2}, {0, 1, t.value("x") / 2}, {1, -1, -t.value("y") / 2},
-            {1, 1, t.value("y") / 2},   {2, -1, -t.value("z") / 2}, {2, 1, t.value("z") / 2}};
-  if (t.solid == "xtru") return {{2, -1, t.value("z1")}, {2, 1, t.value("z2")}};
-  if (t.solid == "tube" || t.solid == "cone") return {{2, -1, -t.value("z") / 2}, {2, 1, t.value("z") / 2}};
-  if (t.solid == "genericPolycone") {
-    double z0 = HUGE_VAL, z1 = -HUGE_VAL;
-    for (const auto& p : t.points) z0 = std::min(z0, p[1]), z1 = std::max(z1, p[1]);
-    return {{2, -1, z0}, {2, 1, z1}};
-  }
-  return {};
-}
+/// A plane face of a tool that may lie on the stock, in the tool's frame: a
+/// point on it, its outward normal, and the frame axis it lies across (0, 1,
+/// 2), or -1 for an xtru side, which is not moved.
+struct End {
+  gp_Pnt at;
+  gp_Dir out;
+  int axis;
+};
 
-/// The meridian of a tube, cone or genericPolycone in its frame.
-std::vector<gp_Pnt2d> meridian_of(const Primitive& t) {
-  std::vector<gp_Pnt2d> rz;
-  if (t.solid == "genericPolycone") {
-    for (const auto& p : t.points) rz.emplace_back(p[0], p[1]);
-    return rz;
+std::vector<End> ends(const Primitive& t) {
+  std::vector<End> out;
+  const auto across = [&](int k, double low, double high) {
+    gp_XYZ e;
+    e.SetCoord(k + 1, 1);
+    out.push_back({gp_Pnt(e * low), gp_Dir(e.Reversed()), k});
+    out.push_back({gp_Pnt(e * high), gp_Dir(e), k});
+  };
+  if (t.solid == "box") {
+    for (const int k : {0, 1, 2}) across(k, -t.value(BOX_SIDES[k]) / 2, t.value(BOX_SIDES[k]) / 2);
+  } else if (t.solid == "xtru") {
+    across(2, t.value("z1"), t.value("z2"));
+    for (size_t i = 0; i < t.points.size(); ++i) {  // clockwise: outward is to the left
+      const auto [ax, ay] = t.points[i];
+      const auto [bx, by] = t.points[(i + 1) % t.points.size()];
+      out.push_back({gp_Pnt(ax, ay, t.value("z1")), gp_Dir(ay - by, bx - ax, 0), -1});
+    }
+  } else if (const auto rz = meridian(t); !rz.empty()) {
+    const auto [low, high] =
+        std::minmax_element(rz.begin(), rz.end(), [](const auto& p, const auto& q) { return p[1] < q[1]; });
+    across(2, (*low)[1], (*high)[1]);
   }
-  const bool tube = t.solid == "tube";
-  const double h = t.value("z") / 2;
-  return {{tube ? t.value("rmin") : t.value("rmin1"), -h},
-          {tube ? t.value("rmax") : t.value("rmax1"), -h},
-          {tube ? t.value("rmax") : t.value("rmax2"), h},
-          {tube ? t.value("rmin") : t.value("rmin2"), h}};
+  return out;
 }
 
 /// Moves each end of `tool` that lies on a face of `stock` outward by
-/// `delta` (one per call, then the rest), which removes nothing more as long as the stock lies wholly
-/// inside that plane, and leaves no surface the two share. False, with the
-/// reason in `why`, when an end lies on a face that does not bound the stock.
+/// `delta`, one end per call, then the rest. That removes nothing more as
+/// long as the stock lies wholly inside that plane, and leaves no surface the
+/// two share. False, with the reason in `why`, when an end lies on a face
+/// that does not bound the stock, or an xtru side lies on the stock.
 bool extend(Primitive& tool, const Body& stock, double delta, std::string& why) {
-  const gp_Ax3 f = axes(tool.frame);
-  const gp_Dir dirs[3] = {f.XDirection(), f.YDirection(), f.Direction()};
-  for (const auto& [k, sign, at] : ends(tool)) {
-    const gp_Dir n = sign > 0 ? dirs[int(k)] : dirs[int(k)].Reversed();
-    const gp_Pnt p = f.Location().Translated(gp_Vec(dirs[int(k)]) * at);
+  for (const auto& [q, m, k] : ends(tool)) {
+    const gp_Dir n = m.Transformed(tool.frame);
+    const gp_Pnt p = q.Transformed(tool.frame);
     const bool on_stock = std::any_of(stock.faces.begin(), stock.faces.end(), [&](const auto& face) {
       const BRepAdaptor_Surface& s = face.second;
       return s.GetType() == GeomAbs_Plane && tilt(s.Plane().Axis().Direction(), n) * stock.d <= stock.eps &&
@@ -527,17 +513,23 @@ bool extend(Primitive& tool, const Body& stock, double delta, std::string& why) 
       why = "it ends on a face inside the stock";
       return false;
     }
+    if (k < 0) {
+      why = "a side of it lies on the stock";
+      return false;
+    }
+    const double sign = m.Coord(k + 1), at = q.Coord(k + 1);
     if (tool.solid == "box") {
-      const char* key = k == 0 ? "x" : k == 1 ? "y" : "z";
-      for (auto& [name, v] : tool.values)
-        if (!std::strcmp(name, key)) v += delta;
-      tool.frame = placement(gp_Ax3(f.Location().Translated(gp_Vec(n) * (delta / 2)), f.Direction(), f.XDirection()));
+      tool.value(BOX_SIDES[k]) += delta;
+      gp_Trsf shift;
+      shift.SetTranslation(gp_Vec(n) * (delta / 2));
+      tool.frame = shift * tool.frame;
     } else if (tool.solid == "xtru") {
-      for (auto& [name, v] : tool.values)
-        if (!std::strcmp(name, sign > 0 ? "z2" : "z1")) v += sign * delta;
+      tool.value(sign > 0 ? "z2" : "z1") += sign * delta;
     } else {
       // Each end vertex moves along its side edge, extending that edge.
-      std::vector<gp_Pnt2d> rz = meridian_of(tool), moved = rz;
+      std::vector<gp_Pnt2d> rz;
+      for (const auto& [r, z] : meridian(tool)) rz.emplace_back(r, z);
+      std::vector<gp_Pnt2d> moved = rz;
       for (size_t i = 0; i < rz.size(); ++i) {
         if (std::abs(rz[i].Y() - at) > stock.eps) continue;
         for (const size_t j : {(i + 1) % rz.size(), (i + rz.size() - 1) % rz.size()}) {
@@ -550,7 +542,7 @@ bool extend(Primitive& tool, const Body& stock, double delta, std::string& why) 
           }
         }
       }
-      tool = polygon_solid(moved, f, tool.value("deltaphi"), stock.eps);
+      tool = polygon_solid(moved, axes(tool.frame), tool.value("deltaphi"), stock.eps);
     }
     return extend(tool, stock, delta, why);  // the moved end is off the stock now
   }

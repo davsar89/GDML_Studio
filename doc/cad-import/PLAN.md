@@ -359,13 +359,22 @@ Status (2026-11-14): done.
   turn make a sphere 1.6 % small), so the GDML numbers mean what was certified.
 - `recognize-test` (ctest; `build-linux.sh` runs it): the certificate accepts true candidates
   and rejects a face 1e-3 mm off, an xtru vertex 1e-3 mm off, a box with a cavity against the
-  plain box, the other half of a half tube and a spherical shell against the ball; a half
-  tube reads as deltaphi pi, the shell as rmin 5.
+  plain box, the other half of a half tube, a spherical shell against the ball, eight
+  cut-outs swapped between symmetric places (every surface keeps its area and moment) and a
+  rod whose axis and radius are each 0.75 eps off; a half tube reads as deltaphi pi, the
+  shell as rmin 5; a ring too thin for G4GenericPolycone and a pocket open through a side of
+  its stock stay tessellated.
 - Geant4 11.4.2 (`g4check`) on the GDML exported from every STEP fixture: no warnings, overlaps
   or stuck tracks; primitive volumes equal the formulas within 6e-13. Sampling 2e6 points with
   Geant4's navigator, each part's exact and tessellated exports disagree only by the mesh sag:
   0 mm³ for every planar part, including a pocket turned 30 degrees (which pins the operand
-  rotation convention), and 1.6 to 13.6 mm³ for curved ones.
+  rotation convention), and 1.1 to 13.6 mm³ for curved ones.
+- Geant4 10.7.4, on the same exports (Auto and all tessellated): the same solid types,
+  primitive volumes, bounds and placements as 11.4.2, and its navigator classifies every one
+  of the 2e6 sample points per part as 11.4.2 does, so 10.7 reads every family alike.
+  Boolean volumes are Monte Carlo estimates there too; 10.7's multiUnion samples only 10,000
+  points, so its volume scatters by a few percent. The only overlap is the expected one between the independently
+  tessellated shaft and bore of `shaft_in_bore`, which the Auto export removes.
 - Deviations: no `recognize` option and no progress phase of its own. Recognition runs in the
   `mesh` phase on every valid solid; the per-part choice (Auto, Tessellated, Exclude)
   replaces the option.
@@ -453,7 +462,7 @@ unit factor (option, default mm) is applied here.
 6. Shells: signed volume per component, nesting depth by ray parity (robust ray-triangle test,
    retried with a new direction on edge or vertex hits). Even depth faces outward, odd depth
    faces into the void. Each outer shell plus its depth+1 shells is one body (one
-   `G4TessellatedSolid`; works in 11.4.2, to be checked in 10.7). Depth-2 islands are
+   `G4TessellatedSolid`; works in 11.4.2 and 10.7.4). Depth-2 islands are
    separate bodies.
 7. Self-intersection: a median-split AABB BVH, exact `robust::orient3d`/`orient2d`
    triangle-triangle tests; shared-vertex and shared-edge pairs count only for real crossings
@@ -475,7 +484,8 @@ Only native analytic faces count (plane, cylinder, cone, sphere, torus): a B-spl
 face means tessellated, since OCCT's canonical recognition only fits on a fixed 21 x 21 grid
 (`GeomConvert_SurfToAnaSurf.cxx:660`). Templates propose; only the certificate (E) decides.
 - **Revolution**, when any face is curved. The axis is that of a cylinder, cone or torus, else
-  a sphere's centre with the planes' normal. Every face must be coaxial, a cap or a phi cut;
+  through a sphere's centre along the planes' normal, or along the line where two planes
+  meet (two phi cuts). Every face must be coaxial, a cap or a phi cut;
   the phi cuts' material sides give the start ray (frame x, startphi 0) and deltaphi. The
   section with the half-plane at mid-sweep (`BRepAlgoAPI_Common`, then
   `ShapeUpgrade_UnifySameDomain` to merge seam splits) must be one face; its loops give:
@@ -503,34 +513,39 @@ face means tessellated, since OCCT's canonical recognition only fits on a fixed 
   outward by `delta = max(1e-3 D, 1e-3 mm)`, but only when the whole stock lies inside that
   plane: then the subtraction removes nothing more and leaves Geant4 no coincident surface.
   Box faces and xtru ends shift; end vertices of revolution profiles move along their side
-  edges. Blind floors stay. The whole tree is then certified; the first stock that passes
-  wins, and a failure reports the first stock's reason.
+  edges. Blind floors stay. An xtru side on a stock face is not moved: that stock fails. The
+  whole tree is then certified; the first stock that passes wins, and a failure reports the
+  first stock's reason.
 
 **E. Certificate** (`certify.cpp`). `shape()` builds each primitive from exactly its GDML numbers
 and frame (revolving its meridian, extruding its polygon; CSG is one Cut with all tools), so
 source and candidate compare surface to surface. `certify(S, C, eps)` accepts only if:
 1. every face of both is native analytic;
-2. the faces fall into the same surfaces, each compared with its cluster's first face over the
-   diagonal D (planes: `|n1 x n2| D + offset`; cylinders, cones, tori: axis tilt times D plus
-   offset, and radii, or apex and half-angle; spheres: centre and radius; all `<= eps`), and
-   every surface has faces of both;
-3. on each surface every face of each solid has the same material side
-   (`BRepGProp_Face::Normal` at the UV centre against the plane normal, or away from the axis,
-   centre or minor circle);
-4. on each surface, area within `eps P + num` and first moment within `eps (A + P D) + num`, P
+2. the faces fall into the same surfaces, and every surface has faces of both. A face joins a
+   surface when it lies within `eps / 2` of the surface's first face, so any two faces of a
+   surface lie within eps of each other. The distance is one bound on how far the two surfaces
+   part within the body (radius D/2 about its centre): for planes, their offset where the
+   second passes nearest the centre plus tilt times D/2; for cylinders, the same for the axes
+   plus the radius difference; for cones, apex distance plus axis tilt and half-angle
+   difference times the reach from the apex; for spheres and tori, centre distance plus the
+   radius differences (and, for tori, tilt times the outer radius);
+3. on each surface, area within `eps P + num` and first moment within `eps (A + P D) + num`, P
    being the candidate's edge length there;
-5. volume within `eps A + num` and its first moment within `(eps A + num) D`; the `num` terms
-   are the error estimates of the adaptive `BRepGProp` integrations (Eps 1e-9).
+4. the volume of `S ∩ C` (`BRepAlgoAPI_Common`) equals both volumes within `eps A + num`; the
+   `num` terms are the error estimates of the adaptive `BRepGProp` integrations (Eps 1e-9).
 
-Both boundaries then lie on one finite set of surfaces, so both solids are unions of cells of
-that arrangement and can differ only by whole cells; each changes some surface's side, area
-or moment, or the volume. Complements fail 3, wrong trims 4, eccentric or needle defects 2. An
-empty Boolean difference is never the evidence: fuzzy values stop at `Precision::Confusion()`
-= 1e-7 mm (`BOPAlgo_Options.cxx:107`).
+Rule 2 puts both boundaries on one finite set of surfaces, so both solids are unions of cells
+of that arrangement and can differ only by whole cells, which rule 4 measures directly. Sums
+over a surface alone cannot: eight cut-outs swapped between symmetric places keep every
+surface's area and moment and the volume (`recognize-test`). The Boolean only has to get whole
+cells right. Rule 2 has already placed every face within eps of a shared surface, finer than
+a Boolean's fuzzy value can resolve (it stops at `Precision::Confusion()` = 1e-7 mm,
+`BOPAlgo_Options.cxx:107`). Rule 3 needs no Boolean and catches wrong trims with a message
+naming the surface; eccentric and needle defects fail rule 2.
 
 **F. Tolerances.** `eps = max(the solid's largest face tolerance, 1e-7 mm)`; a solid with
-`eps > 1e-4 D` is not recognized. Directions match within eps over D. Genuine primitives deviate
-by about 1e-12 mm; the lookalikes by 1e-3 mm or more.
+`eps > 1e-4 D` is not recognized. Surfaces match within eps over the body (rule 2 of E).
+Genuine primitives deviate by about 1e-12 mm; the lookalikes by 1e-3 mm or more.
 
 **G. Transforms.**
 - Decompose `R = Rz(g) Ry(b) Rx(a)`: `b = atan2(-R20, hypot(R00, R10))`,
@@ -571,9 +586,10 @@ by about 1e-12 mm; the lookalikes by 1e-3 mm or more.
 - Interference: `BRepAlgoAPI_Common` volume `> 1e-6 min(Va, Vb)`.
 - Contact: otherwise, the triangulations (the GDML meshes) come within
   `chord_a + chord_b + max(tolerance)` of each other (`BRepExtrema_ShapeProximity`), so every
-  gap narrower than a chord is found. The report lists the contacts of an exact and a
-  tessellated part, for the current choice: there the mesh can cut into the exact solid by up
-  to its chord. (`BRepExtrema_DistShapeShape` took 7 of the 9.6 s of one 7-solid assembly;
+  gap narrower than a chord is found. A solid with a face left unmeshed (which the backend
+  remeshes) is taken to touch every such neighbour, since the test cannot see that face. The
+  report lists the contacts of an exact and a tessellated part, for the current choice: there
+  the mesh can cut into the exact solid by up to its chord. (`BRepExtrema_DistShapeShape` took 7 of the 9.6 s of one 7-solid assembly;
   the proximity test costs nothing measurable.)
 - Up to 8 threads; pairs not started within 60 s are reported as not checked.
 
@@ -646,8 +662,9 @@ by about 1e-12 mm; the lookalikes by 1e-3 mm or more.
 - `tools/g4check/run.sh` on every GDML exported from the fixtures and the real models (local
   11.4.2). Zero warnings, overlaps and stuck tracks, except the expected failures
   (`interfering_shaft`, independently tessellated contacts).
-- Geant4 10.7.4 on Olivia for compatibility: tessellated cavity, genericPolycone, multiUnion,
-  reflected nested assembly.
+- `tools/g4check/run.sh` against a Geant4 10.7.4 install on the same exports, for
+  compatibility: tessellated cavity, genericPolycone, multiUnion, reflected nested assembly
+  (all pass, 2026-11-14).
 - In the app (`./run.sh`, desktop `npm start`): open `assembly.step`, the SO101 part and an
   STL; check the tree, report, material picker, overrides, save and reopen. Install the `.deb`
   in a clean focal container.
@@ -658,8 +675,6 @@ by about 1e-12 mm; the lookalikes by 1e-3 mm or more.
   `libstdc++` in `cad/lib` (decided in Phase 2).
 - `STEPCAFControl_Reader::ReadStream` may behave unexpectedly. Fallback: the backend writes
   the bytes to a temp file with an ASCII name.
-- A tessellated cavity may not work in 10.7. Fallback: emit cavities as a subtraction of
-  tessellated solids.
 - Very large assemblies: per-body and per-import facet budgets (250k and 1M, soft), measured
   memory, GDML size shown before saving (51 MiB took 44 s to load in Geant4).
 - License issue #1564: redistribute OCCT unmodified and record the issue in

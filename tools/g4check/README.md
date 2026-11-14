@@ -21,4 +21,5 @@ tools/g4check/run.sh file.gdml [more.gdml ...]
 ```
 
 The first run builds into `tools/g4check/build/`. Schema validation is off (it would fetch the
-XSD). For Geant4 10.7 compatibility, run the same tool against a 10.7 install, for example on Olivia.
+XSD). For Geant4 10.7 compatibility, run the same tool against a 10.7 install (it builds
+against 10.7.4 too).

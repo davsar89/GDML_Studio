@@ -8,10 +8,13 @@
 #include <BRepBndLib.hxx>
 #include <BRepExtrema_ShapeProximity.hxx>
 #include <BRepGProp.hxx>
+#include <BRep_Tool.hxx>
 #include <Bnd_Box.hxx>
 #include <GProp_GProps.hxx>
 #include <Standard_ErrorHandler.hxx>
 #include <Standard_Failure.hxx>
+#include <TopExp_Explorer.hxx>
+#include <TopoDS.hxx>
 
 #include <algorithm>
 #include <atomic>
@@ -61,10 +64,22 @@ void place(const Document& doc, const std::string& entry, const TopLoc_Location&
   }
 }
 
+/// Whether every face of `shape` carries a triangulation.
+bool meshed(const TopoDS_Shape& shape) {
+  TopLoc_Location at;
+  for (TopExp_Explorer f(shape, TopAbs_FACE); f.More(); f.Next())
+    if (BRep_Tool::Triangulation(TopoDS::Face(f.Current()), at).IsNull()) return false;
+  return true;
+}
+
 /// Whether the meshes of `a` and `b`, which do not interfere, come within
 /// their chordal deviations of each other (the meshes are the triangulations
-/// the shapes carry). Any gap narrower than a chord is found.
+/// the shapes carry). Any gap narrower than a chord is found. The test cannot
+/// see a face left unmeshed (the backend remeshes such a solid), so then they
+/// are taken to touch (the exact distance took 36 s for one SO100 part's
+/// pairs).
 bool touch(const Placed& a, const Placed& b) {
+  if (!meshed(a.shape) || !meshed(b.shape)) return true;
   try {
     OCC_CATCH_SIGNALS
     BRepExtrema_ShapeProximity near(a.shape, b.shape,

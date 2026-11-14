@@ -8,9 +8,12 @@
 
 #include <TopLoc_Location.hxx>
 #include <TopoDS_Shape.hxx>
+#include <gp_Ax1.hxx>
 #include <gp_Trsf.hxx>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <map>
@@ -46,8 +49,13 @@ struct Primitive {
   std::vector<std::pair<const char*, double>> values;  // its other attributes
   std::vector<std::array<double, 2>> points;           // xtru (x, y) vertices; genericPolycone (r, z)
   gp_Trsf frame;                                       // to the part's frame, rigid and right-handed
-  double value(const char* key) const;
+  double& value(const char* key);                      // throws when it has no such attribute
+  double value(const char* key) const { return const_cast<Primitive*>(this)->value(key); }
 };
+
+/// The (r, z) meridian polygon of a tube, cone or genericPolycone in its
+/// frame; empty for other solids.
+std::vector<std::array<double, 2>> meridian(const Primitive& p);
 
 /// A solid as `stock` minus the union of `tools`, proven equal to the
 /// source within `epsilon_mm`.
@@ -130,6 +138,18 @@ TopoDS_Shape shape(const Exact& e);
 /// Whether `source` and `candidate` are the same solid within `eps` mm:
 /// empty when they are, else why not.
 std::string certify(const TopoDS_Shape& source, const TopoDS_Shape& candidate, double eps);
+
+/// The angle between the lines along `a` and `b`, in [0, pi/2].
+inline double tilt(const gp_Dir& a, const gp_Dir& b) {
+  const double angle = a.Angle(b);
+  return std::min(angle, M_PI - angle);
+}
+
+/// The point of `axis` nearest `p`.
+inline gp_Pnt foot(const gp_Pnt& p, const gp_Ax1& axis) {
+  const gp_Vec v(axis.Location(), p), z(axis.Direction());
+  return axis.Location().Translated(z * v.Dot(z));
+}
 
 /// 3 x 4, row-major: rotation, then translation in mm.
 std::array<double, 12> matrix(const gp_Trsf& t);

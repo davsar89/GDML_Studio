@@ -7,9 +7,11 @@ use serde_json::{json, Value};
 use super::{Representation, Session, PLACEHOLDER_MATERIAL};
 
 /// Approximate size of saved GDML per vertex (a `<position>` with
-/// coordinates of up to 17 significant digits) and per facet.
+/// coordinates of up to 17 significant digits), per facet, and per part (its
+/// solids, volume and placement, and its share of the rest).
 const GDML_BYTES_PER_VERTEX: usize = 105;
 const GDML_BYTES_PER_FACET: usize = 70;
+const GDML_BYTES_PER_PART: usize = 1_000;
 
 pub fn report(session: &Session) -> Value {
     let ir = &session.ir;
@@ -69,8 +71,8 @@ pub fn report(session: &Session) -> Value {
         .filter(|&&(a, b)| included(a) && included(b) && exact(a) != exact(b))
         .map(|&(a, b)| [id(a), id(b)])
         .collect();
-    let tessellated = (ir.definitions.iter())
-        .filter(|d| session.lv_of_def.contains_key(&d.id) && !shown_exact(d));
+    let parts = (ir.definitions.iter()).filter(|d| session.lv_of_def.contains_key(&d.id));
+    let tessellated = parts.clone().filter(|d| !shown_exact(d));
     let (vertices, facets) = tessellated.fold((0, 0), |(v, f), d| {
         (v + d.mesh.positions.len(), f + d.mesh.triangles.len())
     });
@@ -87,6 +89,8 @@ pub fn report(session: &Session) -> Value {
         "crossings": crossings,
         "mixed_contacts": mixed_contacts,
         "facets": facets,
-        "gdml_bytes_estimate": vertices * GDML_BYTES_PER_VERTEX + facets * GDML_BYTES_PER_FACET,
+        "gdml_bytes_estimate": parts.count() * GDML_BYTES_PER_PART
+            + vertices * GDML_BYTES_PER_VERTEX
+            + facets * GDML_BYTES_PER_FACET,
     })
 }

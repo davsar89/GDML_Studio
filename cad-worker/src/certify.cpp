@@ -3,6 +3,7 @@
 #include "worker.hpp"
 
 #include <BRepAdaptor_Surface.hxx>
+#include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
@@ -10,11 +11,9 @@
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepGProp.hxx>
-#include <BRepGProp_Face.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <BRepPrimAPI_MakeRevol.hxx>
-#include <BRepTools.hxx>
 #include <Bnd_Box.hxx>
 #include <GC_MakeArcOfCircle.hxx>
 #include <GProp_GProps.hxx>
@@ -29,10 +28,23 @@
 
 namespace worker {
 
-double Primitive::value(const char* key) const {
-  for (const auto& [k, v] : values)
+double& Primitive::value(const char* key) {
+  for (auto& [k, v] : values)
     if (!std::strcmp(k, key)) return v;
   throw std::logic_error(std::string("a ") + solid + " has no " + key);
+}
+
+// Box, tube and cone lengths are full lengths, centred; polycone points and
+// xtru sections are coordinates (G4GDMLReadSolids).
+std::vector<std::array<double, 2>> meridian(const Primitive& p) {
+  if (p.solid == "genericPolycone") return p.points;
+  if (p.solid != "tube" && p.solid != "cone") return {};
+  const bool tube = p.solid == "tube";
+  const double h = p.value("z") / 2;
+  return {{tube ? p.value("rmin") : p.value("rmin1"), -h},
+          {tube ? p.value("rmax") : p.value("rmax1"), -h},
+          {tube ? p.value("rmax") : p.value("rmax2"), h},
+          {tube ? p.value("rmin") : p.value("rmin2"), h}};
 }
 
 std::array<double, 12> matrix(const gp_Trsf& t) {
@@ -51,7 +63,9 @@ struct Node {
   std::optional<gp_Pnt> mid;
 };
 
-TopoDS_Face meridian(const std::vector<Node>& loop) {
+/// The face bounded by `loop`, swept about +z by `dphi` from +x towards +y
+/// (G4 startphi 0).
+TopoDS_Shape revolve(const std::vector<Node>& loop, double dphi) {
   BRepBuilderAPI_MakeWire wire;
   for (size_t i = 0; i < loop.size(); ++i) {
     const Node &a = loop[i], &b = loop[(i + 1) % loop.size()];
@@ -60,12 +74,7 @@ TopoDS_Face meridian(const std::vector<Node>& loop) {
     if (a.mid) wire.Add(BRepBuilderAPI_MakeEdge(GC_MakeArcOfCircle(p, *a.mid, q).Value()).Edge());
     else wire.Add(BRepBuilderAPI_MakeEdge(p, q).Edge());
   }
-  return BRepBuilderAPI_MakeFace(wire.Wire(), true).Face();
-}
-
-/// `face` swept about +z by `dphi` from +x towards +y (G4 startphi 0).
-TopoDS_Shape revolve(const std::vector<Node>& loop, double dphi) {
-  const TopoDS_Face face = meridian(loop);
+  const TopoDS_Face face = BRepBuilderAPI_MakeFace(wire.Wire(), true).Face();
   const gp_Ax1 z(gp::Origin(), gp::DZ());
   return dphi >= 2 * M_PI ? BRepPrimAPI_MakeRevol(face, z).Shape() : BRepPrimAPI_MakeRevol(face, z, dphi).Shape();
 }
@@ -78,9 +87,7 @@ gp_Pnt on_xz(const Node& n) { return {n.r, 0, n.z}; }
 
 }  // namespace
 
-// Box, tube and cone lengths are full lengths, centred; polycone points and
-// xtru sections are coordinates; sphere theta is measured from +z
-// (G4GDMLReadSolids).
+// Sphere theta is measured from +z (G4GDMLReadSolids).
 TopoDS_Shape shape(const Primitive& p) {
   const auto v = [&](const char* key) { return p.value(key); };
   TopoDS_Shape s;
@@ -93,17 +100,9 @@ TopoDS_Shape shape(const Primitive& p) {
     s = BRepPrimAPI_MakePrism(BRepBuilderAPI_MakeFace(polygon.Wire(), true).Face(),
                               gp_Vec(0, 0, v("z2") - v("z1")))
             .Shape();
-  } else if (p.solid == "tube" || p.solid == "cone") {
-    const bool tube = p.solid == "tube";
-    const double h = v("z") / 2;
-    s = revolve({{tube ? v("rmin") : v("rmin1"), -h},
-                 {tube ? v("rmax") : v("rmax1"), -h},
-                 {tube ? v("rmax") : v("rmax2"), h},
-                 {tube ? v("rmin") : v("rmin2"), h}},
-                v("deltaphi"));
-  } else if (p.solid == "genericPolycone") {
+  } else if (const auto rz = meridian(p); !rz.empty()) {
     std::vector<Node> loop;
-    for (const auto& [r, z] : p.points) loop.push_back({r, z});
+    for (const auto& [r, z] : rz) loop.push_back({r, z});
     s = revolve(loop, v("deltaphi"));
   } else if (p.solid == "sphere" || p.solid == "orb") {
     const bool orb = p.solid == "orb";
@@ -141,75 +140,41 @@ TopoDS_Shape shape(const Exact& e) {
 
 namespace {
 
-double tilt(const gp_Dir& a, const gp_Dir& b) {
-  const double angle = a.Angle(b);
-  return std::min(angle, M_PI - angle);
-}
-
-/// Whether the lines `a` and `b` stay within `eps` of each other over a length `d`.
-bool same_line(const gp_Ax1& a, const gp_Ax1& b, double eps, double d) {
-  return tilt(a.Direction(), b.Direction()) * d + gp_Lin(a).Distance(b.Location()) <= eps;
-}
-
-/// Whether `a` and `b` lie on the same analytic surface within `eps`, over
-/// a body of diagonal `d` (planes and cones without their orientation).
-bool same(const BRepAdaptor_Surface& a, const BRepAdaptor_Surface& b, double eps, double d) {
-  if (a.GetType() != b.GetType()) return false;
+/// An upper bound on how far `b` lies from `a` within distance `r` of `o`;
+/// infinite for different kinds (planes and cones without orientation).
+double gap(const BRepAdaptor_Surface& a, const BRepAdaptor_Surface& b, const gp_Pnt& o, double r) {
+  if (a.GetType() != b.GetType()) return HUGE_VAL;
   switch (a.GetType()) {
-    case GeomAbs_Plane:
-      return tilt(a.Plane().Axis().Direction(), b.Plane().Axis().Direction()) * d +
-                 a.Plane().Distance(b.Plane().Location()) <=
-             eps;
-    case GeomAbs_Cylinder:
-      return same_line(a.Cylinder().Axis(), b.Cylinder().Axis(), eps, d) &&
-             std::abs(a.Cylinder().Radius() - b.Cylinder().Radius()) <= eps;
-    case GeomAbs_Cone:
-      return same_line(a.Cone().Axis(), b.Cone().Axis(), eps, d) &&
-             a.Cone().Apex().Distance(b.Cone().Apex()) <= eps &&
-             std::abs(std::abs(a.Cone().SemiAngle()) - std::abs(b.Cone().SemiAngle())) * d <= eps;
+    case GeomAbs_Plane: {
+      // Apart where b passes nearest o, then diverging by their tilt.
+      const gp_Pln p = a.Plane(), q = b.Plane();
+      const gp_Vec n(q.Axis().Direction());
+      return p.Distance(o.Translated(n * gp_Vec(o, q.Location()).Dot(n))) +
+             tilt(p.Axis().Direction(), q.Axis().Direction()) * r;
+    }
+    case GeomAbs_Cylinder: {
+      const gp_Ax1 x = a.Cylinder().Axis(), y = b.Cylinder().Axis();
+      return gp_Lin(x).Distance(foot(o, y)) + tilt(x.Direction(), y.Direction()) * r +
+             std::abs(a.Cylinder().Radius() - b.Cylinder().Radius());
+    }
+    case GeomAbs_Cone: {
+      const gp_Cone x = a.Cone(), y = b.Cone();
+      return x.Apex().Distance(y.Apex()) + (tilt(x.Axis().Direction(), y.Axis().Direction()) +
+                                            std::abs(std::abs(x.SemiAngle()) - std::abs(y.SemiAngle()))) *
+                                               (x.Apex().Distance(o) + r);
+    }
     case GeomAbs_Sphere:
       return a.Sphere().Location().Distance(b.Sphere().Location()) +
-                 std::abs(a.Sphere().Radius() - b.Sphere().Radius()) <=
-             eps;
-    case GeomAbs_Torus:
-      return same_line(a.Torus().Axis(), b.Torus().Axis(), eps, d) &&
-             a.Torus().Location().Distance(b.Torus().Location()) <= eps &&
-             std::abs(a.Torus().MajorRadius() - b.Torus().MajorRadius()) <= eps &&
-             std::abs(a.Torus().MinorRadius() - b.Torus().MinorRadius()) <= eps;
-    default:
-      return false;
-  }
-}
-
-gp_Vec radial(const gp_Pnt& p, const gp_Ax1& axis) {
-  const gp_Vec v(axis.Location(), p), z(axis.Direction());
-  return v - z * v.Dot(z);
-}
-
-/// +1 where the material normal of `face` points away from the axis, centre
-/// or minor circle of `surface` (along a plane's normal), -1 where it
-/// points towards it, 0 where it is undefined. Constant over a face.
-int side(const TopoDS_Face& face, const BRepAdaptor_Surface& surface) {
-  double u0, u1, v0, v1;
-  BRepTools::UVBounds(face, u0, u1, v0, v1);
-  gp_Pnt p;
-  gp_Vec n;
-  BRepGProp_Face(face).Normal((u0 + u1) / 2, (v0 + v1) / 2, p, n);  // reversed with the face
-  gp_Vec away;
-  switch (surface.GetType()) {
-    case GeomAbs_Plane: away = surface.Plane().Axis().Direction(); break;
-    case GeomAbs_Cylinder: away = radial(p, surface.Cylinder().Axis()); break;
-    case GeomAbs_Cone: away = radial(p, surface.Cone().Axis()); break;
-    case GeomAbs_Sphere: away = gp_Vec(surface.Sphere().Location(), p); break;
-    default: {
-      const gp_Torus t = surface.Torus();
-      const gp_Vec r = radial(p, t.Axis());
-      if (r.Magnitude() == 0) return 0;
-      away = gp_Vec(t.Location().Translated(r.Normalized() * t.MajorRadius()), p);
+             std::abs(a.Sphere().Radius() - b.Sphere().Radius());
+    case GeomAbs_Torus: {
+      const gp_Torus x = a.Torus(), y = b.Torus();
+      return x.Location().Distance(y.Location()) +
+             tilt(x.Axis().Direction(), y.Axis().Direction()) * (x.MajorRadius() + x.MinorRadius()) +
+             std::abs(x.MajorRadius() - y.MajorRadius()) + std::abs(x.MinorRadius() - y.MinorRadius());
     }
+    default:
+      return HUGE_VAL;
   }
-  const double dot = n.Dot(away);
-  return dot > 0 ? 1 : dot < 0 ? -1 : 0;
 }
 
 std::string number(double x) {
@@ -235,21 +200,19 @@ std::string describe(const BRepAdaptor_Surface& s) {
 
 }  // namespace
 
-// Both boundaries lying on one set of surfaces makes both solids unions of
-// cells of that arrangement, so they can differ only by whole cells; each
-// would change a surface's side, area or moment, or the volume.
+// Rule 2 puts both boundaries on one set of surfaces, which makes both solids
+// unions of cells of that arrangement; the volume of their intersection then
+// shows whether any cell differs. Per-surface sums alone cannot: cells can
+// trade places and keep every area and moment.
 std::string certify(const TopoDS_Shape& source, const TopoDS_Shape& candidate, double eps) {
   if (candidate.IsNull()) return "OpenCASCADE could not build it";
   Bnd_Box box;
   BRepBndLib::AddOptimal(source, box, false, false);
-  double b[6];
-  box.Get(b[0], b[1], b[2], b[3], b[4], b[5]);
-  const gp_XYZ o((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2);
-  const double d = std::hypot(b[3] - b[0], b[4] - b[1], b[5] - b[2]);
+  const gp_Pnt o((box.CornerMin().XYZ() + box.CornerMax().XYZ()) / 2);
+  const double d = box.CornerMin().Distance(box.CornerMax());
 
   struct Side {
-    bool any = false, mixed = false;
-    int side = 0;
+    bool any = false;
     double area = 0, error = 0, perimeter = 0;
     gp_XYZ moment;
   };
@@ -264,19 +227,17 @@ std::string certify(const TopoDS_Shape& source, const TopoDS_Shape& candidate, d
       const TopoDS_Face& face = TopoDS::Face(ex.Current());
       const BRepAdaptor_Surface s(face);
       if (s.GetType() > GeomAbs_Torus) return k ? "it has a free-form face" : "a face is free-form";
-      auto u = std::find_if(surfaces.begin(), surfaces.end(), [&](const Surface& u) { return same(u.s, s, eps, d); });
+      // Within eps / 2 of the first face, so any two faces of a surface are within eps.
+      auto u = std::find_if(surfaces.begin(), surfaces.end(),
+                            [&](const Surface& u) { return gap(u.s, s, o, d / 2) <= eps / 2; });
       if (u == surfaces.end()) u = surfaces.insert(u, Surface{s, {}});
       Side& x = u->of[k];
-      const int sd = side(face, u->s);
-      if (sd == 0) return "a face on " + describe(u->s) + " has no defined normal";
-      x.mixed |= x.any && x.side != sd;
       x.any = true;
-      x.side = sd;
       GProp_GProps g;
       const double error = BRepGProp::SurfaceProperties(face, g, 1e-9);
       x.area += g.Mass();
       x.error += std::abs(error * g.Mass());
-      x.moment += (g.CentreOfMass().XYZ() - o) * g.Mass();
+      x.moment += (g.CentreOfMass().XYZ() - o.XYZ()) * g.Mass();
       if (k) {
         GProp_GProps edges;
         BRepGProp::LinearProperties(face, edges);
@@ -288,7 +249,6 @@ std::string certify(const TopoDS_Shape& source, const TopoDS_Shape& candidate, d
     const Side &s = u.of[0], &c = u.of[1];
     if (!s.any) return "it has " + describe(u.s) + ", which the part does not";
     if (!c.any) return "the part has " + describe(u.s) + ", which it does not";
-    if (s.mixed || c.mixed || s.side != c.side) return "its faces on " + describe(u.s) + " face the other way";
     const double numeric = s.error + c.error;
     if (std::abs(s.area - c.area) > eps * c.perimeter + numeric)
       return "its area on " + describe(u.s) + " differs by " + number(c.area - s.area) + " mm2";
@@ -296,13 +256,14 @@ std::string certify(const TopoDS_Shape& source, const TopoDS_Shape& candidate, d
       return "its faces on " + describe(u.s) + " lie elsewhere";
     area += c.area;
   }
-  GProp_GProps vs, vc;
-  const double es = BRepGProp::VolumeProperties(source, vs, 1e-9), ec = BRepGProp::VolumeProperties(candidate, vc, 1e-9);
-  const double numeric = std::abs(es * vs.Mass()) + std::abs(ec * vc.Mass());
-  if (std::abs(vs.Mass() - vc.Mass()) > eps * area + numeric)
-    return "its volume differs by " + number(vc.Mass() - vs.Mass()) + " mm3";
-  const gp_XYZ moment = (vs.CentreOfMass().XYZ() - o) * vs.Mass() - (vc.CentreOfMass().XYZ() - o) * vc.Mass();
-  if (moment.Modulus() > (eps * area + numeric) * d) return "its volume lies elsewhere";
+  BRepAlgoAPI_Common common(source, candidate);
+  if (common.HasErrors()) return "OpenCASCADE could not intersect it with the part";
+  GProp_GProps vs, vc, vi;
+  const double es = BRepGProp::VolumeProperties(source, vs, 1e-9), ec = BRepGProp::VolumeProperties(candidate, vc, 1e-9),
+               ei = BRepGProp::VolumeProperties(common.Shape(), vi, 1e-9);
+  const double allowed = eps * area + std::abs(es * vs.Mass()) + std::abs(ec * vc.Mass()) + std::abs(ei * vi.Mass());
+  if (std::abs(vs.Mass() - vi.Mass()) > allowed || std::abs(vc.Mass() - vi.Mass()) > allowed)
+    return "it differs from the part by " + number(vs.Mass() + vc.Mass() - 2 * vi.Mass()) + " mm3";
   return {};
 }
 

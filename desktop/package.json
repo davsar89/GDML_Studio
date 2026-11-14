@@ -1,7 +1,7 @@
 {
   "name": "gdml-studio",
   "productName": "GDML Studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Viewer and material editor for GDML detector geometry",
   "author": "davsar89",
   "homepage": "https://github.com/davsar89/GDML_Studio",
