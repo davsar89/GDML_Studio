@@ -47,7 +47,7 @@ const draftKey = (d: Draft) => JSON.stringify([d.stl_unit_mm, d.volume_target, d
 
 const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 const quantity = (x: number) => x.toLocaleString('en-US', { maximumSignificantDigits: 8 });
-const percent = (x: number) => `${(100 * x).toLocaleString('en-US', { maximumSignificantDigits: 2, signDisplay: 'exceptZero' })} %`;
+const percent = (x: number) => `${(100 * x).toLocaleString('en-US', { maximumFractionDigits: 3, signDisplay: 'exceptZero' })} %`;
 const size = (bytes: number) => bytes < 1e6
   ? `${(bytes / 1e3).toLocaleString('en-US', { maximumFractionDigits: 1 })} kB`
   : `${(bytes / 1e6).toLocaleString('en-US', { maximumFractionDigits: 1 })} MB`;
@@ -159,15 +159,9 @@ function ImportForm({ report }: { report: ImportReport }) {
             const notes = repairs(d);
             return (
               <li key={d.id} className="list-row" data-selected={d.volume !== null && d.volume === selectedVolume}>
-                <select value={draft.representations[d.id] ?? 'auto'} aria-label={`Representation of ${d.label}`}
-                  onChange={(e) => choose(d.id, e.target.value as Representation)}>
-                  <option value="auto">{d.analytic ? 'Exact' : 'Mesh'}</option>
-                  {d.analytic && <option value="tessellated">Mesh</option>}
-                  <option value="exclude">Exclude</option>
-                </select>
                 <button className="plain row-name" disabled={!d.volume} onClick={() => d.volume && setSelectedVolume(d.volume)}
                   title={d.volume ?? 'Not in the document'}>
-                  <span className="mono">{d.label}</span>
+                  <span className="mono" title={d.label}>{d.label}</span>
                   <small>
                     {d.volume ? materialOf.get(d.volume) : 'excluded'}{d.instances > 1 && ` · ${count(d.instances, 'instance')}`} · {count(d.facets, 'facet')} · {quantity(d.volume_mm3)} mm³
                   </small>
@@ -185,11 +179,19 @@ function ImportForm({ report }: { report: ImportReport }) {
                   {d.issues.length > 0 && <small className="attention">{d.issues.join('; ')}</small>}
                   {crossed.has(d.id) && <small className="attention">Mesh crosses {crossed.get(d.id)!.join(', ')}</small>}
                 </button>
-                {d.exact && (
-                  <input type="number" className="chord" min={0} step="any" value={draft.chords[d.id] ?? ''}
-                    placeholder={quantity(d.exact.chord_mm)} aria-label={`Chord of ${d.label} in mm`}
-                    onChange={(e) => setDraft({ ...draft, chords: { ...draft.chords, [d.id]: e.target.value } })} />
-                )}
+                <div className="part-choice">
+                  <select value={draft.representations[d.id] ?? 'auto'} aria-label={`Representation of ${d.label}`}
+                    onChange={(e) => choose(d.id, e.target.value as Representation)}>
+                    <option value="auto">{d.analytic ? 'Exact' : 'Mesh'}</option>
+                    {d.analytic && <option value="tessellated">Mesh</option>}
+                    <option value="exclude">Exclude</option>
+                  </select>
+                  {d.exact && (
+                    <input type="number" min={0} step="any" value={draft.chords[d.id] ?? ''}
+                      placeholder={quantity(d.exact.chord_mm)} aria-label={`Chord of ${d.label} in mm`}
+                      onChange={(e) => setDraft({ ...draft, chords: { ...draft.chords, [d.id]: e.target.value } })} />
+                  )}
+                </div>
               </li>
             );
           })}
